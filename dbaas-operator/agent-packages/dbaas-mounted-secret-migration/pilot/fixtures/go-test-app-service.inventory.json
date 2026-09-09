@@ -1,0 +1,28 @@
+{
+  "_note": "The effective datasource inventory the mounted-secret skill would record for the already-migrated qubership-dbaas test-apps/go-test-app-service chart, used by pilot/run_pilot.py --validate-chart to exercise the rendered-manifest validator against a real chart.",
+  "datasources": [
+    {
+      "id": "go-test-app-service-postgres-service",
+      "type": "postgresql",
+      "classifier": {
+        "microserviceName": "go-test-app-service",
+        "namespace": "dbaas",
+        "scope": "service"
+      },
+      "requestedRoles": ["", "admin"],
+      "migrationFeasibility": "SUPPORTED"
+    },
+    {
+      "id": "go-test-app-service-postgres-tenant",
+      "type": "postgresql",
+      "classifier": {
+        "microserviceName": "go-test-app-service",
+        "namespace": "dbaas",
+        "scope": "tenant",
+        "tenantId": "acme"
+      },
+      "requestedRoles": ["", "admin"],
+      "migrationFeasibility": "SUPPORTED"
+    }
+  ]
+}

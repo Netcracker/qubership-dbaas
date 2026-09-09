@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import math
 import re
@@ -13,11 +14,8 @@ from typing import Any, Iterable
 
 try:
     import yaml
-except ImportError as exc:  # pragma: no cover - exercised only without the pinned dependency
-    raise SystemExit(
-        "PyYAML is required; install it in the execution environment before running "
-        "scripts/validate_generated.py"
-    ) from exc
+except ImportError:  # pragma: no cover - exercised only without the pinned dependency
+    yaml = None  # type: ignore[assignment]
 
 
 DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
@@ -80,9 +78,24 @@ def load_objects(paths: list[Path]) -> list[dict[str, Any]]:
     return objects
 
 
-def object_identity(obj: dict[str, Any]) -> str:
+# The effective namespace for a resource that omits metadata.namespace. A
+# namespace-less Helm chart is installed into (and its CRs land in) the release
+# namespace; ``validate`` threads the resolved workload namespace through as
+# ``default_namespace``. It is a plain argument, not shared state, so concurrent
+# validations -- or a caller that uses ``object_identity`` / ``effective_classifier``
+# directly -- never interfere.
+DEFAULT_NAMESPACE = "default"
+
+
+def _ns(metadata: dict[str, Any], *, default_namespace: str = DEFAULT_NAMESPACE) -> str:
+    value = metadata.get("namespace")
+    return value if isinstance(value, str) and value else default_namespace
+
+
+def object_identity(obj: dict[str, Any], *, default_namespace: str = DEFAULT_NAMESPACE) -> str:
     metadata = obj.get("metadata") or {}
-    return f"{obj.get('kind', '<missing>')}/{metadata.get('namespace', 'default')}/{metadata.get('name', '<missing>')}"
+    namespace = _ns(metadata, default_namespace=default_namespace)
+    return f"{obj.get('kind', '<missing>')}/{namespace}/{metadata.get('name', '<missing>')}"
 
 
 def check_name(name: Any, what: str, errors: list[str]) -> None:
@@ -92,16 +105,21 @@ def check_name(name: Any, what: str, errors: list[str]) -> None:
         errors.append(f"{what}: {name!r} is not a DNS-1123 label of at most 63 characters")
 
 
-def effective_classifier(obj: dict[str, Any], errors: list[str]) -> dict[str, Any] | None:
+def effective_classifier(
+    obj: dict[str, Any],
+    errors: list[str],
+    *,
+    default_namespace: str = DEFAULT_NAMESPACE,
+) -> dict[str, Any] | None:
     spec = obj.get("spec") or {}
     classifier = spec.get("classifier")
-    identity = object_identity(obj)
+    identity = object_identity(obj, default_namespace=default_namespace)
     if not isinstance(classifier, dict):
         errors.append(f"{identity}: spec.classifier must be a mapping")
         return None
 
     metadata = obj.get("metadata") or {}
-    namespace = metadata.get("namespace", "default")
+    namespace = _ns(metadata, default_namespace=default_namespace)
     classifier = dict(classifier)
     classifier_namespace = classifier.get("namespace")
     if classifier_namespace not in (None, "", namespace):
@@ -196,7 +214,28 @@ def validate_inventory(
         errors.append(f"unexpected DatabaseSecretClaim identities: {describe_keys(extra_claims)}")
 
 
-def validate(paths: list[Path], inventory: Path | None, operator_namespace: str | None = None) -> list[str]:
+def validate(
+    paths: list[Path],
+    inventory: Path | None,
+    operator_namespace: str | None = None,
+    *,
+    default_namespace: str = "default",
+) -> list[str]:
+    return _validate(
+        paths, inventory, operator_namespace, default_namespace or DEFAULT_NAMESPACE
+    )
+
+
+def _validate(
+    paths: list[Path],
+    inventory: Path | None,
+    operator_namespace: str | None,
+    default_namespace: str,
+) -> list[str]:
+    object_id = functools.partial(object_identity, default_namespace=default_namespace)
+    classifier_of = functools.partial(effective_classifier, default_namespace=default_namespace)
+    ns_of = functools.partial(_ns, default_namespace=default_namespace)
+
     errors: list[str] = []
     objects = load_objects(paths)
     seen_objects: set[str] = set()
@@ -205,7 +244,7 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
     secret_claims: dict[tuple[str, str], str] = {}
 
     for obj in objects:
-        identity = object_identity(obj)
+        identity = object_id(obj)
         if identity in seen_objects:
             errors.append(f"duplicate object identity: {identity}")
         seen_objects.add(identity)
@@ -215,7 +254,7 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
         kind = obj.get("kind")
         if kind not in {"InternalDatabase", "DatabaseSecretClaim"}:
             continue
-        classifier = effective_classifier(obj, errors)
+        classifier = classifier_of(obj, errors)
         spec = obj.get("spec") or {}
         # spec.operatorNamespace is required and immutable on every managed CR. When the caller
         # passes the resolved operator namespace, also assert an exact match, since reusing the
@@ -246,7 +285,7 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
             ):
                 errors.append(f"{identity}: spec.settings must map string keys to valid JSON values")
             if db_key in internals:
-                errors.append(f"duplicate InternalDatabase identity: {identity} and {object_identity(internals[db_key])}")
+                errors.append(f"duplicate InternalDatabase identity: {identity} and {object_id(internals[db_key])}")
             internals[db_key] = obj
             continue
 
@@ -259,11 +298,11 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
             role = ""
         key = claim_key(classifier, db_type, role)
         if key in claims:
-            errors.append(f"duplicate DatabaseSecretClaim lookup identity: {identity} and {object_identity(claims[key])}")
+            errors.append(f"duplicate DatabaseSecretClaim lookup identity: {identity} and {object_id(claims[key])}")
         claims[key] = obj
         secret_name = spec.get("secretName")
         check_name(secret_name, f"{identity} spec.secretName", errors)
-        namespace = metadata.get("namespace", "default")
+        namespace = ns_of(metadata)
         secret_key = (namespace, secret_name)
         if secret_key in secret_claims:
             errors.append(f"{identity}: Secret {namespace}/{secret_name} is also claimed by {secret_claims[secret_key]}")
@@ -272,14 +311,14 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
     for key, claim in claims.items():
         db_key = key.rsplit("|", 1)[0]
         if db_key not in internals:
-            errors.append(f"{object_identity(claim)}: no InternalDatabase has the same classifier and type")
+            errors.append(f"{object_id(claim)}: no InternalDatabase has the same classifier and type")
 
     mount_occurrences: dict[tuple[str, str], list[tuple[str, Any, Any]]] = {}
     for obj in objects:
         if obj.get("kind") not in WORKLOAD_KINDS:
             continue
         metadata = obj.get("metadata") or {}
-        namespace = metadata.get("namespace", "default")
+        namespace = ns_of(metadata)
         pod_spec = (((obj.get("spec") or {}).get("template") or {}).get("spec") or {})
         volume_secrets: dict[str, str] = {}
         seen_volume_names: set[str] = set()
@@ -288,7 +327,7 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
                 continue
             volume_name = volume.get("name")
             if volume_name in seen_volume_names:
-                errors.append(f"{object_identity(obj)}: duplicate volume name {volume_name!r}")
+                errors.append(f"{object_id(obj)}: duplicate volume name {volume_name!r}")
             seen_volume_names.add(volume_name)
             secret = volume.get("secret") or {}
             if secret.get("secretName"):
@@ -302,7 +341,7 @@ def validate(paths: list[Path], inventory: Path | None, operator_namespace: str 
                     secret_key = (namespace, secret_name)
                     mount_occurrences.setdefault(secret_key, []).append(
                         (
-                            f"{object_identity(obj)} {container_label} {container.get('name', '<missing>')}",
+                            f"{object_id(obj)} {container_label} {container.get('name', '<missing>')}",
                             mount.get("mountPath"),
                             mount.get("readOnly"),
                         )
@@ -336,6 +375,9 @@ def main() -> int:
         help="If set, assert every managed CR's spec.operatorNamespace equals this value",
     )
     args = parser.parse_args()
+    if yaml is None:
+        print("error: PyYAML is required; install it and re-run", file=sys.stderr)
+        return 2
     try:
         errors = validate(args.manifests, args.inventory, args.operator_namespace)
     except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:

@@ -8,10 +8,28 @@ description: >-
 
 # Migrate DBaaS provisioning to mounted Secrets
 
-Inventory every logical database identity before editing manifests. Generate one
-`InternalDatabase` for each unique `(classifier, type)` and one `DatabaseSecretClaim` for each
-unique `(classifier, type, requested userRole)`. Keep dynamic tenant provisioning on the existing
-runtime path.
+The bundled script `scripts/apply_migration.py` is the only writer of migration files. This skill
+inventories the service, proves compatibility, resolves every ambiguous value, and writes a JSON
+plan; the script generates the resources, patches the workloads, updates the chart values, and
+validates the result. Do not generate CRs, edit workload manifests, or edit the script output by
+hand. A missing case is fixed in the script and covered by a fixture.
+
+## Execution boundary
+
+1. **Discover and decide.** Inventory every logical database identity, prove mounted-secret
+   compatibility, resolve names and container selections, and write the plan JSON to a temporary
+   path. Change no consumer file in this phase.
+2. **Apply and verify.** Invoke `scripts/apply_migration.py` with `--apply`. The script validates
+   the plan and source hashes, generates one canonical resource file, mounts every generated Secret
+   into the plan-selected containers, registers the `DBAAS_OPERATOR_NAMESPACE` chart value when the
+   plan templates `spec.operatorNamespace` from it, removes the superseded legacy declarations, and
+   validates the result in a temporary tree before touching the working copy. For a `helm` root the
+   runner renders the
+   candidate chart with `helm template --namespace <resolved workloadNamespace>` and validates the
+   rendered Kubernetes objects, treating that namespace as the effective one for any resource that
+   omits `metadata.namespace` -- `helm` must be on PATH, or the run is blocked rather than certifying
+   raw templates. Pass `--report <path>` only outside the consumer repository; the report is
+   execution output, not a repository artifact.
 
 Detect the framework and read its reference:
 
@@ -19,48 +37,33 @@ Detect the framework and read its reference:
 - [Spring](references/frameworks/spring.md)
 - [Quarkus and BSS clients](references/frameworks/quarkus.md)
 
-Report other frameworks as outside scope.
-
-For tenant, shard, schema, bucket, or logical-to-physical behavior, also read
-[dynamic-topologies.md](references/dynamic-topologies.md). Framework references define discovery
-and Secret consumption; the CR identity rules below remain common.
-
-Read [contracts.md](references/contracts.md) before generating resources. Read
-[testing.md](references/testing.md) when validating generated output or running a cluster test.
-Use `scripts/validate_generated.py` for deterministic inventory/resource/mount consistency checks.
+Report other frameworks as outside scope. For tenant, shard, schema, bucket, or logical-to-physical
+behavior, also read [dynamic-topologies.md](references/dynamic-topologies.md). Read
+[contracts.md](references/contracts.md) for the identity and Secret rules and
+[testing.md](references/testing.md) for the validation layers.
 
 ## 1. Verify generated-secret compatibility
 
 Inspect the target service's resolved dependencies, not a sibling checkout or an assumed version.
+Prove one mode using the framework reference and record it in the plan as
+`datasources[].compatibility.mode`:
 
-Prove one mode using the framework reference:
-
-- `NATIVE_MOUNTED_PROVIDER`: client reads and identity-matches the operator Secret;
+- `NATIVE_MOUNTED_PROVIDER`: the client reads and identity-matches the operator Secret;
 - `EXPLICIT_SECRET_ADAPTER`: code maps it without provisioning;
-- `DIRECT_KUBERNETES_SECRET`: it maps into supported connection properties;
-- `UNPROVEN`: no compatible path is demonstrated.
+- `DIRECT_KUBERNETES_SECRET`: it maps into supported connection properties.
 
-Only the first three can be `SUPPORTED`; `UNPROVEN` is `BLOCKED`. A valid Secret does not prove
-client compatibility.
-
-If the resolved client predates mounted-secret support, report the exact dependency or BOM upgrade
-needed and keep the identity `BLOCKED` until source inspection or E2E proves the upgraded graph.
-Never generate mounts while implying that an incompatible client will consume them.
-
-Do not remove the REST fallback. Supported declarative identities should hit the mounted provider;
-unsupported dynamic identities may still need runtime provisioning.
+Any other state, including a resolved client that predates mounted-secret support, is not proven.
+The runner blocks a SUPPORTED datasource whose `compatibility.mode` is not one of the three above.
+Report the exact dependency or BOM upgrade needed and keep the identity out of scope until an
+upgraded graph is proven. Never generate mounts while implying that an incompatible client will
+consume them. Do not remove the REST fallback.
 
 ## 2. Build a datasource inventory
 
-Search production source, dependencies, configuration, and workload manifests. Exclude tests only after
-checking that they are not the sole documentation of a wrapper's behavior.
-
-Use the selected framework reference to find datasource factories, annotations, wrappers, actual
-DBaaS operations, and legacy `DatabaseDeclaration` resources. Treat a legacy declaration as
-evidence to reconcile with code, not as a substitute for tracing the runtime request.
-
-For a legacy wrapper containing multiple `declarations[]` items, inventory each item independently.
-Do not reuse the wrapper's `metadata.name`; derive each generated name from that item's full identity.
+Search production source, dependencies, configuration, and workload manifests. Use the selected
+framework reference to find datasource factories, annotations, wrappers, DBaaS operations, and
+legacy `DatabaseDeclaration` resources. For a legacy wrapper with multiple `declarations[]` items,
+inventory each item independently.
 
 For every call path, resolve:
 
@@ -68,212 +71,156 @@ For every call path, resolve:
 - the classifier function and every emitted key/value;
 - whether each value is fixed for a deployment or derived from request/runtime context;
 - `BaseDbParams.NamePrefix`, `Settings`, `PhysicalDatabaseId`, and `Role`;
-- all deployment/stateful-set containers that consume the datasource;
-- the credential-consumption mode and evidence from the resolved client;
+- every Deployment/StatefulSet container and init container that consumes the datasource;
+- the credential-consumption mode and its evidence;
 - the source locations that prove the result.
 
-Do not infer scope solely from `ServiceDatabase` or `TenantDatabase`. Both APIs accept an explicit
-`DbParams.Classifier` that overrides their default classifier. Trace that function.
+Do not infer scope from a method name, default an unresolved type to PostgreSQL, or generate
+placeholders. Classify each identity:
 
-Do not default an unresolved database type to PostgreSQL. Mark the datasource `AMBIGUOUS` and stop
-generation for it.
-
-### Feasibility
-
-Classify an identity as:
-
-- `SUPPORTED`: every classifier value is known from source, deployment values, or environment
-  configuration at deployment time;
-- `NOT_SUPPORTED_DYNAMIC`: any identity value, especially `tenantId`, comes from request context,
-  `tenant.Of(ctx)`, or another runtime-only source;
-- `BLOCKED`: the imperative request uses a field without a confirmed declarative mapping, including
+- `SUPPORTED`: every classifier value is known at deployment time;
+- `NOT_SUPPORTED_DYNAMIC`: any value, especially `tenantId`, comes from request/runtime context;
+- `BLOCKED`: the request uses a field with no confirmed declarative mapping, including
   `PhysicalDatabaseId`;
 - `AMBIGUOUS`: type, classifier, role, or parameter flow cannot be proven statically.
 
-`TenantDatabase(...)` with its default classifier is dynamic. A custom classifier supplied through
-`DbParams.Classifier` may be static; judge the function, not the method name.
+Only `SUPPORTED` identities are generated. The others are reported and left on the REST path. The
+runner blocks the whole apply if a plan claim targets a non-`SUPPORTED` identity, and it rejects a
+`SUPPORTED` datasource that still carries a non-empty `parameters.physicalDatabaseId`, so a
+mislabelled physical binding cannot slip through.
 
-### Deduplicate by identity
+Record the inventory under `inputs.datasources` in the effective runtime wire form: the classifier
+carries the resolved workload namespace and top-level extension keys directly (no `extraKeys` in the
+inventory). `classifier.namespace` must equal `decisions.workloadNamespace`, so a Helm layout uses
+`{{ .Values.NAMESPACE }}` in both places and a plain layout uses the same concrete namespace.
 
-Canonicalize classifier maps by keys and values for comparison.
+```json
+{
+  "id": "orders-postgresql-service",
+  "type": "postgresql",
+  "classifier": {"microserviceName": "orders", "namespace": "{{ .Values.NAMESPACE }}", "scope": "service"},
+  "requestedRoles": [""],
+  "parameters": {"namePrefix": "", "settings": {}, "physicalDatabaseId": ""},
+  "codeLocations": ["internal/storage/postgres.go:42"],
+  "migrationFeasibility": "SUPPORTED",
+  "compatibility": {"mode": "NATIVE_MOUNTED_PROVIDER", "evidence": "resolved base client vX registers the provider"}
+}
+```
 
-- Repeated call sites with the same `(classifier, type)` share one `InternalDatabase`.
-- Different types always require different `InternalDatabase` resources.
-- Different classifier keys or values require different `InternalDatabase` resources.
-- Different requested roles share the database but require separate claims and mounted Secrets.
+## 3. Resolve the operator assignment
 
-Inventory classifiers use the effective runtime wire form: include the resolved workload namespace and
-place top-level extension keys directly in the classifier. Do not use `extraKeys` in inventory JSON;
-`extraKeys` is only the CR encoding described in section 3.
+The operator assignment is a deploy-time value; it is written verbatim into every generated CR's
+`spec.operatorNamespace`.
 
-Produce the inventory before making changes:
-
-For a Helm layout, record `operatorNamespace` with this root-context expression:
+For a Helm layout, prefer deriving it from the address the service already configures, so the chart
+needs no extra knob:
 
 ```text
 {{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) | quote }}
 ```
 
-For a plain manifest, record the verified literal namespace. Stop and ask if the value cannot be
-proven; never assume `dbaas-system` or reuse the workload namespace.
+A chart that wants a dedicated override can instead set `inputs.operatorNamespace` to
+`{{ .Values.DBAAS_OPERATOR_NAMESPACE }}`; the runner then adds that key to `values.yaml` (empty
+default) and registers it as an **optional** string in `values.schema.json`, so `helm lint` and
+`helm template` still succeed with the chart defaults and the deployer supplies the real namespace.
 
-```json
-{
-  "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) | quote }}",
-  "datasources": [
-    {
-      "id": "orders-postgresql-service",
-      "type": "postgresql",
-      "classifier": {
-        "microserviceName": "orders",
-        "namespace": "orders-ns",
-        "scope": "service"
-      },
-      "requestedRoles": [""],
-      "parameters": {
-        "namePrefix": "",
-        "settings": {},
-        "physicalDatabaseId": ""
-      },
-      "codeLocations": ["internal/storage/postgres.go:42"],
-      "migrationFeasibility": "SUPPORTED"
-    }
-  ]
-}
-```
+For a plain-manifest layout, resolve a concrete namespace: prefer an explicit deployment value,
+verify it against the intended `dbaas-operator` Deployment or Pod when a cluster is available, and
+stop and ask if it cannot be proven. Never assume `dbaas-system` or reuse the workload namespace.
 
-Report all dynamic, blocked, and ambiguous entries. Never generate placeholders that could create
-the wrong database.
+## 4. Resolve the remaining decisions
 
-## 3. Map the imperative request
+Record under `decisions`:
 
-Preserve the runtime request exactly:
+- **`root`**, **`rootKind`** (`helm` / `plain`), and **`workloadNamespace`**;
+- **`originService`**: the `app.kubernetes.io/name` label on every claim;
+- **`claims`**: one entry per requested role of each SUPPORTED datasource, naming the
+  `workloadFile`, `workloadKind`, `workloadName`, consuming `containers`, and `initContainers`. The
+  claim roles must exactly match the datasource's `requestedRoles`.
+- **`nameDiscriminators`**: a short readable discriminator for a datasource whose identity needs
+  more than `<microservice>-<type>-<scope>`. Without one, the runner appends the first eight hex
+  characters of the canonical-classifier SHA-256. Two datasources that resolve to the same
+  `(classifier, type)` must carry the same discriminator (or none); a disagreement is a blocking
+  error, since the generated names would otherwise depend on inventory order.
+- **`supersededDeclarations`**: legacy declaration files the runner should delete, given as
+  repository-relative paths. The runner does not take your word for what a file contains: it parses
+  each file, requires every document to be a `DatabaseDeclaration` — either a standalone declaration
+  or a wrapper whose `declarations` list is non-empty and holds only objects — and for every
+  declaration checks both its `(classifier, type)` identity (resolving the owning-service placeholder
+  the way discovery does, and taking a missing classifier namespace from the document's
+  `metadata.namespace` before the workload fallback) and its creation behaviour against the matched
+  `SUPPORTED` datasource: `settings` and `namePrefix` must match `parameters`, and `lazy: true`,
+  `versioningConfig`, `initialInstantiation`, or any unrecognized field blocks the delete. Unrelated
+  resources, a `DbPolicy` document (this migration does not replace access policies), a declaration
+  for a `NOT_SUPPORTED_DYNAMIC` / `BLOCKED` / `AMBIGUOUS` identity or another namespace, or a
+  semantic mismatch blocks the run — split the file so the unmigrated declaration is preserved.
+- **`outputFile`**, **`valuesFile`**, **`schemaFile`**: only when they differ from the defaults
+  (`templates/dbaas-mounted-secret-resources.yaml`, `values.yaml`, `values.schema.json`).
+- **`helmValues`**: a `key: value` map of extra `helm template --set` pairs for a `helm` root, for a
+  chart value the runner does not synthesize itself -- a schema-required value with no default, an
+  image tag, and so on. Without it, the runner's own render of the candidate chart fails and the run
+  is reported as a script bug (exit `5`). Applied after the synthesized pilot values, so an explicit
+  entry wins on a conflict.
+- **`outputOwnership`**: the current SHA-256 of an existing output file the migration must overwrite.
 
-- typed classifier keys map to `spec.classifier.microserviceName`, `scope`, `namespace`, and
-  `tenantId`;
-- a runtime top-level extension key maps to `spec.classifier.extraKeys` so it remains top-level on
-  the wire;
-- a runtime nested `customKeys` object maps to `spec.classifier.customKeys`;
-- `BaseDbParams.NamePrefix` maps to `InternalDatabase.spec.namePrefix`;
-- database-creation `BaseDbParams.Settings` map to `InternalDatabase.spec.settings`; preserve each
-  value's JSON type instead of converting it to a string;
-- `BaseDbParams.Role` maps to `DatabaseSecretClaim.spec.userRole` exactly, including the difference
-  between omitted/empty and an explicit role;
-- connection-pool, migration, retry, and client options remain application configuration;
-- `PhysicalDatabaseId` has no confirmed field in the current `InternalDatabase` contract: mark it
-  `BLOCKED` unless the target operator/aggregator contract proves a mapping.
+`repository.preconditions` and `targets` must together account for every file the run will touch —
+the generated resource file, every patched workload, `values.yaml`, `values.schema.json`, and every
+superseded declaration. The runner refuses (exit `2`) to write or delete a path that is not in both
+lists.
 
-When replacing a legacy `DatabaseDeclaration`, preserve explicit `versioningConfig` and
-`initialInstantiation` only after verifying that its classifier matches the runtime request.
-Preserve array, boolean, numeric, null, and nested settings as their corresponding YAML values.
+The runner owns every name. `InternalDatabase` is `<identity>-db`; the claim, Secret, and volume use
+`<identity>-<role-or-default>-{claim,credentials,secret}`; the mount path is
+`/etc/secrets/dbaas-secrets/<secretName>` with `readOnly: true`.
 
-Mongo's default classifier adds top-level `dbClassifier: default`. Preserve it under `extraKeys`.
-Apply the same rule to any custom top-level classifier extension.
+## 5. Apply
 
-## 4. Choose collision-free names
+Write the plan JSON to a temporary file. Resolve `scripts/apply_migration.py` relative to this
+`SKILL.md`. Run `--check` first if a dry run helps, then `--apply`.
 
-Build a stable DNS label from the full identity, not only service and scope.
+The first-release workload adapter supports plain Kubernetes `Deployment` / `StatefulSet` YAML and
+Helm templates whose templating is confined to whole scalar values. It edits the manifest in place
+by inserting only the required `volumes` and `volumeMounts` nodes, so comments, numeric and boolean
+scalars, `replicas: {{ ... }}`, and key order are byte-preserved and a repeat run is idempotent. A
+standalone Helm action (`if`, `range`, `with`, `include`, `end`, an `{{ $x := ... }}` assignment,
+...) inside a workload manifest, a present-but-null `volumes` / `containers` / `volumeMounts`, or a
+non-empty inline (`[ ... ]`) list where a block list is expected, makes the runner fail closed; do
+not fall back to a hand edit. An empty inline `volumes: []` / `volumeMounts: []` is rewritten as a
+block list.
 
-1. Start with `<microservice>-<type>-<scope>`.
-1. Append a static tenant ID for tenant scope.
-1. Append a short meaningful discriminator for additional classifier identity fields. If no safe,
-   concise discriminator exists, append the first eight lowercase hex characters of a SHA-256 hash
-   of the canonical classifier JSON.
-1. Normalize to lowercase DNS-1123 syntax and keep Kubernetes names at most 63 characters. Preserve
-   the hash suffix when truncating.
+The runner refuses a plan that generates nothing (no `SUPPORTED` datasource has a claim) rather than
+writing an empty output file and touching the chart values.
 
-Use these suffixes:
+## Handling script failures
 
-```text
-InternalDatabase:    <identity>-db
-DatabaseSecretClaim: <identity>-<role-or-default>-claim
-Secret:              <identity>-<role-or-default>-credentials
-Volume:              <identity>-<role-or-default>-secret
-```
+Any non-zero exit stops the migration. Report the exit category and the exact blocking entries.
 
-Check every generated resource, Secret, volume, and mount name for collisions before writing.
+| Exit | Meaning | Recovery |
+| --- | --- | --- |
+| `2` | Invalid CLI or plan | Fix the plan and re-run |
+| `3` | A source changed after discovery | Re-inventory and rebuild the plan |
+| `4` | An unsupported transformation, or a missing dependency (`helm`, PyYAML) | Resolve the entries or install the dependency |
+| `5` | Generated-output or rendered-chart validation failed | Treat as a script bug; fix it and add a fixture |
+| `6` | The write transaction or report publication failed and rolled back | Investigate the filesystem error |
 
-## 5. Generate resources
-
-For every supported database identity, generate an `InternalDatabase`. For every requested role of
-that identity, generate a claim. Use the canonical templates in
-[contracts.md](references/contracts.md).
-
-Rules:
-
-- Set every generated CR's `spec.operatorNamespace` to the `operatorNamespace` recorded in the
-  inventory — the `API_DBAAS_ADDRESS`-derived expression for a Helm layout, or the resolved namespace
-  for plain manifests. Do not derive it from `metadata.namespace`.
-- Set `metadata.namespace` to the workload namespace.
-- Omit `classifier.namespace` and let the operator derive it, or set it to the workload namespace
-  consistently in both resources. Never copy a differing legacy namespace.
-- Copy the complete classifier and type identically into the paired claim.
-- Add non-empty `app.kubernetes.io/name` to each claim; it becomes `originService`.
-- Set `lazy` to a YAML boolean, normally `false`, unless the existing deployment contract explicitly
-  requires lazy provisioning. Never quote boolean values.
-- Omit defaulted optional fields instead of inventing values.
-- Do not add `initialInstantiation` or versioning behavior unless the existing configuration
-  requires it.
-
-Prefer the consumer repository's existing Helm/declaration layout. For plain manifests, use a
-coherent existing manifests directory. Do not create backup files; rely on version-control diffs.
-
-## 6. Mount every generated Secret
-
-Update each `Deployment` or `StatefulSet` container that consumes the corresponding role:
-
-```yaml
-volumes:
-  - name: orders-postgresql-service-default-secret
-    secret:
-      secretName: orders-postgresql-service-default-credentials
-
-containers:
-  - name: orders
-    volumeMounts:
-      - name: orders-postgresql-service-default-secret
-        mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials
-        readOnly: true
-```
-
-Name the mount directory after `DatabaseSecretClaim.spec.secretName`. This is the skill's
-generation convention for unique, validator-checkable mounts; the client matches the Secret by
-`metadata.json`, not by the directory name. Preserve existing Helm
-expressions, volumes, mounts, init containers, and sidecars. Mount only into containers that use the
-database.
-
-## 7. Validate before completion
-
-Perform all applicable checks from [testing.md](references/testing.md):
-
-1. Render Helm templates before validating YAML.
-1. Run `scripts/validate_generated.py --inventory <inventory.json> <rendered-or-plain-yaml>`.
-1. Validate syntax and run client-side and server-side dry runs when a suitable cluster is present.
-1. Compare canonical classifiers and type between each InternalDatabase and claim.
-1. Verify every generated managed CR carries `spec.operatorNamespace`. For a Helm layout, render the
-   chart and pass `--operator-namespace <deployed-namespace>` to `validate_generated.py`.
-1. Verify claim role against every client request role.
-1. Verify that all names are unique and DNS-compatible.
-1. Verify each claim Secret has at least one consuming volume/mount and every consumer uses the
-   required path and read-only mode. Multiple application containers may intentionally share it.
-1. Confirm unsupported dynamic call paths were not removed or redirected.
-
-Do not use a one-InternalDatabase-to-one-claim count check: multiple roles legitimately create
-multiple claims for one database.
+`--help` exits `0`. A missing `helm` or PyYAML is reported as a blocked JSON result with exit `4`,
+never as a bare traceback.
 
 ## Completion report
 
-Report:
+Build the report from the result JSON plus discovery evidence:
 
 - every discovered logical database identity and its evidence;
-- the operator assignment used — the `API_DBAAS_ADDRESS`-derived expression and the namespace it renders
-  to for a Helm layout, or the resolved namespace and its evidence for plain manifests;
-- supported, dynamic, blocked, and ambiguous counts;
+- the operator assignment used and how it was resolved;
+- SUPPORTED, dynamic, blocked, and ambiguous counts;
 - the deduplication decisions;
-- every generated or modified file;
-- validation commands and their actual results;
+- `createdFiles`, `modifiedFiles`, `deletedFiles` from the result;
+- the validation entries from the result: `validate_generated` for a plain root, or `helm-render`
+  plus `validate_rendered` for a helm root;
 - dependency compatibility evidence;
-- remaining runtime fallback paths and why they remain.
+- the runtime fallback paths that remain and why.
 
-Call the migration complete only when generated mounted Secrets match the client lookup key:
-`canonical classifier | lowercase type | trimmed requested role`.
+Call the migration complete only when the generated mounted Secrets match the client lookup key
+`canonical classifier | lowercase type | trimmed requested role`, the result `status` is `changed`
+or `unchanged`, and every validation entry passed. A mounted-provider hit against a real client, and
+CR reconciliation against a real operator, are separate proofs described in
+[testing.md](references/testing.md).

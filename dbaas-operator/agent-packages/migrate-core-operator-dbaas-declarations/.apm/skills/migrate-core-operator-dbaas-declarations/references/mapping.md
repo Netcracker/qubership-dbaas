@@ -17,8 +17,9 @@ Old generic YAML CR:
 - `kind: DBaaS`
 - `subKind: DatabaseDeclaration` or `subKind: DbPolicy`
 - declaration body under `spec`
-- Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions or include lines under
-  labels. Quote template scalar values or use the converter's Helm fallback, then review the output.
+- Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions. The runner quotes a fully
+  templated scalar automatically and preserves a `{{- if <pipeline> }} ... {{- end }}` guard around a single resource.
+  Any other standalone template action blocks the run and reports its source line.
 
 Target CRDs:
 

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: {{ .Values.NAMESPACE }}
+  labels:
+    app.kubernetes.io/name: orders
+spec:
+  # replicaCount is a templated integer and must stay an integer after patching.
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orders
+    spec:
+      # An init container that also reads the database.
+      initContainers:
+        - name: migrate
+          image: orders-migrate:1.2.3
+      containers:
+        - name: orders
+          image: orders:1.2.3
+          # keep this comment exactly where it is
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_MODE
+              value: rest
+      volumes:
+        - name: tmp
+          emptyDir: {}
