@@ -647,6 +647,44 @@ var _ = Describe("InternalDatabase Controller", func() {
 			Expect(sent.Spec.Settings["nested"]).To(Equal(map[string]any{"a": float64(1)}))
 			Expect(sent.Spec.Settings["pgExtensions"]).To(Equal([]any{"vector"}))
 		})
+
+		It("includes spec.physicalDatabaseId in the declarative apply body when set", func() {
+			spec := baseSpec()
+			spec.PhysicalDatabaseID = "postgresql-prod-a"
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(capturedApplyBody).NotTo(BeEmpty())
+
+			var sent struct {
+				Spec struct {
+					PhysicalDatabaseID string `json:"physicalDatabaseId"`
+				} `json:"spec"`
+			}
+			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
+			Expect(sent.Spec.PhysicalDatabaseID).To(Equal("postgresql-prod-a"))
+		})
+
+		It("omits spec.physicalDatabaseId from the declarative apply body when unset", func() {
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       baseSpec(),
+			})).To(Succeed())
+
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(capturedApplyBody).NotTo(BeEmpty())
+
+			var sent map[string]any
+			Expect(json.Unmarshal(capturedApplyBody, &sent)).To(Succeed())
+			spec, ok := sent["spec"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(spec).NotTo(HaveKey("physicalDatabaseId"))
+		})
 	})
 
 	Context("buildPayload — customKeys", func() {

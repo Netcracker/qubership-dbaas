@@ -106,6 +106,15 @@ type InternalDatabaseSpec struct {
 	// +optional
 	NamePrefix string `json:"namePrefix,omitempty"`
 
+	// physicalDatabaseId pins database placement to a registered physical database
+	// when the creation approach is "new". When omitted, dbaas-aggregator applies
+	// balancing rules. Ignored when the database is created by cloning an existing
+	// one (initialInstantiation.approach=clone, or a blue-green version created via
+	// versioningConfig.approach=clone) — those follow the source database's or the
+	// backup's adapter instead.
+	// +optional
+	PhysicalDatabaseID string `json:"physicalDatabaseId,omitempty"`
+
 	// versioningConfig defines the strategy for handling database versions during
 	// blue-green deployments. If absent — versioningType="static" (no versioning).
 	// +optional

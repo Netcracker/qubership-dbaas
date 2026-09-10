@@ -73,6 +73,11 @@ Record these under `decisions` in the plan:
 - **`outputOwnership`**: the current SHA-256 of any existing output file this migration must
   overwrite, so a collision with unrelated content still blocks.
 
+The runner preserves `physicalDatabaseId` verbatim as `spec.physicalDatabaseId`. It pins only
+new-creation databases; the aggregator ignores it for `initialInstantiation.approach: clone` and
+blue-green `versioningConfig.approach: clone`, so do not describe it as pinning a clone or backup
+restore.
+
 There is no plan field to accept a converter finding and proceed. Every condition the converter cannot
 map losslessly and unambiguously is a permanently blocking error, not something a decision can resolve:
 a dropped metadata field, a dropped or unknown declaration field, a missing

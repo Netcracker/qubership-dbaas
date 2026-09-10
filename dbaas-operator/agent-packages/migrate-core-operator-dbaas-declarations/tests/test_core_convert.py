@@ -54,6 +54,15 @@ class CoreConvertTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(resources[0].body["metadata"]["namespace"], "orders")
 
+    def test_physical_database_id_is_preserved(self) -> None:
+        item = declaration({})
+        item["physicalDatabaseId"] = "postgresql-prod-a"
+
+        resources, errors = convert.convert_documents([item], context(), source_ref="s.json")
+
+        self.assertEqual(errors, [])
+        self.assertEqual(resources[0].body["spec"]["physicalDatabaseId"], "postgresql-prod-a")
+
     def test_non_finite_setting_is_an_error_with_path(self) -> None:
         _, errors = convert.convert_documents(
             [declaration({"timeout": float("inf")})], context(), source_ref="s.json"

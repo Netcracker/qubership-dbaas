@@ -29,6 +29,9 @@ public class DatabaseDeclaration implements DeclarativeConfig {
     @JsonProperty("namePrefix")
     private String namePrefix;
 
+    @JsonProperty("physicalDatabaseId")
+    private String physicalDatabaseId;
+
     @JsonProperty("versioningConfig")
     private VersioningConfig versioningConfig;
 

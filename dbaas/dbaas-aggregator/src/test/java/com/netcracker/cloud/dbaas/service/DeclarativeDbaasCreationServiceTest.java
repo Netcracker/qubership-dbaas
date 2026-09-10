@@ -152,6 +152,17 @@ class DeclarativeDbaasCreationServiceTest {
     }
 
     @Test
+    void testSaveConfigurationWithNewNamespace_physicalDatabaseIdPreserved() {
+        DatabaseDeclarativeConfig databaseDeclarativeConfig = createDatabaseDeclarativeConfig(TEST_MICROSERVICE_NAME, ORIGIN_NAMESPACE);
+        databaseDeclarativeConfig.setPhysicalDatabaseId("postgresql-prod-a");
+        declarativeDbaasCreationService.saveConfigurationWithNewNamespace(databaseDeclarativeConfig, PEER_NAMESPACE);
+        verify(declarativeConfigRepository, times(1))
+                .persist(Mockito.<DatabaseDeclarativeConfig>argThat(o -> o.getNamespace().equals(PEER_NAMESPACE)
+                        && "postgresql-prod-a".equals(o.getPhysicalDatabaseId())
+                ));
+    }
+
+    @Test
     void saveNewDatabaseConfigUnsupportedOperation() {
         DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
         DatabaseDeclaration.InitialInstantiation initialInstantiation = new DatabaseDeclaration.InitialInstantiation();
@@ -174,6 +185,51 @@ class DeclarativeDbaasCreationServiceTest {
 
                 )
         );
+    }
+
+    @Test
+    void testSaveNewDatabaseConfig_physicalDatabaseIdPersisted() {
+        DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
+        databaseDeclaration.setPhysicalDatabaseId("postgresql-prod-a");
+        declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration);
+        verify(declarativeConfigRepository, times(1)).persist(Mockito.<DatabaseDeclarativeConfig>argThat(
+                declarative -> "postgresql-prod-a".equals(declarative.getPhysicalDatabaseId())
+        ));
+    }
+
+    @Test
+    void testSaveNewDatabaseConfig_physicalDatabaseIdUpdatedOnReapply() {
+        DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
+        databaseDeclaration.setPhysicalDatabaseId("postgresql-prod-b");
+        databaseDeclaration.getClassifierConfig().getClassifier().put("namespace", ORIGIN_NAMESPACE);
+
+        DatabaseDeclarativeConfig existingConfig = createDatabaseDeclarativeConfig(TEST_MICROSERVICE_NAME, ORIGIN_NAMESPACE);
+        existingConfig.setPhysicalDatabaseId("postgresql-prod-a");
+        when(declarativeConfigRepository.findFirstByClassifierAndType(databaseDeclaration.getClassifierConfig().getClassifier(), databaseDeclaration.getType()))
+                .thenReturn(Optional.of(existingConfig));
+
+        declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration);
+
+        verify(declarativeConfigRepository, times(1)).persist(Mockito.<DatabaseDeclarativeConfig>argThat(
+                declarative -> "postgresql-prod-b".equals(declarative.getPhysicalDatabaseId())
+        ));
+    }
+
+    @Test
+    void testSaveNewDatabaseConfig_physicalDatabaseIdClearedOnReapplyWithoutValue() {
+        DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
+        databaseDeclaration.getClassifierConfig().getClassifier().put("namespace", ORIGIN_NAMESPACE);
+
+        DatabaseDeclarativeConfig existingConfig = createDatabaseDeclarativeConfig(TEST_MICROSERVICE_NAME, ORIGIN_NAMESPACE);
+        existingConfig.setPhysicalDatabaseId("postgresql-prod-a");
+        when(declarativeConfigRepository.findFirstByClassifierAndType(databaseDeclaration.getClassifierConfig().getClassifier(), databaseDeclaration.getType()))
+                .thenReturn(Optional.of(existingConfig));
+
+        declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration);
+
+        verify(declarativeConfigRepository, times(1)).persist(Mockito.<DatabaseDeclarativeConfig>argThat(
+                declarative -> declarative.getPhysicalDatabaseId() == null
+        ));
     }
 
     @Test
@@ -207,6 +263,14 @@ class DeclarativeDbaasCreationServiceTest {
     @Test
     void saveNewDatabaseConfigValidateClassifierIncorrectTargetClassifierScope() {
         DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
+        databaseDeclaration.getClassifierConfig().getClassifier().put("scope", "wrong scope");
+        Assertions.assertThrows(DeclarativeConfigurationValidationException.class,
+                () -> declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration));
+    }
+
+    @Test
+    void saveNewDatabaseConfigValidateClassifierAbsentTargetClassifierScope() {
+        DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
         databaseDeclaration.getClassifierConfig().getClassifier().remove("scope");
         Assertions.assertThrows(DeclarativeConfigurationValidationException.class,
                 () -> declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration));
@@ -227,6 +291,20 @@ class DeclarativeDbaasCreationServiceTest {
         initialInstantiation.setApproach("clone");
         SortedMap<String, Object> sourceClassifier = new TreeMap<>();
         sourceClassifier.put("microserviceName", TEST_MICROSERVICE_NAME);
+        initialInstantiation.setSourceClassifier(sourceClassifier);
+        databaseDeclaration.setInitialInstantiation(initialInstantiation);
+        Assertions.assertThrows(DeclarativeConfigurationValidationException.class,
+                () -> declarativeDbaasCreationService.saveNewDatabaseConfig(ORIGIN_NAMESPACE, TEST_MICROSERVICE_NAME, databaseDeclaration));
+    }
+
+    @Test
+    void saveNewDatabaseConfigValidateClassifierIncorrectSourceClassifierScope() {
+        DatabaseDeclaration databaseDeclaration = createDeclarativeDatabaseCreationConfiguration(TEST_MICROSERVICE_NAME);
+        DatabaseDeclaration.InitialInstantiation initialInstantiation = new DatabaseDeclaration.InitialInstantiation();
+        initialInstantiation.setApproach("clone");
+        SortedMap<String, Object> sourceClassifier = new TreeMap<>();
+        sourceClassifier.put("microserviceName", TEST_MICROSERVICE_NAME);
+        sourceClassifier.put("scope", "wrong scope");
         initialInstantiation.setSourceClassifier(sourceClassifier);
         databaseDeclaration.setInitialInstantiation(initialInstantiation);
         Assertions.assertThrows(DeclarativeConfigurationValidationException.class,

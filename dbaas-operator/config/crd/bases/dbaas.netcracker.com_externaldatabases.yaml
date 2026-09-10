@@ -117,9 +117,10 @@ spec:
                       InvalidConfiguration at the controller level.
                     type: string
                   scope:
-                    description: scope defines the logical scope of the database,
-                      e.g. "service" or "tenant".
-                    minLength: 1
+                    description: 'scope is the classifier scope: "service" or "tenant".'
+                    enum:
+                    - service
+                    - tenant
                     type: string
                   tenantId:
                     description: |-
