@@ -196,6 +196,42 @@ spec:
 
 Before JSON with two `declarations[]` entries must become two `InternalDatabase` resources:
 
+```json
+{
+  "apiVersion": "nc.core.dbaas/v3",
+  "kind": "DatabaseDeclaration",
+  "declarations": [
+    {
+      "classifierConfig": {
+        "classifier": {
+          "scope": "service",
+          "microserviceName": "{{$SERVICE_NAME}}"
+        }
+      },
+      "type": "postgresql",
+      "physicalDatabaseId": "postgresql-prod-a"
+    },
+    {
+      "classifierConfig": {
+        "classifier": {
+          "scope": "service",
+          "microserviceName": "{{$SERVICE_NAME}}",
+          "customKeys": {
+            "logicalDBName": "configs"
+          }
+        }
+      },
+      "type": "postgresql",
+      "versioningConfig": {
+        "approach": "new"
+      }
+    }
+  ]
+}
+```
+
+After:
+
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
 kind: InternalDatabase
@@ -208,6 +244,7 @@ spec:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
   type: postgresql
+  physicalDatabaseId: postgresql-prod-a
 ---
 apiVersion: dbaas.netcracker.com/v1
 kind: InternalDatabase

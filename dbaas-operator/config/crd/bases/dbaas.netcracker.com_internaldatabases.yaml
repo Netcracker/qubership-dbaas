@@ -117,9 +117,10 @@ spec:
                       InvalidConfiguration at the controller level.
                     type: string
                   scope:
-                    description: scope defines the logical scope of the database,
-                      e.g. "service" or "tenant".
-                    minLength: 1
+                    description: 'scope is the classifier scope: "service" or "tenant".'
+                    enum:
+                    - service
+                    - tenant
                     type: string
                   tenantId:
                     description: |-
@@ -194,9 +195,11 @@ spec:
                           InvalidConfiguration at the controller level.
                         type: string
                       scope:
-                        description: scope defines the logical scope of the database,
-                          e.g. "service" or "tenant".
-                        minLength: 1
+                        description: 'scope is the classifier scope: "service" or
+                          "tenant".'
+                        enum:
+                        - service
+                        - tenant
                         type: string
                       tenantId:
                         description: |-
@@ -233,6 +236,15 @@ spec:
                 x-kubernetes-validations:
                 - message: spec.operatorNamespace is immutable after creation
                   rule: self == oldSelf
+              physicalDatabaseId:
+                description: |-
+                  physicalDatabaseId pins database placement to a registered physical database
+                  when the creation approach is "new". When omitted, dbaas-aggregator applies
+                  balancing rules. Ignored when the database is created by cloning an existing
+                  one (initialInstantiation.approach=clone, or a blue-green version created via
+                  versioningConfig.approach=clone) — those follow the source database's or the
+                  backup's adapter instead.
+                type: string
               settings:
                 additionalProperties:
                   x-kubernetes-preserve-unknown-fields: true

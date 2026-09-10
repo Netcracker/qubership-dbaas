@@ -50,9 +50,9 @@ type Classifier struct {
 	// +kubebuilder:validation:MinLength=1
 	MicroserviceName string `json:"microserviceName"`
 
-	// scope defines the logical scope of the database, e.g. "service" or "tenant".
+	// scope is the classifier scope: "service" or "tenant".
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Enum=service;tenant
 	Scope string `json:"scope"`
 
 	// namespace is the Kubernetes namespace of the owning service.

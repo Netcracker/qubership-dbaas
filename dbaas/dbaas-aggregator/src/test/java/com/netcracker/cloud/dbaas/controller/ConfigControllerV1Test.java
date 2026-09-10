@@ -8,6 +8,7 @@ import com.netcracker.cloud.dbaas.dto.conigs.DeclarativeConfig;
 import com.netcracker.cloud.dbaas.dto.conigs.RolesRegistration;
 import com.netcracker.cloud.dbaas.dto.declarative.DatabaseDeclaration;
 import com.netcracker.cloud.dbaas.dto.declarative.DeclarativePayload;
+import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.DatabaseRolesService;
 import com.netcracker.cloud.dbaas.service.DeclarativeDbaasCreationService;
@@ -23,16 +24,19 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.ws.rs.core.MediaType;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeMap;
 
 import static com.netcracker.cloud.dbaas.Constants.DATABASE_DECLARATION_CONFIG_TYPE;
 import static com.netcracker.cloud.dbaas.Constants.DB_POLICY_CONFIG_TYPE;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
 @QuarkusTest
@@ -107,6 +111,50 @@ class ConfigControllerV1Test {
                 .when().post("/apply")
                 .then()
                 .statusCode(ACCEPTED.getStatusCode());
+    }
+
+    @Test
+    void testApplyConfigs_physicalDatabaseIdReachesService() throws JsonProcessingException {
+        String namespace = "namespace";
+        String microservice = "microservice";
+
+        DatabaseDeclaration spec = new DatabaseDeclaration();
+        spec.setPhysicalDatabaseId("postgresql-prod-a");
+
+        DeclarativePayload payload = new DeclarativePayload();
+        DeclarativePayload.Metadata metadata = new DeclarativePayload.Metadata();
+        metadata.setNamespace(namespace);
+        metadata.setMicroserviceName(microservice);
+        payload.setKind("DBaaS");
+        payload.setSubKind(DATABASE_DECLARATION_CONFIG_TYPE);
+        payload.setMetadata(metadata);
+        payload.setSpec(spec);
+
+        ArrayList<AbstractDatabaseProcessObject> processObjects = new ArrayList<>();
+        AbstractDatabaseProcessObject processObject = new NewDatabaseProcessObject(null, "");
+        processObjects.add(processObject);
+        doReturn(processObjects).when(dbaasCreationService).saveDeclarativeDatabase(eq(namespace), eq(microservice), any());
+
+        String processId = "process_id";
+        TaskInstanceImpl taskInstance = new TaskInstanceImpl("task_id", "name", "type", processId);
+        taskInstance.setState(TaskState.IN_PROGRESS);
+
+        ProcessInstanceImpl processInstance = mock(ProcessInstanceImpl.class);
+        doReturn(processId).when(processInstance).getId();
+        doReturn(TaskState.IN_PROGRESS).when(processInstance).getState();
+        doReturn(List.of(taskInstance)).when(processInstance).getTasks();
+        doReturn(processInstance).when(dbaasCreationService).startProcessInstance(eq(namespace), eq(processObjects));
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(payload))
+                .when().post("/apply")
+                .then()
+                .statusCode(ACCEPTED.getStatusCode());
+
+        ArgumentCaptor<List<DatabaseDeclaration>> declarationsCaptor = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(dbaasCreationService).saveDeclarativeDatabase(eq(namespace), eq(microservice), declarationsCaptor.capture());
+        assertEquals("postgresql-prod-a", declarationsCaptor.getValue().get(0).getPhysicalDatabaseId());
     }
 
     @Test
@@ -189,6 +237,42 @@ class ConfigControllerV1Test {
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
                 .body("message", containsString("Unrecognized field \"declarations\""));
+    }
+
+    @Test
+    void applyConfigs_400_InvalidClassifierScope() throws JsonProcessingException {
+        String namespace = "namespace";
+        String microservice = "microservice";
+
+        TreeMap<String, Object> classifier = new TreeMap<>();
+        classifier.put("namespace", namespace);
+        classifier.put("microserviceName", microservice);
+        classifier.put("scope", "123321");
+
+        DatabaseDeclaration databaseDeclaration = new DatabaseDeclaration();
+        databaseDeclaration.setClassifierConfig(new DatabaseDeclaration.ClassifierConfig(classifier));
+        databaseDeclaration.setType("postgresql");
+
+        DeclarativePayload payload = new DeclarativePayload();
+        DeclarativePayload.Metadata metadata = new DeclarativePayload.Metadata();
+        metadata.setNamespace(namespace);
+        metadata.setMicroserviceName(microservice);
+        payload.setKind("DBaaS");
+        payload.setSubKind(DATABASE_DECLARATION_CONFIG_TYPE);
+        payload.setMetadata(metadata);
+        payload.setSpec(databaseDeclaration);
+
+        doThrow(new DeclarativeConfigurationValidationException(
+                "Classifier scope '123321' is not valid. Allowed values: 'service', 'tenant'"))
+                .when(dbaasCreationService).saveDeclarativeDatabase(eq(namespace), eq(microservice), any());
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(payload))
+                .when().post("/apply")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", containsString("123321"));
     }
 
     @Test
