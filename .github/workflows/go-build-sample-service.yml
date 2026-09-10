@@ -26,7 +26,7 @@ jobs:
     # into kind, so this workflow no longer builds or publishes a Docker image. (Omitting
     # docker-config-file is not enough: it defaults to docker-dev-config.json and would build the
     # aggregator image; skip-docker disables the docker-build job entirely.)
-    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@e8322e6ee168795edec1d103e289b3fe3ceb805d # v2.6.0
+    uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@8a233b03c5b5355d59c1585ffdaa1f45ea816405 # v2.6.1
     with:
       skip-docker: true
       go-module-dir: 'test-apps/go-test-app-service'
