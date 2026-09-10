@@ -18,6 +18,7 @@ import com.netcracker.cloud.dbaas.exceptions.NamespaceRestorationFailedException
 import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.NotFoundException;
 import org.junit.jupiter.api.Assertions;
@@ -370,14 +371,55 @@ public class DBBackupsServiceTest {
         assertEquals(0, bulkUserEnsureResult.successful.size());
     }
 
-    private EnsuredUser createEnsureUser(Map<String, Object> connectionProperties) {
-        EnsuredUser ensuredUser = new EnsuredUser();
-        ensuredUser.setConnectionProperties(connectionProperties);
-        return ensuredUser;
+    @Test
+    void testUserEnsure_shouldNotDropNonUserKindResourcesWhenAdapterReturnsUserOnlyResources() {
+        Database database = new DatabaseBuilder()
+                .namespace(TEST_NAMESPACE)
+                .adapterId(TEST_ADAPTER_ID)
+                .registry(b -> b.namespace(TEST_NAMESPACE))
+                .build();
+        DatabaseRegistry registry = database.getDatabaseRegistry().getFirst();
+        DbResource originalDatabaseResource = getResource(registry, "database");
+        DbResource originalUserResource = getResource(registry, "user");
+        DbResource certificateResource = new DbResource("certificate", "test-cert");
+        registry.getDatabase().getResources().add(certificateResource);
+
+        when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
+        when(dbaasAdapter.isUsersSupported()).thenReturn(true);
+        when(dbaasAdapter.getSupportedVersion()).thenReturn("v2");
+        EnsuredUser userOnly = new EnsuredUser("test-user", new HashMap<>(),
+                List.of(new DbResource("user", "test-user")), true);
+        when(dbaasAdapter.ensureUser(any(), any(), anyString(), anyString())).thenReturn(userOnly);
+
+        dbBackupsService.userEnsure(getNamespaceBackupSample(), List.of(registry), false);
+
+        List<DbResource> resources = registry.getDatabase().getResources();
+        assertSame(
+                originalDatabaseResource,
+                resources.stream().filter(r -> "database".equals(r.getKind())).findFirst().orElse(null),
+                "userEnsure must not replace the kind=database DbResource object — a new instance orphans the old db_resources row"
+        );
+        assertSame(
+                originalUserResource,
+                resources.stream().filter(r -> "user".equals(r.getKind())).findFirst().orElse(null),
+                "userEnsure must not replace existing kind=user DbResource objects — new instances orphan the old db_resources rows"
+        );
+        assertSame(
+                certificateResource,
+                resources.stream().filter(r -> "certificate".equals(r.getKind())).findFirst().orElse(null),
+                "userEnsure must not drop resource of kind=certificate — every non-user resource must be preserved"
+        );
+    }
+
+    private DbResource getResource(DatabaseRegistry registry, String kind) {
+        return registry.getDatabase().getResources().stream()
+                .filter(r -> kind.equals(r.getKind()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No resource with kind=" + kind + " in test fixture"));
     }
 
     @Test
-    void testRestoreWithExpectedNamespaceRestorationFailedException() throws NamespaceRestorationFailedException {
+    void testRestoreWithExpectedNamespaceRestorationFailedException() {
         final NamespaceBackup namespaceBackup = getNamespaceBackupSample();
         final UUID restorationId = UUID.randomUUID();
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
