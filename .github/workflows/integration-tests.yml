@@ -220,14 +220,14 @@ jobs:
           if image_tag_exists qubership-dbaas "$IMAGE_TAG"; then
             TAG="$IMAGE_TAG"
           else
-            echo "Aggregator image tag $IMAGE_TAG not found; falling back to latest"
+            echo "::warning::Aggregator image tag $IMAGE_TAG not found; falling back to latest"
             TAG=latest
           fi
 
           if image_tag_exists qubership-dbaas-operator "$IMAGE_TAG"; then
             DBAAS_OPERATOR_TAG="$IMAGE_TAG"
           else
-            echo "Operator image tag $IMAGE_TAG not found; falling back to latest"
+            echo "::warning::Operator image tag $IMAGE_TAG not found; falling back to latest"
             DBAAS_OPERATOR_TAG=latest
           fi
 
