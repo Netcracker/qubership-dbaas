@@ -34,7 +34,7 @@ jobs:
       pull-requests: write
     # Build/test only, matching go-build-sample-service.yml: the image is built in-job by the
     # integration-tests workflow and loaded into kind, so nothing is published from here.
-    uses: netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@e8322e6ee168795edec1d103e289b3fe3ceb805d # v2.6.0
+    uses: netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@8a233b03c5b5355d59c1585ffdaa1f45ea816405 # v2.6.1
     with:
       skip-docker: true
       go-module-dir: 'test-apps/dbaas-proxy'
