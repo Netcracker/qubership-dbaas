@@ -30,6 +30,9 @@ RESERVED_CLASSIFIER_KEYS = {
     "customKeys",
 }
 DATABASE_DECLARATION_FIELDS = {
+    "apiVersion",
+    "kind",
+    "metadata",
     "classifierConfig",
     "type",
     "lazy",

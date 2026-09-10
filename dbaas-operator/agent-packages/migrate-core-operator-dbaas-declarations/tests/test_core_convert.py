@@ -38,6 +38,22 @@ class CoreConvertTest(unittest.TestCase):
         self.assertEqual(spec["settings"], settings)
         self.assertEqual(spec["operatorNamespace"], "dbaas-system")
 
+    def test_database_declaration_envelope_fields_are_consumed(self) -> None:
+        item = {
+            "apiVersion": "core.netcracker.com/v1",
+            "kind": "DatabaseDeclaration",
+            "metadata": {"name": "orders", "namespace": "orders"},
+            "classifierConfig": {
+                "classifier": {"scope": "service", "microserviceName": "dca"}
+            },
+            "type": "postgresql",
+        }
+
+        resources, errors = convert.convert_documents([item], context(), source_ref="s.yaml")
+
+        self.assertEqual(errors, [])
+        self.assertEqual(resources[0].body["metadata"]["namespace"], "orders")
+
     def test_non_finite_setting_is_an_error_with_path(self) -> None:
         _, errors = convert.convert_documents(
             [declaration({"timeout": float("inf")})], context(), source_ref="s.json"
