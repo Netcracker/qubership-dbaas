@@ -25,9 +25,8 @@ Plan (`migrationKind: "core-declarations"`) shape::
         "serviceName": "{{ .Values.SERVICE_NAME }}",
         "serviceNameExplicit": false,
         "namespace": "{{ .Values.NAMESPACE }}",
-        "outputFileByRoot": {"chart": "templates/dbaas-operator-resources.yaml"},
+        "outputFile": "templates/dbaas-operator-resources.yaml",
         "resourceNames": {"chart/templates/dbaas-configuration.json#0#1": "configs-db"},
-        "warningResolutions": ["<exact converter warning the agent has resolved>"],
         "outputOwnership": {"chart/templates/dbaas-operator-resources.yaml": {"sha256": "<hash>"}}
       },
       "targets": [
@@ -38,7 +37,6 @@ Plan (`migrationKind: "core-declarations"`) shape::
 
 from __future__ import annotations
 
-import collections
 import json
 import re
 from pathlib import Path
@@ -62,9 +60,8 @@ _DECISION_KEYS = {
     "serviceName",
     "serviceNameExplicit",
     "namespace",
-    "outputFileByRoot",
+    "outputFile",
     "resourceNames",
-    "warningResolutions",
     "outputOwnership",
 }
 
@@ -78,12 +75,9 @@ class CoreEngine:
     # ----------------------------------------------------------------- #
 
     def affected_roots(self, repo_root: Path, plan: common.Plan) -> list[str]:
-        roots: list[str] = []
-        for source in _sources(plan):
-            root = source["root"]
-            if root not in roots:
-                roots.append(root)
-        return roots
+        # build_changes rejects a plan whose sources do not all normalize to one
+        # root, so any source's root names the plan's single affected root.
+        return [_sources(plan)[0]["root"]]
 
     # ----------------------------------------------------------------- #
 
@@ -111,56 +105,29 @@ class CoreEngine:
             ),
             namespace=namespace or convert.DEFAULT_NAMESPACE_TEMPLATE,
         )
-        # Not unique: two occurrences of the same warning need two approvals.
-        warning_resolutions = common.expect_str_list(
-            common.expect_optional(
-                decisions.get("warningResolutions"), list, "plan.decisions.warningResolutions", []
-            ),
-            "plan.decisions.warningResolutions",
-        )
-        resolutions_left = collections.Counter(warning_resolutions)
         name_overrides = common.expect_str_map(
             common.expect_optional(
                 decisions.get("resourceNames"), dict, "plan.decisions.resourceNames", {}
             ),
             "plan.decisions.resourceNames",
         )
-        raw_output_by_root = common.expect_str_map(
-            common.expect_optional(
-                decisions.get("outputFileByRoot"), dict, "plan.decisions.outputFileByRoot", {}
-            ),
-            "plan.decisions.outputFileByRoot",
-        )
-        output_by_root: dict[str, str] = {}
-        for key, value in raw_output_by_root.items():
-            canon = _normalize_root(key)
-            if canon in output_by_root:
-                raise common.bad_input(
-                    f"plan.decisions.outputFileByRoot has two entries for root {canon!r}"
-                )
-            output_by_root[canon] = value
+        output_file = decisions.get("outputFile")
+        if output_file is not None:
+            common.expect(output_file, str, "plan.decisions.outputFile")
         ownership = common.expect_optional(
             decisions.get("outputOwnership"), dict, "plan.decisions.outputOwnership", {}
         )
         used_override_keys: set[str] = set()
 
-        source_paths = {source["path"] for source in _sources(plan)}
-        colliding = _output_paths(plan) & source_paths
-        if colliding:
-            raise common.unsupported(
-                "a generated output path is also a migration source",
-                [
-                    f"{path}: output path collides with a source file; set a distinct "
-                    "decisions.outputFileByRoot entry for that root"
-                    for path in sorted(colliding)
-                ],
-            )
+        sources = _sources(plan)
 
-        # One normalized root must have a single rootKind, and a plan must not mix
-        # Helm and plain roots -- their namespace/service semantics differ, so
-        # they are run separately.
+        # Every source must normalize to the same root and carry the same
+        # rootKind: Helm and plain roots have different namespace/service
+        # semantics, and _migration_common.py materializes only one root for
+        # validation, so a plan spanning more than one is rejected outright --
+        # one migration per root.
         kind_by_norm: dict[str, str] = {}
-        for source in _sources(plan):
+        for source in sources:
             norm = _normalize_root(source["root"])
             kind = source.get("rootKind", "plain")
             if norm in kind_by_norm and kind_by_norm[norm] != kind:
@@ -173,27 +140,33 @@ class CoreEngine:
             raise common.bad_input(
                 "plan.inputs.sources mixes helm and plain roots; run them in separate migrations"
             )
+        if len(kind_by_norm) > 1:
+            raise common.bad_input(
+                f"plan.inputs.sources spans multiple roots {sorted(kind_by_norm)!r}; "
+                "the runner migrates one root per invocation -- run each root as a separate migration"
+            )
+        root, root_kind = next(iter(kind_by_norm.items()))
+        output_rel = _output_path(root, root_kind, output_file)
+
+        source_paths = {source["path"] for source in sources}
+        if output_rel in source_paths:
+            raise common.unsupported(
+                "a generated output path is also a migration source",
+                [
+                    f"{output_rel}: output path collides with a source file; set a distinct "
+                    "decisions.outputFile"
+                ],
+            )
 
         changes = common.Changes()
         blocking: list[str] = []
-        per_root: dict[str, list[tuple[dict[str, Any], str | None]]] = {}
-        root_kind_by_root: dict[str, str] = {}
+        entries: list[tuple[dict[str, Any], str | None]] = []
         source_rewrites: dict[str, str | None] = {}
-        # Keyed by output root: two charts in one repository each write their own
-        # output file and install into their own namespace, so a name that repeats
-        # across roots is not a collision. A repeat within one root is.
-        identities_by_root: dict[str, set[tuple[str, str, str]]] = {}
+        identities: set[tuple[str, str, str]] = set()
 
-        for source in _sources(plan):
+        for source in sources:
             common._reject_unknown(source, _SOURCE_KEYS, "plan.inputs.sources[]")
             rel = source["path"]
-            # Canonicalize: "chart" and "chart/" are one root and must index one
-            # per_root bucket, or the second output write silently overwrites the
-            # first while both sources are still deleted. "." (or "/") normalizes
-            # to "" -- the repository root, a legitimate root for a plain layout.
-            root = _normalize_root(source["root"])
-            root_kind = source.get("rootKind", "plain")
-            root_kind_by_root[root] = root_kind
             path = common.resolve_within(repo_root, rel, what="source path")
             if not path.is_file():
                 if _declared_absent(plan, rel):
@@ -226,20 +199,8 @@ class CoreEngine:
                         f"{unselected_supported} unmigrated; migrate the whole file or split it first"
                     )
             selected_docs = _select(documents, selected)
-            resources, warnings, errors = convert.convert_documents(
-                selected_docs, ctx, source_ref=rel
-            )
-            blocking.extend(errors)
-            for warning in warnings:
-                # An approval is source-scoped (`<path>: <warning>`) and consumed
-                # once, so approving one occurrence does not blanket every
-                # identical warning across sources or within one source.
-                scoped = f"{rel}: {warning}"
-                if resolutions_left[scoped] > 0:
-                    resolutions_left[scoped] -= 1
-                    changes.warn(f"{rel}: accepted converter warning: {warning}")
-                else:
-                    blocking.append(f"{rel}: unresolved converter warning: {warning}")
+            resources, errors = convert.convert_documents(selected_docs, ctx, source_ref=rel)
+            blocking.extend(f"{rel}: {error}" for error in errors)
 
             # A legacy document is stripped from the source once it counts as
             # migrated. Refuse to rewrite or delete the source unless every
@@ -268,15 +229,14 @@ class CoreEngine:
                     str(resource.body["metadata"].get("namespace", "")),
                     name,
                 )
-                root_identities = identities_by_root.setdefault(root, set())
-                if identity in root_identities:
+                if identity in identities:
                     blocking.append(
                         f"duplicate generated resource kind={identity[0]} "
-                        f"namespace={identity[1]} name={identity[2]} in output root {root!r}"
+                        f"namespace={identity[1]} name={identity[2]}"
                     )
-                root_identities.add(identity)
+                identities.add(identity)
                 guard = guards.get(resource.source_ref)
-                per_root.setdefault(root, []).append((resource.body, guard))
+                entries.append((resource.body, guard))
 
             source_rewrites[rel] = remaining_text
 
@@ -285,22 +245,13 @@ class CoreEngine:
                 f"decisions.resourceNames key {key!r} matched no generated resource; a "
                 "multi-declaration wrapper is addressed as '<source>#<document>#<item>'"
             )
-        for entry, remaining in sorted(resolutions_left.items()):
-            if remaining > 0:
-                blocking.append(
-                    f"decisions.warningResolutions entry {entry!r} matched no converter warning "
-                    "(use the source-scoped form '<source>: <warning>')"
-                )
 
         if blocking:
             raise common.unsupported(
                 "the plan contains conditions the runner cannot apply", blocking
             )
 
-        for root, entries in per_root.items():
-            output_rel = _output_path(
-                root, root_kind_by_root.get(root, "plain"), output_by_root.get(root)
-            )
+        if entries:
             entries.sort(key=lambda item: _sort_key(item[0]))
             content = _render_file(entries)
             common.guard_output_collision(repo_root, output_rel, ownership, content)
@@ -325,18 +276,25 @@ class CoreEngine:
     ) -> list[common.ValidationResult]:
         results = [common.ValidationResult("plan", "passed")]
         problems: list[str] = []
-        output_paths = _output_paths(plan)
+        # build_changes already confirmed every source shares one root and one
+        # rootKind, so the first source's names the plan's single output path.
+        first_source = _sources(plan)[0]
+        output_rel = _output_path(
+            _normalize_root(first_source["root"]),
+            first_source.get("rootKind", "plain"),
+            plan.decisions.get("outputFile"),
+        )
+        is_plain_output = first_source.get("rootKind", "plain") == "plain"
 
-        plain_outputs = _plain_output_paths(plan)
         for path, content in changes.files.items():
             file_path = tree_root / path
             if content is None:
                 if file_path.exists():
                     problems.append(f"{path}: expected the migrated source file to be removed")
                 continue
-            if path in output_paths:
+            if path == output_rel:
                 problems.extend(_check_generated(path, file_path))
-                if path in plain_outputs and "{{" in (content or ""):
+                if is_plain_output and "{{" in (content or ""):
                     problems.append(
                         f"{path}: a plain-manifest output must not contain Helm expressions"
                     )
@@ -404,6 +362,14 @@ def _load_source(path: Path, rel: str) -> tuple[list[Any], dict[str, str | None]
             data = json.loads(text, parse_constant=_reject_json_constant)
         except ValueError as exc:
             raise common.bad_input(f"{rel}: invalid JSON: {exc}") from None
+        if isinstance(data, list) and not data:
+            # `all(migrated)` on an empty list is vacuously true, which would
+            # otherwise schedule a source with zero documents for deletion even
+            # though nothing was migrated from it.
+            raise common.unsupported(
+                "a source file has no documents to migrate",
+                [f"{rel}: the top-level JSON array is empty; remove it from plan.inputs.sources"],
+            )
         documents = data if isinstance(data, list) else [data]
         migrated = [_legacy_verdict(doc) == "all" for doc in documents]
         _reject_mixed_sequences(rel, documents)
@@ -418,12 +384,32 @@ def _load_source(path: Path, rel: str) -> tuple[list[Any], dict[str, str | None]
 
     if suffix in {".yaml", ".yml"}:
         parsed = parse_source(text, filename=rel)
+        if not parsed:
+            # Same vacuous-truth hazard as the empty JSON array: no parsed
+            # documents must never read as "everything was migrated".
+            raise common.unsupported(
+                "a source file has no documents to migrate",
+                [f"{rel}: no YAML document was found in this file; remove it from plan.inputs.sources"],
+            )
         documents = [entry.body for entry in parsed]
         for index, entry in enumerate(parsed):
             guards[f"{rel}#{index}"] = entry.guard
         _reject_mixed_sequences(rel, documents)
         migrated = [_legacy_verdict(entry.body) == "all" for entry in parsed]
-        return documents, guards, _remaining_yaml(rel, text, parsed, migrated)
+        if any(migrated) and not all(migrated):
+            # Some but not all of this file's `---`-delimited documents are legacy
+            # declarations. The runner does not splice a file back together around
+            # the documents it removes -- it either deletes the whole file (every
+            # document migrated) or leaves it untouched (none did).
+            raise common.unsupported(
+                "a source file mixes migrated and unmigrated YAML documents",
+                [
+                    f"{rel}: this file has both a legacy declaration and unrelated content in "
+                    "separate `---` documents; move the declaration to its own file before migrating"
+                ],
+            )
+        remaining_text = None if all(migrated) else text
+        return documents, guards, remaining_text
 
     raise common.bad_input(f"{rel}: unsupported source extension {suffix!r}")
 
@@ -471,46 +457,6 @@ def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"numeric constant {value!r} is not valid JSON")
 
 
-def _probe_rewritten_yaml(rel: str, text: str) -> str:
-    """Never commit a corrupt rewrite: reparse the kept content (guards removed)."""
-
-    probe = "\n".join(line for line in text.splitlines() if not _GUARD_LINE.match(line))
-    try:
-        list(convert.yaml.safe_load_all(probe))  # type: ignore[union-attr]
-    except Exception as exc:  # noqa: BLE001
-        raise common.unsupported(
-            "the rewritten source would not be valid YAML",
-            [f"{rel}: {exc}"],
-        ) from None
-    return text
-
-
-def _remaining_yaml(
-    rel: str, text: str, parsed: list[Any], migrated: list[bool]
-) -> str | None:
-    """The source text with only the migrated documents removed, or ``None`` when
-    nothing is left.
-
-    ``parse_source`` carries the exact original text of each document, so an
-    unmigrated document is written back verbatim -- separator, guard lines,
-    comments and quoting intact -- with no re-serialization.
-    """
-
-    if not parsed or all(migrated):
-        return None
-    if not any(migrated):
-        return text  # nothing to remove; leave the file untouched
-
-    kept = "".join(doc.text for doc, done in zip(parsed, migrated) if not done)
-    if migrated[0] and parsed[0].leading:
-        # The first document is removed but a later one is kept: its text carried
-        # the file's leading comment preamble, so put that back.
-        kept = parsed[0].leading + kept
-    if not kept.endswith("\n"):
-        kept += "\n"
-    return _probe_rewritten_yaml(rel, kept)
-
-
 def _override_keys(resource: convert.ConvertedResource) -> list[str]:
     """resourceNames keys that may name this resource.
 
@@ -546,8 +492,7 @@ def _derive_name(
 
 
 def _normalize_root(root: str) -> str:
-    normalized = common.normalize_roots([root])
-    return normalized[0] if normalized else ""
+    return common.normalize_root(root)
 
 
 def _output_path(root: str, root_kind: str, override: Any) -> str:
@@ -581,39 +526,6 @@ def _render_file(entries: list[tuple[dict[str, Any], str | None]]) -> str:
         else:
             chunks.append(doc)
     return "".join(chunks)
-
-
-def _output_by_root(plan: common.Plan) -> dict[str, str]:
-    result: dict[str, str] = {}
-    raw = plan.decisions.get("outputFileByRoot")
-    if isinstance(raw, dict):
-        for key, value in raw.items():
-            if isinstance(key, str) and isinstance(value, str):
-                result[_normalize_root(key)] = value
-    return result
-
-
-def _output_paths(plan: common.Plan, *, plain_only: bool = False) -> set[str]:
-    """Every repository-relative output path the plan will generate."""
-
-    output_by_root = _output_by_root(plan)
-    paths: set[str] = set()
-    for source in plan.inputs.get("sources") or []:
-        if not isinstance(source, dict):
-            continue
-        raw_root = source.get("root")
-        if not isinstance(raw_root, str) or not raw_root:
-            continue
-        root = _normalize_root(raw_root)
-        kind = source.get("rootKind", "plain")
-        if plain_only and kind != "plain":
-            continue
-        paths.add(_output_path(root, kind, output_by_root.get(root)))
-    return paths
-
-
-def _plain_output_paths(plan: common.Plan) -> set[str]:
-    return _output_paths(plan, plain_only=True)
 
 
 def _check_source_cleaned(path: str, file_path: Path) -> list[str]:

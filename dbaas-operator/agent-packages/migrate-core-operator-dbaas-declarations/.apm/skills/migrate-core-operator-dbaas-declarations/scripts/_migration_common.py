@@ -1,9 +1,19 @@
+# GENERATED FILE -- do not edit.
+# Canonical source: agent-packages/migration-runtime/_migration_common.py
+# Regenerate with: python agent-packages/migration-runtime/sync_copies.py
 #!/usr/bin/env python3
 """Shared runner contract for the script-driven DBaaS migration skills.
 
-This module is vendored byte-for-byte into every APM migration package so that
-each package stays independently installable. It owns the parts of the runner
-that must not drift between packages:
+The canonical source lives here, in ``agent-packages/migration-runtime/``. Each
+skill package is independently installable, so neither reaches across package
+boundaries at runtime: ``sync_copies.py`` (in this directory) copies this file,
+verbatim behind a generated-file banner, into each package's own
+``scripts/_migration_common.py``. Edit only the copy here, then re-run
+``sync_copies.py`` and commit both the source and the regenerated copies --
+``tests/test_shared_contract_drift.py`` in each package fails the build if a
+copy has drifted from what regeneration would produce.
+
+This module owns the parts of the runner that must not drift between packages:
 
 - the ``apply_migration.py`` command line (``--repo-root``/``--plan``/``--check``
   vs ``--apply``/``--report``);
@@ -15,10 +25,8 @@ that must not drift between packages:
   write transaction with rollback.
 
 A package supplies an :class:`Engine` that turns a validated plan into a
-:class:`Changes` set and validates a materialized tree. Everything else is here.
-
-Repository-level contract tests assert that the copies in each package are
-identical and that both runners honour the exit and result contract.
+:class:`Changes` set and validates a materialized tree. Each plan touches exactly
+one repository root; a multi-root repository is migrated one invocation per root.
 """
 
 from __future__ import annotations
@@ -429,17 +437,12 @@ class Changes:
     """
 
     files: dict[str, str | None] = dataclasses.field(default_factory=dict)
-    warnings: list[str] = dataclasses.field(default_factory=list)
 
     def set_content(self, path: str, content: str) -> None:
         self.files[path] = content
 
     def delete(self, path: str) -> None:
         self.files[path] = None
-
-    def warn(self, message: str) -> None:
-        if message not in self.warnings:
-            self.warnings.append(message)
 
 
 def enforce_plan_scope(plan: "Plan", file_lists: dict[str, list[str]]) -> None:
@@ -557,57 +560,35 @@ class Engine(Protocol):
 # --------------------------------------------------------------------------- #
 
 
-def normalize_roots(roots: list[str]) -> list[str]:
-    """Clean, de-duplicated, overlap-free repository-relative roots.
+def normalize_root(root: str) -> str:
+    """The single repository-relative root a plan operates on, slash-trimmed.
 
-    ``"."`` / ``""`` / ``"/"`` collapse to the repository root (``""``), which, if
-    present, subsumes every other root. A trailing slash is an alias. A root
-    nested inside another is dropped so a single ``copytree`` covers it.
+    ``""`` / ``"."`` / ``"/"`` all mean the repository root.
     """
 
-    normalized: set[tuple[str, ...]] = set()
-    for root in roots:
-        parts = tuple(
-            part
-            for part in PurePosixPath(str(root).replace("\\", "/")).parts
-            if part not in ("", ".", "/")
-        )
-        if ".." in parts:
-            raise bad_input(f"affected root must not contain '..': {root!r}")
-        normalized.add(parts)
-    if () in normalized:
-        return [""]
-    kept: list[str] = []
-    for parts in sorted(normalized):
-        if any(other != parts and parts[: len(other)] == other for other in normalized):
-            continue  # covered by an ancestor root already in the set
-        kept.append("/".join(parts))
-    return kept
+    parts = [
+        part
+        for part in PurePosixPath(str(root).replace("\\", "/")).parts
+        if part not in ("", ".", "/")
+    ]
+    if ".." in parts:
+        raise bad_input(f"affected root must not contain '..': {root!r}")
+    return "/".join(parts)
 
 
 def _materialize_tree(repo_root: Path, roots: list[str], changes: Changes, dest: Path) -> None:
-    materialized = normalize_roots(roots)
-    for root in materialized:
-        source = repo_root if root == "" else resolve_within(repo_root, root, what="affected root")
-        if not source.exists():
-            continue
+    root = normalize_root(roots[0]) if roots else ""
+    source = repo_root if root == "" else resolve_within(repo_root, root, what="affected root")
+    if source.exists():
         target = dest if root == "" else dest / root
-        if source.is_dir():
-            target.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(source, target, symlinks=False, dirs_exist_ok=True)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, target, symlinks=False, dirs_exist_ok=True)
 
+    prefix = f"{root}/" if root else ""
     for path, content in changes.files.items():
-        pure = PurePosixPath(path)
-        covered = any(
-            root == "" or PurePosixPath(root) == pure or PurePosixPath(root) in pure.parents
-            for root in materialized
-        )
-        if not covered:
+        if root and not path.startswith(prefix):
             raise unsupported(
-                f"target {path!r} is outside every affected root declared by the plan"
+                f"target {path!r} is outside the affected root {root!r} declared by the plan"
             )
         file_path = dest / path
         if content is None:
@@ -635,11 +616,14 @@ def _rollback_commit(
             target.write_bytes(original)
 
 
-def _commit(repo_root: Path, changes: Changes) -> tuple[list[str], dict[str, bytes | None]]:
+def _commit(
+    repo_root: Path, changes: Changes, *, report: tuple[Path, bytes] | None = None
+) -> None:
     """Atomically apply ``changes`` to the working tree, rolling back on error.
 
-    Returns ``(applied, backups)`` so a later failure (report publication) can
-    undo the commit.
+    When ``report`` is given, writing it is part of this same transaction: a
+    report that cannot be written rolls every repository change back with it,
+    so a completed migration is never left with no discoverable result.
     """
 
     backups: dict[str, bytes | None] = {}
@@ -661,6 +645,12 @@ def _commit(repo_root: Path, changes: Changes) -> tuple[list[str], dict[str, byt
             tmp.write_text(content, encoding="utf-8", newline="")
             os.replace(tmp, target)
             applied.append(path)
+        if report is not None:
+            report_path, payload = report
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_tmp = report_path.with_name(f".{report_path.name}.migration.tmp")
+            report_tmp.write_bytes(payload)
+            os.replace(report_tmp, report_path)
     except Exception as exc:  # noqa: BLE001 - rollback then re-raise as a typed error
         _rollback_commit(repo_root, applied, backups)
         raise MigrationError(
@@ -668,7 +658,6 @@ def _commit(repo_root: Path, changes: Changes) -> tuple[list[str], dict[str, byt
             "write transaction failed and was rolled back",
             [str(exc)],
         ) from exc
-    return applied, backups
 
 
 # --------------------------------------------------------------------------- #
@@ -680,7 +669,6 @@ def build_result(
     migration_kind: str,
     status: str,
     file_lists: dict[str, list[str]],
-    warnings: list[str],
     validation: list[ValidationResult],
 ) -> dict[str, Any]:
     return {
@@ -691,7 +679,6 @@ def build_result(
         "modifiedFiles": sorted(file_lists.get("modifiedFiles", [])),
         "deletedFiles": sorted(file_lists.get("deletedFiles", [])),
         "unchangedFiles": sorted(file_lists.get("unchangedFiles", [])),
-        "warnings": sorted(warnings),
         "validation": [entry.as_dict() for entry in validation],
     }
 
@@ -705,7 +692,6 @@ def blocked_result(migration_kind: str, entries: list[str], detail: str) -> dict
         "modifiedFiles": [],
         "deletedFiles": [],
         "unchangedFiles": [],
-        "warnings": [],
         "validation": [ValidationResult("plan", "failed", detail).as_dict()],
         "blocking": sorted(entries),
     }
@@ -738,40 +724,14 @@ def _resolve_report_path(
 
 
 def _write_report(report_path: Path | None, result: dict[str, Any]) -> None:
-    payload = _report_bytes(result)
-    if report_path is None:
-        sys.stdout.write(payload.decode("utf-8"))
-        return
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_bytes(payload)
-
-
-def _stage_report(report_path: Path | None, payload: bytes) -> Path | None:
-    """Write the report bytes to a sibling ``.partial`` file before committing the
-    repository, so a later publication failure cannot lose the result."""
-
-    if report_path is None:
-        return None
-    try:
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        staged = report_path.with_name(report_path.name + ".partial")
-        staged.write_bytes(payload)
-    except OSError as exc:
-        raise MigrationError(
-            EXIT_TRANSACTION, "cannot stage the result report", [str(exc)]
-        ) from exc
-    return staged
-
-
-def _publish_report(report_path: Path | None, staged: Path | None, payload: bytes) -> None:
-    if report_path is None:
-        sys.stdout.write(payload.decode("utf-8"))
-        return
-    os.replace(staged, report_path)
-
-
-def _emit_fallback(report_path: Path | None, result: dict[str, Any]) -> None:
-    """Last-resort result delivery that never repeats a report-path write failure."""
+    """Deliver the result JSON outside of an applied mutation: ``--check``, a
+    blocked or unchanged result, or the failure report after ``_commit`` has
+    already rolled back. In every one of those cases the repository is
+    untouched (or restored), so a write failure here falls back to stdout
+    rather than being itself a migration failure. An apply that touches the
+    repository writes its report through ``_commit`` instead, so that failure
+    path rolls the mutation back -- see ``run()``.
+    """
 
     payload = _report_bytes(result)
     if report_path is not None:
@@ -779,8 +739,8 @@ def _emit_fallback(report_path: Path | None, result: dict[str, Any]) -> None:
             report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_bytes(payload)
             return
-        except OSError:
-            pass
+        except OSError as exc:
+            sys.stderr.write(f"warning: cannot write --report {report_path}: {exc}\n")
     sys.stdout.write(payload.decode("utf-8"))
 
 
@@ -878,7 +838,6 @@ def run(engine: Engine, argv: list[str] | None = None) -> int:
                 engine.migration_kind,
                 "blocked",
                 {key: [] for key in file_lists},
-                changes.warnings,
                 validation,
             )
             _write_report(report_path, result)
@@ -890,50 +849,31 @@ def run(engine: Engine, argv: list[str] | None = None) -> int:
             or file_lists["deletedFiles"]
         )
         status = "changed" if touched else "unchanged"
-        result = build_result(
-            engine.migration_kind, status, file_lists, changes.warnings, validation
-        )
+        result = build_result(engine.migration_kind, status, file_lists, validation)
 
         if args.mode == "apply" and touched:
             # Re-check every source hash immediately before writing: the temporary
             # tree validated an earlier snapshot, and an edit in between must not
             # be silently overwritten.
             check_preconditions(repo_root, plan)
-            # Commit and report publication are one recoverable operation: stage
-            # the report first, commit, then publish atomically; if publication
-            # fails after the commit, roll the repository back and report through
-            # a channel that cannot repeat the same failure.
-            payload = _report_bytes(result)
-            staged = _stage_report(report_path, payload)
-            applied, backups = _commit(repo_root, changes)
-            try:
-                _publish_report(report_path, staged, payload)
-            except OSError as exc:
-                _rollback_commit(repo_root, applied, backups)
-                # The commit was undone: emit a blocked transaction result, not
-                # the success envelope that still lists files as modified.
-                rolled_back = blocked_result(
-                    engine.migration_kind,
-                    [f"report publication failed: {exc}"],
-                    "report publication failed after commit; repository was rolled back",
-                )
-                sys.stdout.write(_report_bytes(rolled_back).decode("utf-8"))
-                sys.stderr.write(
-                    f"error: report publication failed after commit; repository rolled back: {exc}\n"
-                )
-                return EXIT_TRANSACTION
-        else:
-            _write_report(report_path, result)
+            if report_path is not None:
+                # The report write is part of this transaction (see _commit): a
+                # report that cannot be written rolls the mutation back with it,
+                # rather than leaving a successful mutation with no report.
+                _commit(repo_root, changes, report=(report_path, _report_bytes(result)))
+                return EXIT_OK
+            _commit(repo_root, changes)
+        _write_report(report_path, result)
         return EXIT_OK
 
     except MigrationError as exc:
         detail = "; ".join([str(exc), *exc.entries]) if exc.entries else str(exc)
         sys.stderr.write(f"error: {detail}\n")
-        _emit_fallback(report_path, blocked_result(engine.migration_kind, exc.entries, str(exc)))
+        _write_report(report_path, blocked_result(engine.migration_kind, exc.entries, str(exc)))
         return exc.exit_code
 
     except Exception as exc:  # noqa: BLE001 - never crash without a machine-readable result
         message = f"internal error: {type(exc).__name__}: {exc}"
         sys.stderr.write(f"error: {message}\n")
-        _emit_fallback(report_path, blocked_result(engine.migration_kind, [message], message))
+        _write_report(report_path, blocked_result(engine.migration_kind, [message], message))
         return EXIT_BAD_INPUT

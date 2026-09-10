@@ -14,6 +14,12 @@ anything else:
 
 ``range``, ``with``, ``include``, ``define``, ``else``, nested guards, and a
 partially templated scalar are unsupported and raise :class:`UnsupportedHelm`.
+
+This module parses documents; it does not preserve them. A source file whose
+documents are only ever entirely migrated or entirely left alone is supported.
+A file that mixes a migrated declaration with unrelated content in the same
+``---``-delimited file is the caller's problem to reject, not this module's to
+splice back together -- see ``apply_migration.py``'s source-rewrite logic.
 """
 
 from __future__ import annotations
@@ -62,25 +68,13 @@ class ParsedDocument:
     body: Any
     guard: str | None  # a full ``{{- if ... }}`` line, or None
     source_line: int
-    # The exact original source of this document -- its leading ``---`` separator
-    # (if any), any whole-document Helm guard lines, comments and blank lines
-    # included. A retained document is written back from this verbatim; nothing is
-    # re-serialized.
-    text: str = ""
-    # Only set on the first document: the file's leading comment / blank-line
-    # preamble. It is also a prefix of ``text``; the runner prepends it to the
-    # output when the first document is removed but a later one is kept, so a
-    # file-level header is not lost with the declaration it happened to precede.
-    leading: str = ""
 
 
 def parse_source(text: str, *, filename: str) -> list[ParsedDocument]:
     """Split ``text`` into documents, resolving the supported guard patterns.
 
-    Each :class:`ParsedDocument` carries both the parsed ``body`` (from a
-    sanitized copy that quotes templated scalars) and the ``text`` -- the exact
-    original bytes of that document -- so the runner never needs a second
-    splitting pass to keep an unmigrated document byte-for-byte.
+    Each :class:`ParsedDocument` carries the parsed ``body``, from a sanitized
+    copy that quotes templated scalars so PyYAML can parse them.
     """
 
     entries: list[str] = []
@@ -175,29 +169,16 @@ def parse_source(text: str, *, filename: str) -> list[ParsedDocument]:
     if entries:
         raise UnsupportedHelm(entries)
 
-    # Separators appear identically in the raw text and in ``sanitized_lines``
-    # (guard lines are the only thing dropped, and a guard never spans a `---`),
-    # so splitting both on the shared separator predicate keeps region *i* of one
-    # aligned with region *i* of the other.
-    raw_regions = _regions(text.splitlines(keepends=True))
-    san_regions = _regions(list(zip(sanitized_lines, line_guard)), key=lambda pair: pair[0])
-    if len(raw_regions) != len(san_regions):  # pragma: no cover - defensive invariant
-        raise UnsupportedHelm(
-            [f"{filename}: could not align document boundaries; normalize the file's `---` separators"]
-        )
-
+    regions = _regions(list(zip(sanitized_lines, line_guard)), key=lambda pair: pair[0])
     documents: list[ParsedDocument] = []
-    pending_prefix = ""  # comment-only / empty regions, folded onto the next document
     line_no = 1
-    for raw_region, san_region in zip(raw_regions, san_regions):
-        region_text = "".join(raw_region)
-        content_lines = [sl for sl, _ in san_region if _is_yaml_content(sl)]
+    for region in regions:
+        content_lines = [sl for sl, _ in region if _is_yaml_content(sl)]
         if not content_lines:
-            pending_prefix += region_text
-            line_no += len(raw_region)
+            line_no += len(region)
             continue
 
-        san_text = "\n".join(sl for sl, _ in san_region) + "\n"
+        san_text = "\n".join(sl for sl, _ in region) + "\n"
         try:
             bodies = [body for body in yaml.safe_load_all(san_text) if body is not None]
         except yaml.YAMLError as exc:
@@ -210,14 +191,11 @@ def parse_source(text: str, *, filename: str) -> list[ParsedDocument]:
                 [f"{filename}:{line_no}: could not parse this section as YAML: {detail}"]
             ) from None
         if not bodies:
-            pending_prefix += region_text
-            line_no += len(raw_region)
+            line_no += len(region)
             continue
         if len(bodies) > 1:
             # PyYAML found more than one document between two whole-line ``---``
             # separators -- an inline ``--- key: value`` or a ``...`` end marker.
-            # The region's verbatim text can no longer be mapped to one document,
-            # so reject it rather than reformat.
             raise UnsupportedHelm(
                 [
                     f"{filename}:{line_no}: this section holds more than one YAML document; "
@@ -228,36 +206,11 @@ def parse_source(text: str, *, filename: str) -> list[ParsedDocument]:
         # The guard of a document is the guard of its first real YAML line, so a
         # comment or blank line before a whole-document {{- if }} does not make it
         # look unguarded.
-        guard = next((g for sl, g in san_region if _is_yaml_content(sl)), None)
-        documents.append(
-            ParsedDocument(
-                body=bodies[0],
-                guard=guard,
-                source_line=line_no,
-                text=pending_prefix + region_text,
-            )
-        )
-        pending_prefix = ""
-        line_no += len(raw_region)
+        guard = next((g for sl, g in region if _is_yaml_content(sl)), None)
+        documents.append(ParsedDocument(body=bodies[0], guard=guard, source_line=line_no))
+        line_no += len(region)
 
-    if pending_prefix and documents:
-        documents[-1].text += pending_prefix
-    if documents:
-        documents[0].leading = _leading_preamble(documents[0].text)
     return documents
-
-
-def _leading_preamble(text: str) -> str:
-    """The leading run of blank and comment lines at the start of ``text`` -- the
-    file's preamble, up to its first real content or ``---`` separator."""
-
-    cut = 0
-    for line in text.splitlines(keepends=True):
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            break
-        cut += len(line)
-    return text[:cut]
 
 
 def _is_yaml_content(line: str) -> bool:
@@ -266,9 +219,8 @@ def _is_yaml_content(line: str) -> bool:
 
 
 def _regions(lines: list[Any], *, key=lambda line: line) -> list[list[Any]]:
-    """Split ``lines`` at column-zero document separators. Every region after the
-    first begins with its own ``---`` line, so concatenating a subset of regions
-    reproduces a valid multi-document file with its separators intact."""
+    """Split ``lines`` at column-zero document separators into per-document
+    groups. Every region after the first begins with its own ``---`` line."""
 
     regions: list[list[Any]] = [[]]
     for line in lines:

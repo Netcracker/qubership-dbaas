@@ -1,20 +1,19 @@
 """Regression tests for the shared runner contract (_migration_common).
 
-The mounted-secret package carries an equivalent file; the shared-drift test
-keeps the module itself byte-identical.
+The single copy lives in agent-packages/migration-runtime/; _harness puts it on
+sys.path. The mounted-secret package has a parallel test for the same contract.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from _harness import RUNNER, run_migration
-
-sys.path.insert(0, str(RUNNER.parent))
+from _harness import RUNNER, run_migration  # noqa: F401
 
 import _migration_common as common  # noqa: E402
 
@@ -83,10 +82,36 @@ class CommonRunnerTest(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("--report must be outside", result.stderr)
 
-    def test_normalize_roots_handles_overlap_and_aliases(self) -> None:
-        self.assertEqual(common.normalize_roots(["."]), [""])
-        self.assertEqual(common.normalize_roots(["chart/", "chart"]), ["chart"])
-        self.assertEqual(common.normalize_roots(["chart", "chart/templates"]), ["chart"])
+    def test_unwritable_report_rolls_back_the_apply(self) -> None:
+        # A report path whose parent cannot be created (it already exists as a
+        # plain file) fails inside the same transaction as the repository
+        # write, so the repository mutation rolls back with it instead of
+        # committing silently with no discoverable result.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo, source_rel, output_rel = scaffold(tmp)
+            blocked_parent = tmp / "not-a-directory"
+            blocked_parent.write_text("occupied", encoding="utf-8")
+            plan_path = tmp / "plan.json"
+            plan_path.write_text(json.dumps(plan_for(repo, source_rel, output_rel)), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable, str(RUNNER), "--repo-root", str(repo),
+                    "--plan", str(plan_path), "--apply",
+                    "--report", str(blocked_parent / "report.json"),
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, common.EXIT_TRANSACTION)
+            self.assertFalse((repo / output_rel).exists())
+            self.assertTrue((repo / source_rel).is_file())
+
+    def test_normalize_root_handles_dot_and_trailing_slash(self) -> None:
+        self.assertEqual(common.normalize_root("."), "")
+        self.assertEqual(common.normalize_root("/"), "")
+        self.assertEqual(common.normalize_root("chart/"), "chart")
+        self.assertEqual(common.normalize_root("chart"), "chart")
+        self.assertEqual(common.normalize_root("chart/templates"), "chart/templates")
 
     def test_join_rel_handles_the_repository_root(self) -> None:
         self.assertEqual(common.join_rel("chart", "templates/x.yaml"), "chart/templates/x.yaml")

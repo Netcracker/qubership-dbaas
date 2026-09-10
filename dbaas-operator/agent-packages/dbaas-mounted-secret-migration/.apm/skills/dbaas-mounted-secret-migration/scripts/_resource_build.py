@@ -53,8 +53,17 @@ def identity_stem(
     *,
     discriminator: str | None,
 ) -> str:
-    microservice = str(classifier.get("microserviceName") or "service")
-    scope = str(classifier.get("scope") or "service")
+    """Build the naming stem for a SUPPORTED datasource's classifier.
+
+    ``classifier["microserviceName"]`` and ``["scope"]`` are required, non-empty
+    strings for every SUPPORTED datasource -- ``apply_migration.py`` rejects the
+    plan before this runs otherwise -- so they are read directly rather than
+    defaulted; a caller that violates that precondition is a programming error,
+    not a data condition to paper over.
+    """
+
+    microservice = classifier["microserviceName"]
+    scope = classifier["scope"]
     parts = [microservice, db_type.lower(), scope]
     tenant = classifier.get("tenantId")
     if tenant:

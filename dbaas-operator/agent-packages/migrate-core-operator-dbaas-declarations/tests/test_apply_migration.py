@@ -183,10 +183,6 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = base_plan(
                 repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
             )
-            # Even listing the text cannot approve a missing required field.
-            plan["decisions"]["warningResolutions"] = [
-                "InternalDatabase service-db is missing required spec.type"
-            ]
 
             code, report = run_migration(repo, plan, "apply", tmp)
 
@@ -235,9 +231,6 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = base_plan(
                 repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
             )
-            plan["decisions"]["warningResolutions"] = [
-                "Document 1: DatabaseDeclaration.declarations is not a list"
-            ]
 
             code, report = run_migration(repo, plan, "apply", tmp)
 
@@ -284,7 +277,7 @@ class ApplyMigrationTest(unittest.TestCase):
                     "operatorNamespace": "dbaas-system",
                     "serviceName": "{{ .Values.SERVICE_NAME }}",
                     "namespace": "{{ .Values.NAMESPACE }}",
-                    "outputFileByRoot": {"deploy": "dbaas.json"},
+                    "outputFile": "dbaas.json",
                 },
                 "targets": targets_for(source_rel),
             }
@@ -379,9 +372,6 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = base_plan(
                 repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
             )
-            plan["decisions"]["warningResolutions"] = [
-                "Document 1: skipped unsupported kind/subKind 'ConfigMap'"
-            ]
 
             code, report = run_migration(repo, plan, "apply", tmp)
 
@@ -500,7 +490,7 @@ class ApplyMigrationTest(unittest.TestCase):
             self.assertIn("policy[0].defaultRole", blocking)
             self.assertFalse((repo / output_rel).exists())
 
-    def test_accepted_warning_is_reported_in_the_result(self) -> None:
+    def test_dropped_metadata_field_is_a_blocking_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             source_rel = "deploy/dbaas.json"
@@ -521,17 +511,13 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = base_plan(
                 repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
             )
-            plan["decisions"]["warningResolutions"] = [
-                f"{source_rel}: Document 1 metadata fields were dropped: annotations"
-            ]
 
             code, report = run_migration(repo, plan, "apply", tmp)
 
-            self.assertEqual(code, 0, report.get("__stderr"))
-            self.assertTrue(
-                any("annotations" in w for w in report["warnings"]),
-                report["warnings"],
-            )
+            self.assertEqual(code, 4)
+            self.assertEqual(report["status"], "blocked")
+            self.assertTrue(any("annotations" in e for e in report["blocking"]))
+            self.assertFalse((repo / output_rel).exists())
 
     def test_generated_file_uses_lf_newlines(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -604,7 +590,7 @@ class ApplyMigrationTest(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn("namespace", report["validation"][0]["details"])
 
-    def test_identical_warnings_need_one_approval_each(self) -> None:
+    def test_unsupported_field_is_reported_once_per_declaration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             source_rel = "deploy/dbaas.json"
@@ -615,13 +601,14 @@ class ApplyMigrationTest(unittest.TestCase):
                        "declarations": [dict(decl), dict(decl)]}
             repo = make_repo(tmp, json.dumps(payload), source_rel)
             plan = base_plan(repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel)
-            warning = f"{source_rel}: DatabaseDeclaration #1 has unsupported fields that were dropped: legacyOnly"
             plan["decisions"]["resourceNames"] = {
                 f"{source_rel}#0#1": "a-db", f"{source_rel}#0#2": "b-db"}
-            plan["decisions"]["warningResolutions"] = [warning]  # only one, two occurrences
             code, report = run_migration(repo, plan, "apply", tmp)
             self.assertEqual(code, 4)
-            self.assertTrue(any("unresolved converter warning" in e for e in report["blocking"]))
+            self.assertEqual(
+                sum("legacyOnly" in e for e in report["blocking"]), 2,
+                report["blocking"],
+            )
 
     def test_boolean_document_index_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -660,9 +647,6 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = base_plan(
                 repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
             )
-            plan["decisions"]["warningResolutions"] = [
-                "Document 1: kind DBaaS with unsupported subKind 'SomethingElse'"
-            ]
             code, report = run_migration(repo, plan, "apply", tmp)
             self.assertEqual(code, 4)
             self.assertTrue(any("unsupported subKind" in e for e in report["blocking"]))
@@ -714,13 +698,15 @@ class ApplyMigrationTest(unittest.TestCase):
             self.assertEqual(code, 4)
             self.assertTrue(any("matched no generated resource" in e for e in report["blocking"]))
 
-    def test_kept_top_level_list_is_not_corrupted(self) -> None:
+    def test_mixed_migrated_and_unrelated_documents_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             source_rel = "deploy/dbaas.yaml"
             output_rel = "deploy/dbaas-operator-resources.yaml"
-            # One migrated declaration, then a kept unrelated document that is a
-            # top-level YAML list.
+            # A migrated declaration, then an unrelated document in the same file
+            # as a separate `---` section. The runner does not splice a file back
+            # together around the document it removes -- it blocks and asks for
+            # the file to be split first.
             body = (
                 "kind: DBaaS\n"
                 "subKind: DatabaseDeclaration\n"
@@ -737,53 +723,13 @@ class ApplyMigrationTest(unittest.TestCase):
                 repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
             )
             code, report = run_migration(repo, plan, "apply", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
-            kept = list(yaml.safe_load_all((repo / source_rel).read_text(encoding="utf-8")))
-            self.assertIn(["alpha", "beta"], kept)
-
-    def test_indented_doc_marker_inside_a_block_scalar_is_not_a_separator(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            tmp = Path(directory)
-            source_rel = "deploy/dbaas.yaml"
-            output_rel = "deploy/dbaas-operator-resources.yaml"
-            # A migrated declaration, then a ConfigMap whose block scalar contains
-            # an indented "--- # marker" line. That line is literal scalar text,
-            # not a document separator, so the whole ConfigMap -- comments and all
-            # -- must survive byte-for-byte.
-            script = (
-                "  script: |\n"
-                "    keep-line\n"
-                "    --- # embedded marker\n"
-                "    # keep-comment\n"
+            self.assertEqual(code, 4)
+            self.assertTrue(
+                any("mixes migrated and unmigrated" in e for e in report["blocking"]),
+                report["blocking"],
             )
-            body = (
-                "kind: DBaaS\n"
-                "subKind: DatabaseDeclaration\n"
-                "spec:\n"
-                "  classifierConfig:\n"
-                "    classifier: {scope: service, microserviceName: svc}\n"
-                "  type: postgresql\n"
-                "---\n"
-                "apiVersion: v1\n"
-                "kind: ConfigMap\n"
-                "metadata:\n"
-                "  name: keep-me\n"
-                "data:\n"
-                + script
-            )
-            repo = make_repo(tmp, body, source_rel)
-            plan = base_plan(
-                repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
-            )
-            plan["decisions"]["warningResolutions"] = [
-                "deploy/dbaas.yaml: Document 2: skipped unsupported kind 'ConfigMap'"
-            ]
-            code, report = run_migration(repo, plan, "apply", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
-            rewritten = (repo / source_rel).read_text(encoding="utf-8")
-            self.assertIn("    --- # embedded marker", rewritten)
-            self.assertIn("    # keep-comment", rewritten)
-            self.assertNotIn("microserviceName: svc", rewritten)
+            self.assertTrue((repo / source_rel).is_file())
+            self.assertFalse((repo / output_rel).exists())
 
     def test_repository_root_source_is_migrated(self) -> None:
         # A plain layout can keep its declarations at the repository root; "." is
@@ -801,13 +747,14 @@ class ApplyMigrationTest(unittest.TestCase):
             self.assertTrue((repo / output_rel).is_file())
             self.assertFalse((repo / source_rel).exists())
 
-    def test_file_preamble_survives_when_the_first_document_is_removed(self) -> None:
+    def test_mixed_file_block_names_the_source_to_split(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             source_rel = "deploy/dbaas.yaml"
             output_rel = "deploy/dbaas-operator-resources.yaml"
-            # A file-level header, then a migrated declaration, then a retained
-            # ConfigMap. Removing the declaration must not take the header with it.
+            # A file-level header, a migrated declaration, then an unrelated
+            # ConfigMap in the same file. Blocked, not spliced -- the source is
+            # untouched and the block names the file to split.
             body = (
                 "# Databases for the orders service.\n"
                 "# Owned by the platform team.\n"
@@ -828,16 +775,12 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = base_plan(
                 repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
             )
-            plan["decisions"]["warningResolutions"] = [
-                "deploy/dbaas.yaml: Document 2: skipped unsupported kind 'ConfigMap'"
-            ]
             code, report = run_migration(repo, plan, "apply", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
-            rewritten = (repo / source_rel).read_text(encoding="utf-8")
-            self.assertIn("# Databases for the orders service.", rewritten)
-            self.assertIn("# Owned by the platform team.", rewritten)
-            self.assertIn("kind: ConfigMap", rewritten)
-            self.assertNotIn("microserviceName: svc", rewritten)
+            self.assertEqual(code, 4)
+            self.assertTrue(any(source_rel in e for e in report["blocking"]), report["blocking"])
+            self.assertEqual(
+                (repo / source_rel).read_text(encoding="utf-8"), body, "source must be untouched"
+            )
 
     def test_mixed_helm_and_plain_roots_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -862,6 +805,62 @@ class ApplyMigrationTest(unittest.TestCase):
             code, report = run_migration(repo, plan, "check", tmp)
             self.assertEqual(code, 2)
             self.assertIn("mixes helm and plain", report["validation"][0]["details"])
+
+    def test_multiple_distinct_roots_are_rejected(self) -> None:
+        # _migration_common.py materializes only the first affected root for
+        # validation, so a plan spanning two distinct (same-kind) roots is not
+        # partially supported -- it must be rejected outright, not silently
+        # validated against only one of the two roots.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = make_repo(tmp, json.dumps(DECLARATION_JSON), "chartA/a.json")
+            (repo / "chartB").mkdir(parents=True)
+            (repo / "chartB/b.json").write_text(json.dumps(DECLARATION_JSON), encoding="utf-8")
+            plan = {
+                "schemaVersion": 1,
+                "migrationKind": "core-declarations",
+                "repository": {"preconditions": preconditions_for(repo, "chartA/a.json", "chartB/b.json")},
+                "inputs": {
+                    "sources": [
+                        {"path": "chartA/a.json", "root": "chartA", "rootKind": "plain", "documents": None},
+                        {"path": "chartB/b.json", "root": "chartB", "rootKind": "plain", "documents": None},
+                    ]
+                },
+                "decisions": {"operatorNamespace": "dbaas-system", "serviceName": "svc",
+                              "serviceNameExplicit": True, "namespace": "ns"},
+                "targets": targets_for("chartA/a.json", "chartB/b.json"),
+            }
+            code, report = run_migration(repo, plan, "check", tmp)
+            self.assertEqual(code, 2)
+            self.assertIn("spans multiple roots", report["validation"][0]["details"])
+
+    def test_empty_json_array_source_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "deploy/dbaas.json"
+            output_rel = "deploy/dbaas-operator-resources.yaml"
+            repo = make_repo(tmp, "[]", source_rel)
+            plan = base_plan(
+                repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
+            )
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 4)
+            self.assertTrue(any("no documents to migrate" in e for e in report["blocking"]))
+            self.assertTrue((repo / source_rel).is_file(), "an empty source must not be deleted")
+
+    def test_comment_only_yaml_source_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "deploy/dbaas.yaml"
+            output_rel = "deploy/dbaas-operator-resources.yaml"
+            repo = make_repo(tmp, "# nothing here\n", source_rel)
+            plan = base_plan(
+                repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
+            )
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 4)
+            self.assertTrue(any("no documents to migrate" in e for e in report["blocking"]))
+            self.assertTrue((repo / source_rel).is_file(), "an empty source must not be deleted")
 
 
 if __name__ == "__main__":

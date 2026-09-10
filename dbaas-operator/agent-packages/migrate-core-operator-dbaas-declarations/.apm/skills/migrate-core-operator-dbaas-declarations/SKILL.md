@@ -36,6 +36,8 @@ a hand edit.
 2. For each source, record its repository-relative path, its owning chart or plain-manifest root, and
    whether that root is `helm` or `plain`. Give one physical root one spelling: `chart` and `chart/`
    are the same root and must not appear as two entries with different `rootKind` or output files.
+   One plan migrates one root: if the repository has more than one chart or manifest root to migrate,
+   write one plan (and one `--apply` invocation) per root, never all of them in one plan's `sources`.
 3. Read [references/mapping.md](references/mapping.md) and [references/examples.md](references/examples.md)
    to understand what the script will produce.
 4. Resolve every decision the script needs (see below). Inspect the target repository's current
@@ -66,29 +68,29 @@ Record these under `decisions` in the plan:
   inside a multi-declaration wrapper is keyed `<source-path>#<document-index>#<item-index>` so one
   override cannot fan out to every child. A key that matches nothing blocks the run. Every derived
   name is passed through the shared 63-character DNS-label helper.
-- **`outputFileByRoot`**: only when a root must not use the canonical output filename. The runner
-  blocks if the resulting output path equals one of the migration sources.
-- **`warningResolutions`**: a list -- one entry per accepted non-semantic converter warning, in the
-  source-scoped form `<source-path>: <warning>` (for example a dropped wrapper-only label, or an
-  auto-filled `sourceClassifier.microserviceName`). Each entry is consumed once, so if the same
-  warning text occurs twice in one source you list it twice. An unlisted warning blocks the run; an
-  accepted one is echoed into the result `warnings`; an entry that matches nothing blocks the run.
-  Semantically invalid conditions — a missing required classifier
-  field or type, a non-boolean `lazy`, a cross-service clone, `lazy: true` with a clone, a clone
-  without `sourceClassifier`, an unresolved policy owner, an invalid `settings` value, a
-  `DatabaseAccessPolicy` that violates the CRD shape (a `services` entry with an unknown field or
-  without a non-empty `name` or non-empty `roles`, a `policy` entry with an unknown field or without
-  a non-empty `type` or `defaultRole`, a non-boolean `disableGlobalPermissions`, or no non-empty
-  `services` or `policy` list at all) — and structural defects — a `declarations` value that is not
-  a list,
-  a non-object declaration entry, a sequence document that mixes legacy declarations with anything
-  else, a Helm guard that does not bracket a whole document, a `kind: DBaaS` wrapper with an
-  unsupported `subKind` — are permanently blocking errors and cannot be listed here. The runner also
-  blocks before it rewrites or deletes a source when a selected legacy document produced no resource,
-  and after cleanup it reparses each rewritten source to confirm it is valid YAML/JSON with no legacy
-  declaration left. Fix the source or pin the decision instead.
+- **`outputFile`**: only when the plan's one root must not use the canonical output filename. The
+  runner blocks if the resulting output path equals one of the migration sources.
 - **`outputOwnership`**: the current SHA-256 of any existing output file this migration must
   overwrite, so a collision with unrelated content still blocks.
+
+There is no plan field to accept a converter finding and proceed. Every condition the converter cannot
+map losslessly and unambiguously is a permanently blocking error, not something a decision can resolve:
+a dropped metadata field, a dropped or unknown declaration field, a missing
+`classifierConfig.classifier`, a `classifier.namespace` that disagrees with `metadata.namespace`, a
+missing required classifier field or type, a non-boolean `lazy`, a cross-service clone, `lazy: true`
+with a clone, a clone without `sourceClassifier`, an unresolved policy owner, an invalid `settings`
+value, a `DatabaseAccessPolicy` that violates the CRD shape (a `services` entry with an unknown field
+or without a non-empty `name` or non-empty `roles`, a `policy` entry with an unknown field or without
+a non-empty `type` or `defaultRole`, a non-boolean `disableGlobalPermissions`, or no non-empty
+`services` or `policy` list at all), a structural defect (a `declarations` value that is not a list, a
+non-object declaration entry, a sequence document that mixes legacy declarations with anything else, a
+YAML file that mixes a migrated declaration with unrelated content across separate `---` documents, a
+Helm guard that does not bracket a whole document, a `kind: DBaaS` wrapper with an unsupported
+`subKind`), and a source with no document to migrate at all. Fix the source before migrating it --
+strip the field the runner does not carry over, or split a mixed file so the legacy declaration is
+alone in its own file. The runner also blocks before it rewrites or deletes a source when a selected
+legacy document produced no resource, and after cleanup it reparses each rewritten source to confirm
+it is valid YAML/JSON with no legacy declaration left.
 
 `repository.preconditions` and `targets` must together account for every file the run will touch.
 List each legacy source and each generated output in `targets`, give every existing one a SHA-256
@@ -108,7 +110,10 @@ scalar) is preserved. A guard that wraps only part of a document, spans a `---`,
 template action blocks the run and reports its source line.
 
 The script removes the migrated documents from each source and deletes a source file once nothing
-unrelated remains. Mixed files keep their unrelated content.
+unrelated remains. It does not splice a file back together around a document it removes: a YAML file
+whose separate `---` documents are only ever entirely migrated or entirely left alone is supported;
+one that mixes a migrated declaration with unrelated content across separate documents blocks the run
+and names the file to split first.
 
 ## Handling script failures
 
@@ -134,7 +139,6 @@ Build the report from the result JSON plus discovery evidence:
 - the `operatorNamespace` used and how it was confirmed;
 - the resolved owning service and whether it was pinned or derived;
 - `createdFiles`, `modifiedFiles`, `deletedFiles` from the result;
-- every resolved converter warning;
 - the validation entries from the result;
 - whether CRD-schema or cluster validation was run, and any checks that remain pending.
 

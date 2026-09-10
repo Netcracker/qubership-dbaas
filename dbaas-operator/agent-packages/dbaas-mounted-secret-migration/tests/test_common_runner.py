@@ -1,7 +1,7 @@
 """Regression tests for the shared runner contract (_migration_common).
 
-The core-declarations package carries an equivalent file; the shared-drift test
-keeps the module itself byte-identical.
+The single copy lives in agent-packages/migration-runtime/; _harness puts it on
+sys.path. The core-declarations package has a parallel test for the same contract.
 """
 
 from __future__ import annotations
@@ -13,9 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _harness import PACKAGE_ROOT, RUNNER, preconditions_for, run_migration, targets_for
-
-sys.path.insert(0, str(RUNNER.parent))
+from _harness import PACKAGE_ROOT, RUNNER, preconditions_for, run_migration, targets_for  # noqa: F401
 
 import _migration_common as common  # noqa: E402
 
@@ -95,13 +93,12 @@ class CommonRunnerTest(unittest.TestCase):
             self.assertIn("--report must be outside", result.stderr)
             self.assertFalse((repo / "chart" / "report.json").exists())
 
-    def test_normalize_roots_handles_overlap_and_aliases(self) -> None:
-        self.assertEqual(common.normalize_roots(["."]), [""])
-        self.assertEqual(common.normalize_roots(["chart/", "chart"]), ["chart"])
-        self.assertEqual(common.normalize_roots(["chart", "chart/templates"]), ["chart"])
-        self.assertEqual(
-            sorted(common.normalize_roots(["a", "b"])), ["a", "b"]
-        )
+    def test_normalize_root_handles_dot_and_trailing_slash(self) -> None:
+        self.assertEqual(common.normalize_root("."), "")
+        self.assertEqual(common.normalize_root("/"), "")
+        self.assertEqual(common.normalize_root("chart/"), "chart")
+        self.assertEqual(common.normalize_root("chart"), "chart")
+        self.assertEqual(common.normalize_root("chart/templates"), "chart/templates")
 
     def test_join_rel_handles_the_repository_root(self) -> None:
         self.assertEqual(common.join_rel("chart", "templates/x.yaml"), "chart/templates/x.yaml")

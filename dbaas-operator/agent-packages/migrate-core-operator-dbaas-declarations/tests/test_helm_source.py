@@ -57,8 +57,8 @@ class DocumentSeparatorTest(unittest.TestCase):
                 self.assertFalse(is_document_separator(line))
 
 
-class ParsedDocumentTextTest(unittest.TestCase):
-    def test_each_document_carries_its_exact_original_text(self) -> None:
+class ParsedDocumentTest(unittest.TestCase):
+    def test_documents_are_split_and_bodies_parsed(self) -> None:
         source = (
             "# a leading comment\n"
             "kind: DatabaseDeclaration\n"
@@ -71,11 +71,9 @@ class ParsedDocumentTextTest(unittest.TestCase):
         )
         docs = parse_source(source, filename="s.yaml")
         self.assertEqual(len(docs), 2)
-        # Concatenating every document's text reproduces the file byte-for-byte.
-        self.assertEqual("".join(doc.text for doc in docs), source)
-        # The ConfigMap document keeps its separator-with-comment.
-        self.assertIn("--- # a separator comment", docs[1].text)
+        self.assertEqual(docs[0].body["kind"], "DatabaseDeclaration")
         self.assertEqual(docs[1].body["kind"], "ConfigMap")
+        self.assertIsNone(docs[1].guard)
 
     def test_whole_document_guard_lines_belong_to_the_document(self) -> None:
         source = (
@@ -87,27 +85,29 @@ class ParsedDocumentTextTest(unittest.TestCase):
         docs = parse_source(source, filename="s.yaml")
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0].guard, "{{- if .Values.enabled }}")
-        self.assertEqual(docs[0].text, source)
 
-    def test_file_preamble_is_recorded_on_the_first_document(self) -> None:
+    def test_indented_doc_marker_inside_a_block_scalar_is_not_a_separator(self) -> None:
+        # A block scalar containing an indented "--- # marker" line: that line is
+        # literal scalar text, not a document separator, so the file is still
+        # exactly two documents, not three.
         source = (
-            "# a file header\n"
-            "\n"
-            "# more header\n"
             "kind: DatabaseDeclaration\n"
             "type: postgresql\n"
             "---\n"
+            "apiVersion: v1\n"
             "kind: ConfigMap\n"
+            "data:\n"
+            "  script: |\n"
+            "    keep-line\n"
+            "    --- # embedded marker\n"
+            "    # keep-comment\n"
         )
         docs = parse_source(source, filename="s.yaml")
-        self.assertEqual(docs[0].leading, "# a file header\n\n# more header\n")
-        self.assertEqual(docs[1].leading, "")
-        # The preamble is still a prefix of the first document's own text.
-        self.assertTrue(docs[0].text.startswith(docs[0].leading))
-
-    def test_file_starting_with_a_separator_has_no_preamble(self) -> None:
-        docs = parse_source("---\nkind: DatabaseDeclaration\n", filename="s.yaml")
-        self.assertEqual(docs[0].leading, "")
+        self.assertEqual(len(docs), 2)
+        self.assertEqual(
+            docs[1].body["data"]["script"],
+            "keep-line\n--- # embedded marker\n# keep-comment\n",
+        )
 
     def test_unparseable_section_is_a_blocked_result_not_a_traceback(self) -> None:
         # A ``---`` that carries inline content makes PyYAML raise; the parser

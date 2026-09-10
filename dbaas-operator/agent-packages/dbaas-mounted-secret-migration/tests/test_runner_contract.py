@@ -100,7 +100,6 @@ class RunnerContractTest(unittest.TestCase):
                 "modifiedFiles",
                 "deletedFiles",
                 "unchangedFiles",
-                "warnings",
                 "validation",
             ):
                 self.assertIn(key, report)

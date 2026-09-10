@@ -15,6 +15,9 @@ SKILL_DIR = PACKAGE_ROOT / ".apm" / "skills" / "dbaas-mounted-secret-migration"
 SCRIPTS = SKILL_DIR / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
 
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()

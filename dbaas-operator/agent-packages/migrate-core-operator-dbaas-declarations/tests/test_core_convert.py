@@ -29,7 +29,7 @@ def declaration(settings) -> dict:
 class CoreConvertTest(unittest.TestCase):
     def test_valid_json_settings_are_preserved(self) -> None:
         settings = {"encoding": "UTF8", "timeout": 30.5, "list": ["vector"], "nested": {"a": 1}}
-        resources, warnings, errors = convert.convert_documents(
+        resources, errors = convert.convert_documents(
             [declaration(settings)], context(), source_ref="s.json"
         )
         self.assertEqual(errors, [])
@@ -39,7 +39,7 @@ class CoreConvertTest(unittest.TestCase):
         self.assertEqual(spec["operatorNamespace"], "dbaas-system")
 
     def test_non_finite_setting_is_an_error_with_path(self) -> None:
-        _, _, errors = convert.convert_documents(
+        _, errors = convert.convert_documents(
             [declaration({"timeout": float("inf")})], context(), source_ref="s.json"
         )
         self.assertTrue(any("settings.timeout" in error for error in errors))
@@ -52,7 +52,7 @@ class CoreConvertTest(unittest.TestCase):
             },
             "type": "postgresql",
         }
-        resources, _, _ = convert.convert_documents([item], context(), source_ref="s.json")
+        resources, _ = convert.convert_documents([item], context(), source_ref="s.json")
         classifier = resources[0].body["spec"]["classifier"]
         self.assertEqual(classifier["extraKeys"], {"transactional": True})
         self.assertNotIn("transactional", classifier)
@@ -64,7 +64,7 @@ class CoreConvertTest(unittest.TestCase):
             "services": [{"name": "inventory", "roles": ["readonly"]}],
             "disableGlobalPermissions": "false",
         }
-        resources, _, _ = convert.convert_documents([item], context(), source_ref="s.json")
+        resources, _ = convert.convert_documents([item], context(), source_ref="s.json")
         body = resources[0].body
         self.assertEqual(body["kind"], "DatabaseAccessPolicy")
         self.assertEqual(body["spec"]["operatorNamespace"], "dbaas-system")
@@ -90,7 +90,7 @@ class CoreConvertTest(unittest.TestCase):
                 "services": [{"name": "inventory", "roles": ["readonly"]}],
             },
         ]
-        resources, _, errors = convert.convert_documents(
+        resources, errors = convert.convert_documents(
             documents, context(operator_namespace=expression), source_ref="s.json"
         )
         self.assertEqual(errors, [])
@@ -111,12 +111,12 @@ class CoreConvertTest(unittest.TestCase):
                 "sourceClassifier": {"scope": "service", "microserviceName": "other"},
             },
         }
-        _, _, errors = convert.convert_documents([item], context(), source_ref="s.json")
+        _, errors = convert.convert_documents([item], context(), source_ref="s.json")
         self.assertTrue(any("cross-service clones are invalid" in error for error in errors))
 
     def test_empty_services_list_without_policy_is_an_error(self) -> None:
         item = {"kind": "DbPolicy", "microserviceName": "dca", "services": []}
-        _, _, errors = convert.convert_documents([item], context(), source_ref="s.json")
+        _, errors = convert.convert_documents([item], context(), source_ref="s.json")
         self.assertTrue(any("non-empty services or policy" in error for error in errors))
 
     def test_unknown_service_role_field_is_rejected(self) -> None:
@@ -125,7 +125,7 @@ class CoreConvertTest(unittest.TestCase):
             "microserviceName": "dca",
             "services": [{"name": "inventory", "roles": ["readonly"], "legacyOnly": True}],
         }
-        _, _, errors = convert.convert_documents([item], context(), source_ref="s.json")
+        _, errors = convert.convert_documents([item], context(), source_ref="s.json")
         self.assertTrue(any("unsupported fields: legacyOnly" in error for error in errors))
 
     def test_policy_role_without_default_role_is_rejected(self) -> None:
@@ -134,11 +134,43 @@ class CoreConvertTest(unittest.TestCase):
             "microserviceName": "dca",
             "policy": [{"type": "postgresql"}],
         }
-        _, _, errors = convert.convert_documents([item], context(), source_ref="s.json")
+        _, errors = convert.convert_documents([item], context(), source_ref="s.json")
         self.assertTrue(any("policy[0].defaultRole" in error for error in errors))
 
+    def test_dropped_metadata_field_is_an_error(self) -> None:
+        item = {
+            "kind": "DatabaseDeclaration",
+            "classifierConfig": {"classifier": {"scope": "service", "microserviceName": "dca"}},
+            "type": "postgresql",
+            "metadata": {"name": "svc-db", "annotations": {"note": "keep"}},
+        }
+        _, errors = convert.convert_documents([item], context(), source_ref="s.json")
+        self.assertTrue(any("annotations" in error for error in errors))
+
+    def test_unknown_declaration_field_is_an_error(self) -> None:
+        item = {
+            "kind": "DatabaseDeclaration",
+            "classifierConfig": {"classifier": {"scope": "service", "microserviceName": "dca"}},
+            "type": "postgresql",
+            "legacyOnly": "x",
+        }
+        _, errors = convert.convert_documents([item], context(), source_ref="s.json")
+        self.assertTrue(any("legacyOnly" in error for error in errors))
+
+    def test_source_classifier_owner_is_filled_silently(self) -> None:
+        item = {
+            "kind": "DatabaseDeclaration",
+            "classifierConfig": {"classifier": {"scope": "service", "microserviceName": "dca"}},
+            "type": "postgresql",
+            "initialInstantiation": {"approach": "clone", "sourceClassifier": {"scope": "service"}},
+        }
+        resources, errors = convert.convert_documents([item], context(), source_ref="s.json")
+        self.assertEqual(errors, [])
+        source_classifier = resources[0].body["spec"]["initialInstantiation"]["sourceClassifier"]
+        self.assertEqual(source_classifier["microserviceName"], "dca")
+
     def test_dump_resources_is_stable(self) -> None:
-        resources, _, _ = convert.convert_documents(
+        resources, _ = convert.convert_documents(
             [declaration({"a": 1})], context(), source_ref="s.json"
         )
         body = resources[0].body

@@ -1,6 +1,3 @@
-# GENERATED FILE -- do not edit.
-# Canonical source: agent-packages/migration-runtime/_migration_common.py
-# Regenerate with: python agent-packages/migration-runtime/sync_copies.py
 #!/usr/bin/env python3
 """Shared runner contract for the script-driven DBaaS migration skills.
 

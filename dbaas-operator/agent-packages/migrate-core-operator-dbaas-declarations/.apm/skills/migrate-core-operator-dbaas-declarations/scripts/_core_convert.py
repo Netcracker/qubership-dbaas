@@ -7,8 +7,11 @@ This module carries the tested conversion logic that used to live in
 
 ``convert_documents`` turns a list of parsed legacy documents into a list of
 target resource dictionaries (``InternalDatabase`` / ``DatabaseAccessPolicy``),
-along with non-blocking warnings and blocking errors. Deterministic naming, YAML
-serialization, and source cleanup are the runner's responsibility.
+along with blocking errors -- there is no non-blocking warning path here: a
+condition the converter cannot map losslessly and unambiguously blocks the run
+instead of degrading silently pending an agent's after-the-fact approval.
+Deterministic naming, YAML serialization, and source cleanup are the runner's
+responsibility.
 """
 
 from __future__ import annotations
@@ -81,8 +84,7 @@ def convert_documents(
     ctx: ConversionContext,
     *,
     source_ref: str,
-) -> tuple[list[ConvertedResource], list[str], list[str]]:
-    warnings: list[str] = []
+) -> tuple[list[ConvertedResource], list[str]]:
     errors: list[str] = []
     resources: list[ConvertedResource] = []
     for doc_index, doc in enumerate(documents, start=1):
@@ -91,11 +93,11 @@ def convert_documents(
         for item_index, item in enumerate(as_legacy_items(doc), start=1):
             resources.extend(
                 _convert_item(
-                    item, doc_index, item_index, ctx, warnings, errors,
+                    item, doc_index, item_index, ctx, errors,
                     source_ref=f"{source_ref}#{doc_index - 1}",
                 )
             )
-    return resources, warnings, errors
+    return resources, errors
 
 
 def as_legacy_items(doc: Any) -> list[dict[str, Any]]:
@@ -127,7 +129,6 @@ def _convert_item(
     doc_index: int,
     item_index: int,
     ctx: ConversionContext,
-    warnings: list[str],
     errors: list[str],
     *,
     source_ref: str,
@@ -144,7 +145,7 @@ def _convert_item(
         body = dict(item)
         metadata = dict(item.get("metadata") or {})
 
-    _warn_dropped_metadata(metadata, f"Document {doc_index}", warnings)
+    _reject_dropped_metadata(metadata, f"Document {doc_index}", errors)
 
     if legacy_kind_lower in {"databasedeclaration", ""} and "declarations" in body:
         legacy_kind_lower = "databasedeclaration"
@@ -169,7 +170,7 @@ def _convert_item(
                 )
                 continue
             body_dict, hint = _convert_database_declaration(
-                declaration, metadata, doc_index, declaration_index, multiple, ctx, warnings, errors
+                declaration, metadata, doc_index, declaration_index, multiple, ctx, errors
             )
             out.append(
                 ConvertedResource(
@@ -184,9 +185,7 @@ def _convert_item(
         return out
 
     if legacy_kind_lower == "dbpolicy":
-        body_dict, hint = _convert_db_policy(
-            body, metadata, doc_index, item_index, ctx, warnings, errors
-        )
+        body_dict, hint = _convert_db_policy(body, metadata, doc_index, item_index, ctx, errors)
         return [
             ConvertedResource(
                 body=body_dict,
@@ -200,14 +199,16 @@ def _convert_item(
 
     if kind == "DBaaS":
         # A kind: DBaaS wrapper is unambiguously a legacy DBaaS resource the user
-        # means to migrate. An unsupported subKind is a hard error, not a warning
-        # that can be resolved away and then trip source-cleanup validation.
+        # means to migrate. An unsupported subKind is a hard error.
         errors.append(
             f"Document {doc_index}: kind DBaaS with unsupported subKind "
             f"{sub_kind or '<none>'!r}; this migration converts only DatabaseDeclaration and DbPolicy"
         )
         return []
-    warnings.append(f"Document {doc_index}: skipped unsupported kind {legacy_kind!r}")
+    errors.append(
+        f"Document {doc_index}: unsupported kind {legacy_kind!r}; this migration converts "
+        "only DatabaseDeclaration and DbPolicy -- move unrelated content to its own document"
+    )
     return []
 
 
@@ -218,11 +219,10 @@ def _convert_database_declaration(
     declaration_index: int,
     multiple_declarations: bool,
     ctx: ConversionContext,
-    warnings: list[str],
     errors: list[str],
 ) -> tuple[dict[str, Any], str]:
-    _warn_unknown_fields(
-        declaration, DATABASE_DECLARATION_FIELDS, f"DatabaseDeclaration #{declaration_index}", warnings
+    _reject_unknown_fields(
+        declaration, DATABASE_DECLARATION_FIELDS, f"DatabaseDeclaration #{declaration_index}", errors
     )
     classifier_config = declaration.get("classifierConfig") or {}
     classifier = (
@@ -230,7 +230,7 @@ def _convert_database_declaration(
     )
     if not isinstance(classifier, dict):
         classifier = {}
-        warnings.append(
+        errors.append(
             f"DatabaseDeclaration #{declaration_index}: missing classifierConfig.classifier"
         )
     default_name = database_name_hint(declaration, classifier, doc_index, declaration_index)
@@ -238,9 +238,9 @@ def _convert_database_declaration(
     target_classifier = convert_classifier(classifier, ctx.service_name)
     legacy_namespace = target_classifier.pop("namespace", None)
     if legacy_namespace not in (None, "", namespace):
-        warnings.append(
+        errors.append(
             f"InternalDatabase {default_name} classifier.namespace {legacy_namespace!r} differs "
-            f"from metadata.namespace {namespace!r}; omitted classifier.namespace"
+            f"from metadata.namespace {namespace!r}; the source must not declare both"
         )
 
     spec: dict[str, Any] = {
@@ -297,7 +297,7 @@ def _convert_database_declaration(
             f"InternalDatabase {default_name}: initialInstantiation.approach=clone "
             "requires sourceClassifier"
         )
-    _validate_source_classifier_owner(spec, default_name, warnings, errors)
+    _validate_source_classifier_owner(spec, default_name, errors)
 
     body = {
         "apiVersion": "dbaas.netcracker.com/v1",
@@ -357,10 +357,9 @@ def _convert_db_policy(
     doc_index: int,
     item_index: int,
     ctx: ConversionContext,
-    warnings: list[str],
     errors: list[str],
 ) -> tuple[dict[str, Any], str]:
-    _warn_unknown_fields(body, DB_POLICY_FIELDS, "DatabaseAccessPolicy", warnings)
+    _reject_unknown_fields(body, DB_POLICY_FIELDS, "DatabaseAccessPolicy", errors)
     source_microservice_name = body.get("microserviceName") or _label_value(
         old_metadata, "app.kubernetes.io/instance"
     )
@@ -455,7 +454,7 @@ def _json_child_path(path: str, key: str) -> str:
 
 
 def _validate_source_classifier_owner(
-    spec: dict[str, Any], resource_name_hint: str, warnings: list[str], errors: list[str]
+    spec: dict[str, Any], resource_name_hint: str, errors: list[str]
 ) -> None:
     initial = spec.get("initialInstantiation")
     if not isinstance(initial, dict):
@@ -469,11 +468,10 @@ def _validate_source_classifier_owner(
     target_owner = target_classifier.get("microserviceName")
     source_owner = source_classifier.get("microserviceName")
     if not source_owner and target_owner:
+        # Deterministic and lossless: sourceClassifier.microserviceName has
+        # exactly one correct value once classifier.microserviceName is known, so
+        # filling it needs no approval.
         source_classifier["microserviceName"] = target_owner
-        warnings.append(
-            f"InternalDatabase {resource_name_hint} sourceClassifier.microserviceName was missing; "
-            "filled it from classifier.microserviceName"
-        )
     elif target_owner and source_owner != target_owner:
         errors.append(
             f"InternalDatabase {resource_name_hint} sourceClassifier.microserviceName "
@@ -560,18 +558,24 @@ def _label_value(metadata: dict[str, Any], key: str) -> Any:
     return None
 
 
-def _warn_unknown_fields(
-    source: dict[str, Any], known_fields: set[str], context: str, warnings: list[str]
+def _reject_unknown_fields(
+    source: dict[str, Any], known_fields: set[str], context: str, errors: list[str]
 ) -> None:
     unknown = sorted(set(source) - known_fields)
     if unknown:
-        warnings.append(f"{context} has unsupported fields that were dropped: {', '.join(unknown)}")
+        errors.append(
+            f"{context} has fields this migration does not carry over: {', '.join(unknown)}; "
+            "remove them from the source or drop them from the declaration before migrating"
+        )
 
 
-def _warn_dropped_metadata(metadata: dict[str, Any], context: str, warnings: list[str]) -> None:
+def _reject_dropped_metadata(metadata: dict[str, Any], context: str, errors: list[str]) -> None:
     dropped = sorted(set(metadata) - PRESERVED_METADATA_FIELDS)
     if dropped:
-        warnings.append(f"{context} metadata fields were dropped: {', '.join(dropped)}")
+        errors.append(
+            f"{context} metadata carries fields this migration does not preserve: "
+            f"{', '.join(dropped)}; remove them from the source before migrating"
+        )
 
 
 def sanitize_name(value: str) -> str:
