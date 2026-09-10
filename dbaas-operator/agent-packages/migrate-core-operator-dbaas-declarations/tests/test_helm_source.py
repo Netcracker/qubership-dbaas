@@ -17,7 +17,7 @@ sys.path.insert(
     ),
 )
 
-from _helm_source import is_document_separator, parse_source  # noqa: E402
+from _helm_source import UnsupportedHelm, is_document_separator, parse_source  # noqa: E402
 
 SEPARATORS = [
     "---",
@@ -108,6 +108,30 @@ class ParsedDocumentTextTest(unittest.TestCase):
     def test_file_starting_with_a_separator_has_no_preamble(self) -> None:
         docs = parse_source("---\nkind: DatabaseDeclaration\n", filename="s.yaml")
         self.assertEqual(docs[0].leading, "")
+
+    def test_unparseable_section_is_a_blocked_result_not_a_traceback(self) -> None:
+        # A ``---`` that carries inline content makes PyYAML raise; the parser
+        # error is surfaced verbatim rather than misattributed.
+        source = "kind: DatabaseDeclaration\n--- kind: ConfigMap\n"
+        with self.assertRaises(UnsupportedHelm) as ctx:
+            parse_source(source, filename="s.yaml")
+        message = str(ctx.exception)
+        self.assertIn("s.yaml:1: could not parse this section as YAML", message)
+        self.assertIn("mapping values are not allowed here", message)
+
+    def test_second_document_after_an_end_marker_is_rejected(self) -> None:
+        # ``...`` ends a document mid-region without a whole-line ``---``, so the
+        # region can no longer be mapped to one verbatim block. Either the region
+        # splits into two bodies or PyYAML refuses it; both give a blocked result.
+        source = "kind: DatabaseDeclaration\ntype: postgresql\n...\nkind: ConfigMap\n"
+        with self.assertRaises(UnsupportedHelm) as ctx:
+            parse_source(source, filename="s.yaml")
+        message = str(ctx.exception)
+        self.assertTrue(
+            "more than one YAML document" in message
+            or "could not parse this section as YAML" in message,
+            message,
+        )
 
 
 if __name__ == "__main__":

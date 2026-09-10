@@ -587,9 +587,9 @@ def sanitize_name(value: str) -> str:
 # Canonical YAML serialization
 # --------------------------------------------------------------------------- #
 
-try:  # pragma: no cover - optional dependency, present in CI
+try:  # common.run() checks this before any work and reports it as a blocked result.
     import yaml
-except Exception:  # noqa: BLE001
+except ImportError:  # pragma: no cover - exercised only without the pinned dependency
     yaml = None  # type: ignore[assignment]
 
 
@@ -597,66 +597,18 @@ def dump_resources(resources: list[dict[str, Any]]) -> str:
     """Serialize resources as a stable multi-document YAML string.
 
     One document per resource, keys in insertion order, no line wrapping, so a
-    repeated run is byte-for-byte identical.
+    repeated run is byte-for-byte identical. The dependency check in
+    ``common.run`` guarantees PyYAML is importable before this runs.
     """
 
     chunks: list[str] = []
     for resource in resources:
-        if yaml is not None:
-            body = yaml.safe_dump(
-                resource,
-                sort_keys=False,
-                allow_unicode=False,
-                default_flow_style=False,
-                width=1_000_000,
-            )
-        else:
-            body = _dump_yaml(resource)
+        body = yaml.safe_dump(
+            resource,
+            sort_keys=False,
+            allow_unicode=False,
+            default_flow_style=False,
+            width=1_000_000,
+        )
         chunks.append("---\n" + body.rstrip("\n") + "\n")
     return "".join(chunks)
-
-
-def _dump_yaml(value: Any, indent: int = 0) -> str:
-    spaces = " " * indent
-    if isinstance(value, dict):
-        lines: list[str] = []
-        for key, nested in value.items():
-            formatted_key = json.dumps(str(key))
-            if isinstance(nested, (dict, list)) and nested:
-                lines.append(f"{spaces}{formatted_key}:")
-                lines.append(_dump_yaml(nested, indent + 2).rstrip("\n"))
-            elif isinstance(nested, (dict, list)):
-                lines.append(f"{spaces}{formatted_key}: {'{}' if isinstance(nested, dict) else '[]'}")
-            else:
-                lines.append(f"{spaces}{formatted_key}: {_format_scalar(nested)}")
-        return "\n".join(lines) + "\n"
-    if isinstance(value, list):
-        lines = []
-        for item in value:
-            if isinstance(item, (dict, list)) and item:
-                lines.append(f"{spaces}-")
-                lines.append(_dump_yaml(item, indent + 2).rstrip("\n"))
-            elif isinstance(item, (dict, list)):
-                lines.append(f"{spaces}- {'{}' if isinstance(item, dict) else '[]'}")
-            else:
-                lines.append(f"{spaces}- {_format_scalar(item)}")
-        return "\n".join(lines) + "\n"
-    return f"{spaces}{_format_scalar(value)}\n"
-
-
-def _format_scalar(value: Any) -> str:
-    if value is True:
-        return "true"
-    if value is False:
-        return "false"
-    if value is None:
-        return "null"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if math.isnan(value):
-            return ".nan"
-        if math.isinf(value):
-            return ".inf" if value > 0 else "-.inf"
-        return repr(value)
-    return json.dumps(str(value))

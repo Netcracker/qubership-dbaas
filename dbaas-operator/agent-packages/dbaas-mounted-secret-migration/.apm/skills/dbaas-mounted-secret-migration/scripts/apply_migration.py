@@ -208,7 +208,7 @@ class MountedSecretEngine:
 
         output_rel = _output_path(root, root_kind, decisions.get("outputFile"))
         content = _render(resources)
-        _guard_collision(repo_root, output_rel, ownership, content)
+        common.guard_output_collision(repo_root, output_rel, ownership, content)
         changes.set_content(output_rel, content)
 
         _patch_workloads(repo_root, root, datasources, raw_claims, name_bundle, changes)
@@ -599,28 +599,6 @@ def _patch_workloads(
         except WorkloadError as exc:
             raise common.unsupported("workload adapter blocked", exc.entries) from None
         changes.set_content(full_rel, patched)
-
-
-def _guard_collision(
-    repo_root: Path, output_rel: str, ownership: dict[str, Any], rendered: str
-) -> None:
-    target = common.resolve_within(repo_root, output_rel, what="output path")
-    if not target.exists():
-        return
-    if common.sha256_file(target) == common.sha256_bytes(rendered.encode("utf-8")):
-        return
-    declared = ownership.get(output_rel)
-    if not isinstance(declared, dict) or "sha256" not in declared:
-        raise common.unsupported(
-            "output file collision",
-            [f"{output_rel}: file exists and is not declared in decisions.outputOwnership"],
-        )
-    if common.sha256_file(target) != declared["sha256"]:
-        raise common.MigrationError(
-            common.EXIT_PRECONDITION,
-            "owned output file changed since discovery",
-            [f"{output_rel}: sha256 does not match the declared ownership hash"],
-        )
 
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ from _helm_source import UnsupportedHelm, parse_source
 MIGRATION_KIND = "core-declarations"
 DEFAULT_HELM_OUTPUT = "templates/dbaas-operator-resources.yaml"
 DEFAULT_PLAIN_OUTPUT = "dbaas-operator-resources.yaml"
-# A whole-line Helm guard action, as emitted by `_render_file` / `_reserialize_yaml`.
+# A whole-line Helm guard action, as emitted by `_render_file`.
 # Only these exact standalone lines are stripped for validation -- never an
 # arbitrary line that merely starts with "{{" (which could be block-scalar text).
 _GUARD_LINE = re.compile(r"^\s*\{\{-?\s*(if|else|end)\b.*\}\}\s*$")
@@ -303,7 +303,7 @@ class CoreEngine:
             )
             entries.sort(key=lambda item: _sort_key(item[0]))
             content = _render_file(entries)
-            _guard_collision(repo_root, output_rel, ownership, content)
+            common.guard_output_collision(repo_root, output_rel, ownership, content)
             changes.set_content(output_rel, content)
 
         for rel, text in source_rewrites.items():
@@ -471,19 +471,6 @@ def _reject_json_constant(value: str) -> Any:
     raise ValueError(f"numeric constant {value!r} is not valid JSON")
 
 
-_DOC_MARKER = "---\n"
-
-
-def _strip_doc_marker(dumped: str) -> str:
-    """Remove exactly the leading ``---\\n`` serializer prefix.
-
-    A character-set strip (``lstrip('-\\n')``) also eats a leading ``-`` list
-    marker from a kept top-level YAML list, corrupting the rewritten source.
-    """
-
-    return dumped[len(_DOC_MARKER):] if dumped.startswith(_DOC_MARKER) else dumped
-
-
 def _probe_rewritten_yaml(rel: str, text: str) -> str:
     """Never commit a corrupt rewrite: reparse the kept content (guards removed)."""
 
@@ -504,11 +491,9 @@ def _remaining_yaml(
     """The source text with only the migrated documents removed, or ``None`` when
     nothing is left.
 
-    ``parse_source`` already carries the exact original text of each document, so
-    an unmigrated document is written back verbatim -- separator, guard lines,
-    comments and quoting intact -- with no re-serialization. The reserialize path
-    is a fallback for the rare inline ``--- key: value`` shape, where one ``---``
-    region holds more than one document and cannot be excised by text.
+    ``parse_source`` carries the exact original text of each document, so an
+    unmigrated document is written back verbatim -- separator, guard lines,
+    comments and quoting intact -- with no re-serialization.
     """
 
     if not parsed or all(migrated):
@@ -516,33 +501,14 @@ def _remaining_yaml(
     if not any(migrated):
         return text  # nothing to remove; leave the file untouched
 
-    shared_region = any(
-        count > 1 for count in collections.Counter(doc.region_index for doc in parsed).values()
-    )
-    if shared_region:
-        return _reserialize_yaml(rel, [d for d, done in zip(parsed, migrated) if not done])
-
     kept = "".join(doc.text for doc, done in zip(parsed, migrated) if not done)
     if migrated[0] and parsed[0].leading:
         # The first document is removed but a later one is kept: its text carried
         # the file's leading comment preamble, so put that back.
         kept = parsed[0].leading + kept
-    if not kept.strip():
-        return _reserialize_yaml(rel, [d for d, done in zip(parsed, migrated) if not done])
     if not kept.endswith("\n"):
         kept += "\n"
     return _probe_rewritten_yaml(rel, kept)
-
-
-def _reserialize_yaml(rel: str, entries: list[Any]) -> str:
-    chunks: list[str] = []
-    for entry in entries:
-        body = _strip_doc_marker(convert.dump_resources([entry.body])).rstrip("\n")
-        if entry.guard:
-            chunks.append(f"{_DOC_MARKER}{entry.guard}\n{body}\n{{{{- end }}}}\n")
-        else:
-            chunks.append(f"{_DOC_MARKER}{body}\n")
-    return _probe_rewritten_yaml(rel, "".join(chunks))
 
 
 def _override_keys(resource: convert.ConvertedResource) -> list[str]:
@@ -592,29 +558,6 @@ def _output_path(root: str, root_kind: str, override: Any) -> str:
     else:
         rel = DEFAULT_PLAIN_OUTPUT
     return common.join_rel(root, rel)
-
-
-def _guard_collision(
-    repo_root: Path, output_rel: str, ownership: dict[str, Any], rendered: str
-) -> None:
-    target = common.resolve_within(repo_root, output_rel, what="output path")
-    if not target.exists():
-        return
-    actual = common.sha256_file(target)
-    if actual == common.sha256_bytes(rendered.encode("utf-8")):
-        return  # already the generated content; a repeated run is idempotent
-    declared = ownership.get(output_rel)
-    if not isinstance(declared, dict) or "sha256" not in declared:
-        raise common.unsupported(
-            "output file collision",
-            [f"{output_rel}: file exists and is not declared in decisions.outputOwnership"],
-        )
-    if actual != declared["sha256"]:
-        raise common.MigrationError(
-            common.EXIT_PRECONDITION,
-            "owned output file changed since discovery",
-            [f"{output_rel}: sha256 {actual} does not match declared {declared['sha256']}"],
-        )
 
 
 def _sort_key(body: dict[str, Any]) -> tuple[str, str, str]:

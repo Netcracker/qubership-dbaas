@@ -303,6 +303,37 @@ def resolve_within(repo_root: Path, relative: str, *, what: str = "path") -> Pat
     return candidate
 
 
+def guard_output_collision(
+    repo_root: Path, output_rel: str, ownership: dict[str, Any], rendered: str
+) -> None:
+    """Refuse to overwrite an output file the plan did not account for.
+
+    A repeated run is idempotent: if the file already holds exactly ``rendered``,
+    return. Otherwise the file must be declared in ``decisions.outputOwnership``
+    with the sha256 discovery recorded, and still match that hash -- a file that
+    changed underneath the plan is a stale-plan precondition failure.
+    """
+
+    target = resolve_within(repo_root, output_rel, what="output path")
+    if not target.exists():
+        return
+    actual = sha256_file(target)
+    if actual == sha256_bytes(rendered.encode("utf-8")):
+        return
+    declared = ownership.get(output_rel)
+    if not isinstance(declared, dict) or "sha256" not in declared:
+        raise unsupported(
+            "output file collision",
+            [f"{output_rel}: file exists and is not declared in decisions.outputOwnership"],
+        )
+    if actual != declared["sha256"]:
+        raise MigrationError(
+            EXIT_PRECONDITION,
+            "owned output file changed since discovery",
+            [f"{output_rel}: sha256 {actual} does not match declared {declared['sha256']}"],
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Deterministic DNS-1123 label helper (shared by both packages)
 # --------------------------------------------------------------------------- #

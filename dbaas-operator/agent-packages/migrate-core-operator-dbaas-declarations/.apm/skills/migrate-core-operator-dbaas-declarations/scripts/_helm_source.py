@@ -65,11 +65,8 @@ class ParsedDocument:
     # The exact original source of this document -- its leading ``---`` separator
     # (if any), any whole-document Helm guard lines, comments and blank lines
     # included. A retained document is written back from this verbatim; nothing is
-    # re-serialized. ``region_index`` groups documents that share one ``---``
-    # region (the rare inline ``--- key: value`` shape), which cannot be excised
-    # by text.
+    # re-serialized.
     text: str = ""
-    region_index: int = 0
     # Only set on the first document: the file's leading comment / blank-line
     # preamble. It is also a prefix of ``text``; the runner prepends it to the
     # output when the first document is removed but a later one is kept, so a
@@ -192,7 +189,7 @@ def parse_source(text: str, *, filename: str) -> list[ParsedDocument]:
     documents: list[ParsedDocument] = []
     pending_prefix = ""  # comment-only / empty regions, folded onto the next document
     line_no = 1
-    for region_index, (raw_region, san_region) in enumerate(zip(raw_regions, san_regions)):
+    for raw_region, san_region in zip(raw_regions, san_regions):
         region_text = "".join(raw_region)
         content_lines = [sl for sl, _ in san_region if _is_yaml_content(sl)]
         if not content_lines:
@@ -201,30 +198,46 @@ def parse_source(text: str, *, filename: str) -> list[ParsedDocument]:
             continue
 
         san_text = "\n".join(sl for sl, _ in san_region) + "\n"
-        bodies = [body for body in yaml.safe_load_all(san_text) if body is not None]
+        try:
+            bodies = [body for body in yaml.safe_load_all(san_text) if body is not None]
+        except yaml.YAMLError as exc:
+            # Surface a parse failure as a blocked result rather than an uncaught
+            # traceback. A common cause is a `---` separator that carries inline
+            # document content, but the message reports the parser error itself
+            # so ordinary malformed YAML is not misattributed.
+            detail = " ".join(str(exc).split())
+            raise UnsupportedHelm(
+                [f"{filename}:{line_no}: could not parse this section as YAML: {detail}"]
+            ) from None
         if not bodies:
             pending_prefix += region_text
             line_no += len(raw_region)
             continue
+        if len(bodies) > 1:
+            # PyYAML found more than one document between two whole-line ``---``
+            # separators -- an inline ``--- key: value`` or a ``...`` end marker.
+            # The region's verbatim text can no longer be mapped to one document,
+            # so reject it rather than reformat.
+            raise UnsupportedHelm(
+                [
+                    f"{filename}:{line_no}: this section holds more than one YAML document; "
+                    "each document needs its own whole-line `---` separator"
+                ]
+            )
 
         # The guard of a document is the guard of its first real YAML line, so a
         # comment or blank line before a whole-document {{- if }} does not make it
         # look unguarded.
         guard = next((g for sl, g in san_region if _is_yaml_content(sl)), None)
-        combined = pending_prefix + region_text
-        pending_prefix = ""
-        source_line = line_no
-        for body in bodies:
-            documents.append(
-                ParsedDocument(
-                    body=body,
-                    guard=guard,
-                    source_line=source_line,
-                    text=combined,
-                    region_index=region_index,
-                )
+        documents.append(
+            ParsedDocument(
+                body=bodies[0],
+                guard=guard,
+                source_line=line_no,
+                text=pending_prefix + region_text,
             )
-            combined = ""  # a multi-body region's text belongs to its first entry
+        )
+        pending_prefix = ""
         line_no += len(raw_region)
 
     if pending_prefix and documents:

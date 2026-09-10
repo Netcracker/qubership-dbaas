@@ -1,8 +1,10 @@
-"""Black-box contract assertions shared by every script-driven migration runner.
+"""Black-box contract assertions for the core-declarations runner.
 
-The mounted-secret package carries the same file. A repository-level check keeps
-the two copies identical so the CLI, plan envelope, result envelope, and exit
-codes cannot drift.
+The mounted-secret package carries a parallel contract test. The two files are
+not kept byte-identical -- each adds cases for its own package -- but both assert
+the same shared CLI, plan envelope, result envelope, and exit codes so those
+cannot drift between runners. Only ``_migration_common.py`` is drift-enforced, by
+``test_shared_contract_drift``.
 """
 
 from __future__ import annotations
