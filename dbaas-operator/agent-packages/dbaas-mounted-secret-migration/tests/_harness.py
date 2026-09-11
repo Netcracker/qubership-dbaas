@@ -1,0 +1,74 @@
+"""Shared helpers for the mounted-secret runner tests."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+from typing import Any
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+SKILL_DIR = PACKAGE_ROOT / ".apm" / "skills" / "dbaas-mounted-secret-migration"
+SCRIPTS = SKILL_DIR / "scripts"
+RUNNER = SCRIPTS / "apply_migration.py"
+
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def run_migration(repo_root: Path, plan: dict[str, Any], mode: str, tmp: Path) -> tuple[int, dict[str, Any]]:
+    plan_path = tmp / "plan.json"
+    report_path = tmp / "report.json"
+    plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(RUNNER),
+            "--repo-root",
+            str(repo_root),
+            "--plan",
+            str(plan_path),
+            f"--{mode}",
+            "--report",
+            str(report_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    # A helm root cannot be certified without `helm`, and the runner reports that
+    # as a blocked result with exit 4. Skip -- rather than fail -- the scenarios
+    # that depend on a successful render when `helm` is not installed, so the
+    # suite still runs on a machine (or CI image) without it.
+    if result.returncode == 4 and "helm is not on PATH" in (result.stderr or ""):
+        raise unittest.SkipTest(
+            "helm is required for this helm-root scenario and is not on PATH"
+        )
+
+    report: dict[str, Any] = {}
+    if report_path.exists():
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["__stderr"] = result.stderr
+    return result.returncode, report
+
+
+def targets_for(*relatives: str) -> list[dict[str, Any]]:
+    return [{"path": relative} for relative in relatives]
+
+
+def preconditions_for(repo_root: Path, *relatives: str) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for relative in relatives:
+        path = repo_root / relative
+        if path.is_file():
+            entries.append({"path": relative, "sha256": sha256(path)})
+        else:
+            entries.append({"path": relative, "absent": True})
+    return entries

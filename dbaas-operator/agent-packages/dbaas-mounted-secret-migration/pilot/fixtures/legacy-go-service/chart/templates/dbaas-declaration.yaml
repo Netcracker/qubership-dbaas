@@ -1,0 +1,13 @@
+apiVersion: core.qubership.org/v1
+kind: DBaaS
+subKind: DatabaseDeclaration
+metadata:
+  name: orders-db
+  namespace: {{ .Values.NAMESPACE }}
+spec:
+  classifierConfig:
+    classifier:
+      microserviceName: {{ .Values.SERVICE_NAME }}
+      namespace: {{ .Values.NAMESPACE }}
+      scope: service
+  type: postgresql

@@ -40,7 +40,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -95,7 +95,7 @@ metadata:
   name: db-declaration-1
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -143,6 +143,9 @@ spec:
   type: postgresql
 ```
 
+This block uses the plain-manifest form of `operatorNamespace`. A chart-local conversion uses the
+`API_DBAAS_ADDRESS` expression shown in the other examples instead.
+
 ## JSON DbPolicy to DatabaseAccessPolicy
 
 Before:
@@ -177,7 +180,7 @@ metadata:
   name: database-access-policy
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
   microserviceName: "{{ .Values.SERVICE_NAME }}"
   services:
     - name: externalService
@@ -239,7 +242,7 @@ metadata:
   name: transactional-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -252,7 +255,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"

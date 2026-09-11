@@ -17,8 +17,9 @@ Old generic YAML CR:
 - `kind: DBaaS`
 - `subKind: DatabaseDeclaration` or `subKind: DbPolicy`
 - declaration body under `spec`
-- Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions or include lines under
-  labels. Quote template scalar values or use the converter's Helm fallback, then review the output.
+- Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions. The runner quotes a fully
+  templated scalar automatically and preserves a `{{- if <pipeline> }} ... {{- end }}` guard around a single resource.
+  Any other standalone template action blocks the run and reports its source line.
 
 Target CRDs:
 
@@ -34,7 +35,7 @@ Each old database declaration becomes one `InternalDatabase`.
 | --- | --- | --- |
 | `declarations[]` | one CR per item | split the list; append the item index when a multi-item wrapper has one parent name |
 | `kind: DatabaseDeclaration` | `kind: InternalDatabase` | remove old `kind` and `subKind` |
-| operator assignment | `spec.operatorNamespace` | required; supply the namespace of the dbaas-operator instance explicitly |
+| operator assignment | `spec.operatorNamespace` | required; chart-local layout uses the `API_DBAAS_ADDRESS`-derived Helm expression, a plain manifest uses the concrete dbaas-operator namespace |
 | `spec.classifierConfig.classifier` or `classifierConfig.classifier` | `spec.classifier` | unwrap `classifierConfig` |
 | `classifier.microserviceName` | `spec.classifier.microserviceName` | preserve Helm templates |
 | `classifier.scope` | `spec.classifier.scope` | required |
@@ -61,7 +62,7 @@ Each old DB policy becomes one `DatabaseAccessPolicy`.
 | Old field | New field | Notes |
 | --- | --- | --- |
 | `kind: DbPolicy` or `kind: dbPolicy` | `kind: DatabaseAccessPolicy` | remove old `kind` and `subKind` |
-| operator assignment | `spec.operatorNamespace` | required; supply the namespace of the dbaas-operator instance explicitly |
+| operator assignment | `spec.operatorNamespace` | required; chart-local layout uses the `API_DBAAS_ADDRESS`-derived Helm expression, a plain manifest uses the concrete dbaas-operator namespace |
 | `services` | `spec.services` | preserve list order |
 | `policy` | `spec.policy` | preserve roles and database types |
 | `disableGlobalPermissions` | `spec.disableGlobalPermissions` | coerce string `"false"`/`"true"` to boolean when safe |
@@ -92,10 +93,23 @@ namespace: "{{ .Values.NAMESPACE }}"
 
 Do not copy status blocks. Do not copy old generic CR labels unless the target deployment tooling still requires them.
 
+## Operator assignment
+
+`spec.operatorNamespace` is required and immutable. Its value depends on the output layout:
+
+- **Chart-local manifests** use this expression:
+
+  ```yaml
+  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
+  ```
+
+- **Plain manifests** carry the literal namespace.
+
 ## Validation checklist
 
 - Ensure no output manifest has `kind: DBaaS`.
-- Ensure every output manifest has the explicit, correct `spec.operatorNamespace`; do not assume it equals the
+- Ensure every output manifest has the correct `spec.operatorNamespace`: the `API_DBAAS_ADDRESS`-derived expression
+  for a chart-local layout, or the concrete operator namespace for a plain manifest. Do not assume it equals the
   workload namespace.
 - Ensure no `InternalDatabase` has `spec.classifierConfig`.
 - Omit target `spec.classifier.namespace`; the operator derives it from `metadata.namespace`.

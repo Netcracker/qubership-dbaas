@@ -1,0 +1,4 @@
+# Deployment-time values the service is installed with.
+NAMESPACE: orders
+SERVICE_NAME: orders
+replicaCount: 2

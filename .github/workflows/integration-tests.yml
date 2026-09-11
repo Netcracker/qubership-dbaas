@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      packages: read
 
     steps:
       - name: Wait for other workflows on the current PR
@@ -58,7 +59,7 @@ jobs:
           EOF
 
       - name: Set up Kind
-        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           # kind v0.32.0 is the first release that generates kubeadm v1beta4
           # config; the admission-plugin patch in kind-config.yaml uses its list-form extraArgs.
@@ -70,7 +71,7 @@ jobs:
         uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
 
       - name: Set up JDK 25
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -193,6 +194,7 @@ jobs:
       - name: Resolve image tags
         env:
           SOURCE_REF: ${{ github.head_ref || github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SAFE_REF="${SOURCE_REF//\//-}"
           if [ "$SAFE_REF" = "main" ]; then
@@ -200,9 +202,37 @@ jobs:
           else
             IMAGE_TAG="${SAFE_REF}-snapshot"
           fi
-          echo "Using image tag: $IMAGE_TAG"
-          echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
-          echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "Calculated image tag: $IMAGE_TAG"
+
+          image_tag_exists() {
+            local package="$1" tag="$2"
+            local token
+            token=$(curl -fsSL \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "https://ghcr.io/token?scope=repository:netcracker/$package:pull" \
+              | jq -r .token)
+            curl -fsL -o /dev/null \
+              -H "Authorization: Bearer $token" \
+              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+              "https://ghcr.io/v2/netcracker/$package/manifests/$tag"
+          }
+
+          if image_tag_exists qubership-dbaas "$IMAGE_TAG"; then
+            TAG="$IMAGE_TAG"
+          else
+            echo "::warning::Aggregator image tag $IMAGE_TAG not found; falling back to latest"
+            TAG=latest
+          fi
+
+          if image_tag_exists qubership-dbaas-operator "$IMAGE_TAG"; then
+            DBAAS_OPERATOR_TAG="$IMAGE_TAG"
+          else
+            echo "::warning::Operator image tag $IMAGE_TAG not found; falling back to latest"
+            DBAAS_OPERATOR_TAG=latest
+          fi
+
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "DBAAS_OPERATOR_TAG=$DBAAS_OPERATOR_TAG" >> "$GITHUB_ENV"
 
       - name: Deploy DBaaS
         working-directory: bootstrap

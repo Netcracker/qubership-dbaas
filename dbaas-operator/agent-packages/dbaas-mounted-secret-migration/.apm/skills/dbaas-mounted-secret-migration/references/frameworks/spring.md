@@ -75,8 +75,11 @@ identities unless they construct another classifier.
 
 When the chart already contains `kind: DBaaS` / `subKind: DatabaseDeclaration`, use it as evidence,
 not as the sole source of truth. Compare its classifier, type, settings, `versioningConfig`, and
-`initialInstantiation` with the Java request. Convert only after both agree. Preserve explicit
-versioning and clone behavior in the new `InternalDatabase`; do not silently remove it.
+`initialInstantiation` with the Java request. Convert only after both agree. `InternalDatabase` has
+no field for versioning or clone behavior, and the mounted-secret runner will not treat a
+declaration that sets either as superseded -- it blocks instead of silently dropping the setting
+(see `references/contracts.md`). Do not migrate that datasource automatically; flag it for a manual
+follow-up instead of discarding the requirement.
 
 `InternalDatabase.spec.settings` accepts JSON values. Preserve strings, numbers, booleans, null,
 arrays, and nested objects from the legacy declaration or Java settings object. Never stringify
