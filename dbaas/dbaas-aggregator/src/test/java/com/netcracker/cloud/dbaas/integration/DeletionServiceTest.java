@@ -381,6 +381,89 @@ class DeletionServiceTest {
     }
 
     @Test
+    void testMarkAndDropRegistriesSafe_dropsAllRegistries() {
+        Database database1 = new DatabaseBuilder()
+                .registry()
+                .build();
+        Database database2 = new DatabaseBuilder()
+                .classifier(MICROSERVICE_NAME, "another")
+                .registry()
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(database1.getDatabaseRegistry().getFirst());
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(database2.getDatabaseRegistry().getFirst());
+        assertEquals(2, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
+
+        long dropped = deletionService.markAndDropRegistriesSafe(TEST_NS,
+                List.of(database1.getDatabaseRegistry().getFirst(), database2.getDatabaseRegistry().getFirst()));
+
+        assertEquals(2, dropped);
+        assertEquals(0, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
+        // The sweep drops a freshly re-read copy whose classifier already carries
+        // MARKED_FOR_DROP, so match by registry id rather than by equals.
+        verify(dbaasAdapterRESTClient).dropDatabase(argThat(r -> r.getId().equals(database1.getDatabaseRegistry().getFirst().getId())));
+        verify(dbaasAdapterRESTClient).dropDatabase(argThat(r -> r.getId().equals(database2.getDatabaseRegistry().getFirst().getId())));
+    }
+
+    @Test
+    void testMarkAndDropRegistriesSafe_skipsConcurrentlyDeletedRegistry() {
+        Database survivor = new DatabaseBuilder()
+                .registry()
+                .build();
+        Database deleted = new DatabaseBuilder()
+                .classifier(MICROSERVICE_NAME, "another")
+                .registry()
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(survivor.getDatabaseRegistry().getFirst());
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(deleted.getDatabaseRegistry().getFirst());
+        // The sweep list is collected first; a concurrent request then deletes one
+        // of the databases before the sweep reaches it.
+        List<DatabaseRegistry> staleSweepList =
+                List.of(survivor.getDatabaseRegistry().getFirst(), deleted.getDatabaseRegistry().getFirst());
+        databaseRegistryDbaasRepository.delete(deleted.getDatabaseRegistry().getFirst());
+        assertEquals(1, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
+
+        long dropped = deletionService.markAndDropRegistriesSafe(TEST_NS, staleSweepList);
+
+        assertEquals(1, dropped, "only the surviving registry is dropped");
+        assertEquals(0, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
+        verify(dbaasAdapterRESTClient).dropDatabase(argThat(r -> r.getId().equals(survivor.getDatabaseRegistry().getFirst().getId())));
+        verify(dbaasAdapterRESTClient, never()).dropDatabase(argThat(r -> r.getId().equals(deleted.getDatabaseRegistry().getFirst().getId())));
+    }
+
+    @Test
+    void testMarkAndDropRegistriesSafe_staleListInsideCallerTransaction() {
+        Database survivor = new DatabaseBuilder()
+                .registry()
+                .build();
+        Database deleted = new DatabaseBuilder()
+                .classifier(MICROSERVICE_NAME, "another")
+                .registry()
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(survivor.getDatabaseRegistry().getFirst());
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(deleted.getDatabaseRegistry().getFirst());
+        databaseRegistryDbaasRepository.delete(deleted.getDatabaseRegistry().getFirst());
+
+        // The restore flow runs the sweep inside a long transaction; the sweep must
+        // neither abort it nor poison its persistence context, and work committed
+        // after the sweep must survive.
+        QuarkusTransaction.requiringNew().run(() -> {
+            long dropped = deletionService.markAndDropRegistriesSafe(TEST_NS,
+                    List.of(survivor.getDatabaseRegistry().getFirst(), deleted.getDatabaseRegistry().getFirst()));
+            assertEquals(1, dropped);
+
+            Database restored = new DatabaseBuilder()
+                    .classifier(MICROSERVICE_NAME, "restored")
+                    .registry()
+                    .build();
+            databaseRegistryDbaasRepository.saveAll(restored.getDatabaseRegistry());
+        });
+
+        List<DatabaseRegistry> remaining = databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS);
+        assertEquals(1, remaining.size(), "the registry saved after the sweep must be committed");
+        assertEquals("restored", remaining.getFirst().getClassifier().get(MICROSERVICE_NAME));
+    }
+
+    @Test
     void testMarkAsOrphan() {
         Database database = new DatabaseBuilder()
                 .registry()
