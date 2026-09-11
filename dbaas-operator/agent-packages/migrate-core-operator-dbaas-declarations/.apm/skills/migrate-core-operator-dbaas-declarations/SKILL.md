@@ -35,9 +35,10 @@ a hand edit.
    `declarations/` or `templates/` directories.
 2. For each source, record its repository-relative path, its owning chart or plain-manifest root, and
    whether that root is `helm` or `plain`. Give one physical root one spelling: `chart` and `chart/`
-   are the same root and must not appear as two entries with different `rootKind` or output files.
-   One plan migrates one root: if the repository has more than one chart or manifest root to migrate,
-   write one plan (and one `--apply` invocation) per root, never all of them in one plan's `sources`.
+   are the same root and must not appear as two entries with different `rootKind` or output files. A
+   plan may cover more than one root -- the runner writes one output file per root and scopes the
+   duplicate-resource check to each root, so the same generated name in two different roots is not a
+   collision -- but never mixes `helm` and `plain` roots in one plan.
 3. Read [references/mapping.md](references/mapping.md) and [references/examples.md](references/examples.md)
    to understand what the script will produce.
 4. Resolve every decision the script needs (see below). Inspect the target repository's current
@@ -66,10 +67,16 @@ Record these under `decisions` in the plan:
 - **`resourceNames`**: an explicit target name for a resource whose derived name you want to
   override. A single-declaration document is keyed `<source-path>#<document-index>`; a declaration
   inside a multi-declaration wrapper is keyed `<source-path>#<document-index>#<item-index>` so one
-  override cannot fan out to every child. A key that matches nothing blocks the run. Every derived
-  name is passed through the shared 63-character DNS-label helper.
-- **`outputFile`**: only when the plan's one root must not use the canonical output filename. The
-  runner blocks if the resulting output path equals one of the migration sources.
+  override cannot fan out to every child. A key that matches nothing blocks the run. A derived name
+  is passed through the shared 63-character DNS-label helper and must come out with no Helm
+  expression in it -- a templated name (whether from an override or from `database_name_hint` once
+  any identity field is templated, e.g. a templated `classifier.scope`) cannot be checked for a
+  valid DNS-1123 label without actually rendering the chart, and this runner does not do that, so
+  it blocks and names the source instead of migrating something `kubectl` later rejects. Pin a
+  concrete, non-templated override instead.
+- **`outputFileByRoot`**: only for a root that must not use the canonical output filename, keyed by
+  the normalized root. The runner blocks if the resulting output path equals one of the migration
+  sources.
 - **`outputOwnership`**: the current SHA-256 of any existing output file this migration must
   overwrite, so a collision with unrelated content still blocks.
 

@@ -25,12 +25,12 @@ Plan (`migrationKind: "core-declarations"`) shape::
         "serviceName": "{{ .Values.SERVICE_NAME }}",
         "serviceNameExplicit": false,
         "namespace": "{{ .Values.NAMESPACE }}",
-        "outputFile": "templates/dbaas-operator-resources.yaml",
+        "outputFileByRoot": {"chart": "templates/dbaas-operator-resources.yaml"},
         "resourceNames": {"chart/templates/dbaas-configuration.json#0#1": "configs-db"},
         "outputOwnership": {"chart/templates/dbaas-operator-resources.yaml": {"sha256": "<hash>"}}
       },
       "targets": [
-        {"path": "chart/templates/dbaas-operator-resources.yaml", "ownership": "create"}
+        {"path": "chart/templates/dbaas-operator-resources.yaml"}
       ]
     }
 """
@@ -60,7 +60,7 @@ _DECISION_KEYS = {
     "serviceName",
     "serviceNameExplicit",
     "namespace",
-    "outputFile",
+    "outputFileByRoot",
     "resourceNames",
     "outputOwnership",
 }
@@ -75,9 +75,12 @@ class CoreEngine:
     # ----------------------------------------------------------------- #
 
     def affected_roots(self, repo_root: Path, plan: common.Plan) -> list[str]:
-        # build_changes rejects a plan whose sources do not all normalize to one
-        # root, so any source's root names the plan's single affected root.
-        return [_sources(plan)[0]["root"]]
+        roots: list[str] = []
+        for source in _sources(plan):
+            root = source["root"]
+            if root not in roots:
+                roots.append(root)
+        return roots
 
     # ----------------------------------------------------------------- #
 
@@ -111,9 +114,20 @@ class CoreEngine:
             ),
             "plan.decisions.resourceNames",
         )
-        output_file = decisions.get("outputFile")
-        if output_file is not None:
-            common.expect(output_file, str, "plan.decisions.outputFile")
+        raw_output_by_root = common.expect_str_map(
+            common.expect_optional(
+                decisions.get("outputFileByRoot"), dict, "plan.decisions.outputFileByRoot", {}
+            ),
+            "plan.decisions.outputFileByRoot",
+        )
+        output_by_root: dict[str, str] = {}
+        for key, value in raw_output_by_root.items():
+            canon = _normalize_root(key)
+            if canon in output_by_root:
+                raise common.bad_input(
+                    f"plan.decisions.outputFileByRoot has two entries for root {canon!r}"
+                )
+            output_by_root[canon] = value
         ownership = common.expect_optional(
             decisions.get("outputOwnership"), dict, "plan.decisions.outputOwnership", {}
         )
@@ -121,11 +135,22 @@ class CoreEngine:
 
         sources = _sources(plan)
 
-        # Every source must normalize to the same root and carry the same
-        # rootKind: Helm and plain roots have different namespace/service
-        # semantics, and _migration_common.py materializes only one root for
-        # validation, so a plan spanning more than one is rejected outright --
-        # one migration per root.
+        source_paths = {source["path"] for source in sources}
+        colliding = _output_paths(plan) & source_paths
+        if colliding:
+            raise common.unsupported(
+                "a generated output path is also a migration source",
+                [
+                    f"{path}: output path collides with a source file; set a distinct "
+                    "decisions.outputFileByRoot entry for that root"
+                    for path in sorted(colliding)
+                ],
+            )
+
+        # One normalized root must have a single rootKind, and a plan must not mix
+        # Helm and plain roots -- their namespace/service semantics differ, so
+        # they are run separately. A plan may otherwise span more than one root
+        # (two charts in one repository, each writing its own output file).
         kind_by_norm: dict[str, str] = {}
         for source in sources:
             norm = _normalize_root(source["root"])
@@ -140,33 +165,27 @@ class CoreEngine:
             raise common.bad_input(
                 "plan.inputs.sources mixes helm and plain roots; run them in separate migrations"
             )
-        if len(kind_by_norm) > 1:
-            raise common.bad_input(
-                f"plan.inputs.sources spans multiple roots {sorted(kind_by_norm)!r}; "
-                "the runner migrates one root per invocation -- run each root as a separate migration"
-            )
-        root, root_kind = next(iter(kind_by_norm.items()))
-        output_rel = _output_path(root, root_kind, output_file)
-
-        source_paths = {source["path"] for source in sources}
-        if output_rel in source_paths:
-            raise common.unsupported(
-                "a generated output path is also a migration source",
-                [
-                    f"{output_rel}: output path collides with a source file; set a distinct "
-                    "decisions.outputFile"
-                ],
-            )
 
         changes = common.Changes()
         blocking: list[str] = []
-        entries: list[tuple[dict[str, Any], str | None]] = []
+        per_root: dict[str, list[tuple[dict[str, Any], str | None]]] = {}
+        root_kind_by_root: dict[str, str] = {}
         source_rewrites: dict[str, str | None] = {}
-        identities: set[tuple[str, str, str]] = set()
+        # Keyed by output root: two charts in one repository each write their own
+        # output file and install into their own namespace, so a name that repeats
+        # across roots is not a collision. A repeat within one root is.
+        identities_by_root: dict[str, set[tuple[str, str, str]]] = {}
 
         for source in sources:
             common._reject_unknown(source, _SOURCE_KEYS, "plan.inputs.sources[]")
             rel = source["path"]
+            # Canonicalize: "chart" and "chart/" are one root and must index one
+            # per_root bucket, or the second output write silently overwrites the
+            # first while both sources are still deleted. "." (or "/") normalizes
+            # to "" -- the repository root, a legitimate root for a plain layout.
+            root = _normalize_root(source["root"])
+            root_kind = source.get("rootKind", "plain")
+            root_kind_by_root[root] = root_kind
             path = common.resolve_within(repo_root, rel, what="source path")
             if not path.is_file():
                 if _declared_absent(plan, rel):
@@ -177,7 +196,7 @@ class CoreEngine:
                 continue
 
             try:
-                documents, guards, remaining_text = _load_source(path, rel)
+                documents, guards, remaining_text, touched = _load_source(path, rel)
             except UnsupportedHelm as exc:
                 blocking.extend(exc.entries)
                 continue
@@ -222,23 +241,47 @@ class CoreEngine:
             for resource in resources:
                 name = _derive_name(resource, name_overrides, used_override_keys)
                 resource.body["metadata"]["name"] = name
-                if "{{" not in name and not common.is_dns_label(name):
+                if "{{" in name:
+                    # A templated name -- whether database_name_hint produced
+                    # it (once any identity field is templated) or an
+                    # explicit resourceNames override did -- can only be
+                    # checked for a valid DNS-1123 label by actually
+                    # rendering the chart. This runner does not do that (a
+                    # prior render-probe attempt here proved to have its own
+                    # correctness problems -- invented placeholder values
+                    # masking a chart's real, broken defaults; only checking
+                    # the first segment of a dotted .Values reference; a
+                    # guarded resource that renders zero times still
+                    # "passing"), so the simpler, reliable contract is to
+                    # require a concrete name instead of trying to verify a
+                    # rendered one.
+                    blocking.append(
+                        f"{rel}: derived name {name!r} contains a Helm expression; its "
+                        "rendered value cannot be checked for a valid DNS-1123 label -- pin "
+                        "a concrete (non-templated) decisions.resourceNames override instead"
+                    )
+                elif not common.is_dns_label(name):
                     blocking.append(f"{rel}: derived name {name!r} is not a DNS-1123 label")
                 identity = (
                     resource.body["kind"],
                     str(resource.body["metadata"].get("namespace", "")),
                     name,
                 )
-                if identity in identities:
+                root_identities = identities_by_root.setdefault(root, set())
+                if identity in root_identities:
                     blocking.append(
                         f"duplicate generated resource kind={identity[0]} "
-                        f"namespace={identity[1]} name={identity[2]}"
+                        f"namespace={identity[1]} name={identity[2]} in output root {root!r}"
                     )
-                identities.add(identity)
+                root_identities.add(identity)
                 guard = guards.get(resource.source_ref)
-                entries.append((resource.body, guard))
+                per_root.setdefault(root, []).append((resource.body, guard))
 
-            source_rewrites[rel] = remaining_text
+            if touched:
+                source_rewrites[rel] = remaining_text
+            # else: nothing was migrated from this source -- leave it and its
+            # original bytes (BOM, CRLF, ...) untouched rather than registering
+            # a rewrite that could only ever re-decode them.
 
         for key in sorted(set(name_overrides) - used_override_keys):
             blocking.append(
@@ -251,7 +294,10 @@ class CoreEngine:
                 "the plan contains conditions the runner cannot apply", blocking
             )
 
-        if entries:
+        for root, entries in per_root.items():
+            output_rel = _output_path(
+                root, root_kind_by_root.get(root, "plain"), output_by_root.get(root)
+            )
             entries.sort(key=lambda item: _sort_key(item[0]))
             content = _render_file(entries)
             common.guard_output_collision(repo_root, output_rel, ownership, content)
@@ -276,15 +322,8 @@ class CoreEngine:
     ) -> list[common.ValidationResult]:
         results = [common.ValidationResult("plan", "passed")]
         problems: list[str] = []
-        # build_changes already confirmed every source shares one root and one
-        # rootKind, so the first source's names the plan's single output path.
-        first_source = _sources(plan)[0]
-        output_rel = _output_path(
-            _normalize_root(first_source["root"]),
-            first_source.get("rootKind", "plain"),
-            plan.decisions.get("outputFile"),
-        )
-        is_plain_output = first_source.get("rootKind", "plain") == "plain"
+        output_paths = _output_paths(plan)
+        plain_outputs = _plain_output_paths(plan)
 
         for path, content in changes.files.items():
             file_path = tree_root / path
@@ -292,9 +331,9 @@ class CoreEngine:
                 if file_path.exists():
                     problems.append(f"{path}: expected the migrated source file to be removed")
                 continue
-            if path == output_rel:
+            if path in output_paths:
                 problems.extend(_check_generated(path, file_path))
-                if is_plain_output and "{{" in (content or ""):
+                if path in plain_outputs and "{{" in (content or ""):
                     problems.append(
                         f"{path}: a plain-manifest output must not contain Helm expressions"
                     )
@@ -324,13 +363,34 @@ def _sources(plan: common.Plan) -> list[dict[str, Any]]:
     sources = plan.inputs.get("sources")
     if not isinstance(sources, list) or not sources:
         raise common.bad_input("plan.inputs.sources must be a non-empty list")
+    seen_paths: set[str] = set()
     for source in sources:
         if not isinstance(source, dict) or not isinstance(source.get("path"), str):
             raise common.bad_input("each plan.inputs.sources entry needs a string path")
+        # Canonicalized in place so every downstream use -- duplicate
+        # detection, the root-containment check below, and matching against
+        # (also now-canonical) preconditions/targets -- compares the same
+        # string a path alias like "chart/./a.json" vs "chart/a.json" would
+        # otherwise slip past.
+        source["path"] = common.canonical_path(source["path"], what="source path")
+        path = source["path"]
+        if path in seen_paths:
+            # Materialization only checks that a changed path falls under
+            # *some* affected root, not that it is the root its own source
+            # entry declared -- without this, the same source path listed
+            # under two different roots would generate its declaration into
+            # both output roots undetected.
+            raise common.bad_input(f"source {path!r} is listed more than once in plan.inputs.sources")
+        seen_paths.add(path)
         if not isinstance(source.get("root"), str) or not source["root"]:
-            raise common.bad_input(f"source {source.get('path')!r} needs a repository-relative root")
+            raise common.bad_input(f"source {path!r} needs a repository-relative root")
         if source.get("rootKind", "plain") not in {"helm", "plain"}:
-            raise common.bad_input(f"source {source['path']!r} rootKind must be 'helm' or 'plain'")
+            raise common.bad_input(f"source {path!r} rootKind must be 'helm' or 'plain'")
+        root = _normalize_root(source["root"])
+        if not (root == "" or path == root or path.startswith(f"{root}/")):
+            raise common.bad_input(
+                f"source {path!r} does not reside under its declared root {source['root']!r}"
+            )
     return sources
 
 
@@ -350,8 +410,17 @@ def _select(documents: list[Any], indices: Any) -> list[Any]:
     return [doc if index in keep else None for index, doc in enumerate(documents)]
 
 
-def _load_source(path: Path, rel: str) -> tuple[list[Any], dict[str, str | None], str | None]:
-    """Return (documents, guard-by-source-ref, remaining source text or None)."""
+def _load_source(
+    path: Path, rel: str
+) -> tuple[list[Any], dict[str, str | None], str | None, bool]:
+    """Return (documents, guard-by-source-ref, remaining source text or None, touched).
+
+    ``touched`` is ``False`` exactly when nothing was migrated from this
+    source. The caller must not register it as a change at all in that case --
+    re-writing the decoded ``text`` back (UTF-8, BOM stripped, newlines
+    normalized to ``\\n`` by text-mode reading) would silently rewrite a
+    CRLF or BOM source's bytes even though the plan changed nothing in it.
+    """
 
     suffix = path.suffix.lower()
     text = path.read_text(encoding="utf-8-sig")
@@ -375,12 +444,17 @@ def _load_source(path: Path, rel: str) -> tuple[list[Any], dict[str, str | None]
         _reject_mixed_sequences(rel, documents)
         if isinstance(data, list):
             remaining = [doc for doc, done in zip(documents, migrated) if not done]
-            remaining_text = (
-                None if not remaining else json.dumps(remaining, indent=2) + "\n"
-            )
-        else:
-            remaining_text = None if all(migrated) else text
-        return documents, guards, remaining_text
+            if not remaining:
+                return documents, guards, None, True  # every document migrated -> delete
+            if len(remaining) == len(documents):
+                return documents, guards, None, False  # nothing migrated; leave untouched
+            # A genuine partial rewrite: re-serialized fresh, so BOM/CRLF
+            # concerns do not apply -- this is never the original bytes
+            # round-tripped.
+            return documents, guards, json.dumps(remaining, indent=2) + "\n", True
+        if all(migrated):
+            return documents, guards, None, True  # delete
+        return documents, guards, None, False  # nothing migrated; leave untouched
 
     if suffix in {".yaml", ".yml"}:
         parsed = parse_source(text, filename=rel)
@@ -408,8 +482,9 @@ def _load_source(path: Path, rel: str) -> tuple[list[Any], dict[str, str | None]
                     "separate `---` documents; move the declaration to its own file before migrating"
                 ],
             )
-        remaining_text = None if all(migrated) else text
-        return documents, guards, remaining_text
+        if all(migrated):
+            return documents, guards, None, True  # delete
+        return documents, guards, None, False  # nothing migrated; leave untouched
 
     raise common.bad_input(f"{rel}: unsupported source extension {suffix!r}")
 
@@ -487,7 +562,7 @@ def _derive_name(
         else:
             raw = resource.name_hint
     if "{{" in raw:
-        return raw  # a templated name; its literal form is validated after render
+        return raw  # a templated name; the caller checks whether it is safe to defer
     return common.dns_label(raw)
 
 
@@ -502,7 +577,10 @@ def _output_path(root: str, root_kind: str, override: Any) -> str:
         rel = DEFAULT_HELM_OUTPUT
     else:
         rel = DEFAULT_PLAIN_OUTPUT
-    return common.join_rel(root, rel)
+    # A plan-supplied outputFileByRoot override is canonicalized here too --
+    # otherwise "templates/./x.yaml" would compute an output path that
+    # compares unequal to the same file's canonical source/target path.
+    return common.canonical_path(common.join_rel(root, rel), what="output path")
 
 
 def _sort_key(body: dict[str, Any]) -> tuple[str, str, str]:
@@ -526,6 +604,39 @@ def _render_file(entries: list[tuple[dict[str, Any], str | None]]) -> str:
         else:
             chunks.append(doc)
     return "".join(chunks)
+
+
+def _output_by_root(plan: common.Plan) -> dict[str, str]:
+    result: dict[str, str] = {}
+    raw = plan.decisions.get("outputFileByRoot")
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            if isinstance(key, str) and isinstance(value, str):
+                result[_normalize_root(key)] = value
+    return result
+
+
+def _output_paths(plan: common.Plan, *, plain_only: bool = False) -> set[str]:
+    """Every repository-relative output path the plan will generate."""
+
+    output_by_root = _output_by_root(plan)
+    paths: set[str] = set()
+    for source in plan.inputs.get("sources") or []:
+        if not isinstance(source, dict):
+            continue
+        raw_root = source.get("root")
+        if not isinstance(raw_root, str) or not raw_root:
+            continue
+        root = _normalize_root(raw_root)
+        kind = source.get("rootKind", "plain")
+        if plain_only and kind != "plain":
+            continue
+        paths.add(_output_path(root, kind, output_by_root.get(root)))
+    return paths
+
+
+def _plain_output_paths(plan: common.Plan) -> set[str]:
+    return _output_paths(plan, plain_only=True)
 
 
 def _check_source_cleaned(path: str, file_path: Path) -> list[str]:

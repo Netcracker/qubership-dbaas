@@ -30,12 +30,15 @@ except ImportError:  # pragma: no cover - exercised only without the pinned depe
 OPERATOR_NAMESPACE_VALUE = "DBAAS_OPERATOR_NAMESPACE"
 _OPERATOR_NAMESPACE_SCHEMA = {"type": "string"}
 
-_VALUE_REF = re.compile(r"\{\{-?\s*\.Values\.([A-Za-z0-9_]+)\s*-?\}\}")
+_VALUE_REF = re.compile(r"\{\{-?\s*\.Values\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*-?\}\}")
 # Every ``.Values.<name>`` reference, including one nested inside a larger Helm
 # pipeline such as the ``API_DBAAS_ADDRESS``-derived operator-namespace
-# expression. Used only to synthesize deterministic ``--set`` values for the
-# render probe, never to substitute text.
-_ANY_VALUE_REF = re.compile(r"\.Values\.([A-Za-z0-9_]+)")
+# expression, and a dotted path into a structured value (``.Values.database.name``)
+# captured whole -- not truncated to its first segment, which would otherwise
+# synthesize a `--set database=...` that replaces a chart's real `database: {...}`
+# mapping with a scalar. Used only to synthesize deterministic ``--set`` values
+# for the render probe, never to substitute text.
+_ANY_VALUE_REF = re.compile(r"\.Values\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)")
 
 
 # --------------------------------------------------------------------------- #
@@ -76,11 +79,21 @@ def update_values(
     if not values_path.is_file():
         raise common.unsupported("values file missing", [f"{values_rel}: file not found"])
     values_text = values_path.read_text(encoding="utf-8")
-    if not any(
-        line[:1] not in (" ", "\t")
-        and line.split(":", 1)[0].rstrip() == OPERATOR_NAMESPACE_VALUE
-        for line in values_text.splitlines()
+    try:
+        values = yaml.safe_load(values_text)
+    except yaml.YAMLError as exc:
+        raise common.bad_input(f"{values_rel}: invalid YAML: {exc}") from None
+    if values is None:
+        values = {}
+    if not isinstance(values, dict):
+        raise common.bad_input(f"{values_rel}: top-level value must be a mapping")
+    if OPERATOR_NAMESPACE_VALUE in values and not isinstance(
+        values[OPERATOR_NAMESPACE_VALUE], str
     ):
+        raise common.bad_input(
+            f"{values_rel}: {OPERATOR_NAMESPACE_VALUE} must be a string"
+        )
+    if OPERATOR_NAMESPACE_VALUE not in values:
         suffix = "" if values_text.endswith("\n") else "\n"
         changes.set_content(
             values_rel, f'{values_text}{suffix}{OPERATOR_NAMESPACE_VALUE}: ""\n'
@@ -88,7 +101,10 @@ def update_values(
 
     schema_path = common.resolve_within(repo_root, schema_rel, what="values schema file")
     if not schema_path.is_file():
-        raise common.unsupported("values schema missing", [f"{schema_rel}: file not found"])
+        # A chart without a values schema is fine -- _check_operator_namespace_value
+        # treats a missing schema the same way, and there is nothing to register the
+        # value against.
+        return
     schema_text = schema_path.read_text(encoding="utf-8")
     try:
         new_schema_text = _schema_with_optional_operator_namespace(schema_text)
@@ -106,12 +122,16 @@ def _schema_with_optional_operator_namespace(text: str) -> str | None:
     produce the intended shape."""
 
     schema = json.loads(text)
+    if not isinstance(schema, dict):
+        raise ValueError("the schema top level must be an object")
     properties = schema.get("properties")
     required = schema.get("required")
-    has_property = (
-        isinstance(properties, dict)
-        and properties.get(OPERATOR_NAMESPACE_VALUE) == _OPERATOR_NAMESPACE_SCHEMA
-    )
+    if properties is not None and not isinstance(properties, dict):
+        raise ValueError("schema.properties must be an object")
+    if required is not None and not isinstance(required, list):
+        raise ValueError("schema.required must be an array")
+    property_schema = properties.get(OPERATOR_NAMESPACE_VALUE) if properties else None
+    has_property = _is_optional_string_schema(property_schema)
     in_required = isinstance(required, list) and OPERATOR_NAMESPACE_VALUE in required
     if has_property and not in_required:
         return None
@@ -126,10 +146,14 @@ def _schema_with_optional_operator_namespace(text: str) -> str | None:
 
     try:
         parsed = json.loads(edited)
+        parsed_property = (
+            (parsed.get("properties") or {}).get(OPERATOR_NAMESPACE_VALUE)
+            if isinstance(parsed, dict) and isinstance(parsed.get("properties") or {}, dict)
+            else None
+        )
         surgical_ok = (
             isinstance(parsed, dict)
-            and (parsed.get("properties") or {}).get(OPERATOR_NAMESPACE_VALUE)
-            == _OPERATOR_NAMESPACE_SCHEMA
+            and _is_optional_string_schema(parsed_property)
             and OPERATOR_NAMESPACE_VALUE not in (parsed.get("required") or [])
         )
     except ValueError:
@@ -137,10 +161,24 @@ def _schema_with_optional_operator_namespace(text: str) -> str | None:
     if surgical_ok and edited != text:
         return edited
 
-    schema.setdefault("properties", {})[OPERATOR_NAMESPACE_VALUE] = dict(_OPERATOR_NAMESPACE_SCHEMA)
+    properties = schema.setdefault("properties", {})
+    property_schema = properties.get(OPERATOR_NAMESPACE_VALUE)
+    if isinstance(property_schema, dict):
+        property_schema["type"] = "string"
+        property_schema.pop("minLength", None)
+    else:
+        properties[OPERATOR_NAMESPACE_VALUE] = dict(_OPERATOR_NAMESPACE_SCHEMA)
     if isinstance(schema.get("required"), list) and OPERATOR_NAMESPACE_VALUE in schema["required"]:
         schema["required"].remove(OPERATOR_NAMESPACE_VALUE)
     return json.dumps(schema, indent=2) + "\n"
+
+
+def _is_optional_string_schema(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("type") == "string"
+        and not value.get("minLength")
+    )
 
 
 def _match_brace(text: str, open_index: int) -> int:
@@ -215,7 +253,17 @@ def _template_value_keys(*texts: str) -> set[str]:
     keys: set[str] = set()
     for text in texts:
         keys.update(_ANY_VALUE_REF.findall(text))
-    return keys
+    # A chart value that is a structured mapping (`database: {name: ..., ...}`)
+    # is set field-by-field, matching Helm's own `--set a.b=c` semantics --
+    # never replaced wholesale with a scalar. When both a bare reference and a
+    # more specific nested one under it are present, drop the bare one: the
+    # nested override alone is enough, and passing both would conflict (a
+    # scalar and a table claiming the same path) when Helm merges the --set
+    # flags together.
+    return {
+        key for key in keys
+        if not any(other != key and other.startswith(f"{key}.") for other in keys)
+    }
 
 
 def _pilot_value(key: str) -> str:
@@ -364,6 +412,8 @@ def _check_operator_namespace_value(values_path: Path, schema_path: Path) -> str
         return f"{values_path.name}: invalid YAML: {exc}"
     if not isinstance(loaded, dict) or OPERATOR_NAMESPACE_VALUE not in loaded:
         return f"{OPERATOR_NAMESPACE_VALUE} is not a top-level key in {values_path.name}"
+    if not isinstance(loaded[OPERATOR_NAMESPACE_VALUE], str):
+        return f"{OPERATOR_NAMESPACE_VALUE} must be a string in {values_path.name}"
 
     if not schema_path.is_file():
         return None  # a chart without a values schema is fine
@@ -371,7 +421,15 @@ def _check_operator_namespace_value(values_path: Path, schema_path: Path) -> str
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
     except ValueError as exc:
         return f"{schema_path.name}: invalid JSON: {exc}"
-    prop = (schema.get("properties") or {}).get(OPERATOR_NAMESPACE_VALUE)
+    if not isinstance(schema, dict):
+        return f"{schema_path.name}: top-level value must be an object"
+    properties = schema.get("properties") or {}
+    if not isinstance(properties, dict):
+        return f"{schema_path.name}: properties must be an object"
+    required = schema.get("required") or []
+    if not isinstance(required, list):
+        return f"{schema_path.name}: required must be an array"
+    prop = properties.get(OPERATOR_NAMESPACE_VALUE)
     if prop is not None:
         if not isinstance(prop, dict) or prop.get("type") != "string":
             return f"{OPERATOR_NAMESPACE_VALUE} schema property must be a string"
@@ -380,7 +438,7 @@ def _check_operator_namespace_value(values_path: Path, schema_path: Path) -> str
                 f"{OPERATOR_NAMESPACE_VALUE} schema property sets minLength, so the chart "
                 "will not render with its (empty) default"
             )
-    if OPERATOR_NAMESPACE_VALUE in (schema.get("required") or []):
+    if OPERATOR_NAMESPACE_VALUE in required:
         return (
             f"{OPERATOR_NAMESPACE_VALUE} is in the schema required list, so the chart "
             "will not render with its defaults"

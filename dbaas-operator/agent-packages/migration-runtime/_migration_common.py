@@ -22,8 +22,10 @@ This module owns the parts of the runner that must not drift between packages:
   write transaction with rollback.
 
 A package supplies an :class:`Engine` that turns a validated plan into a
-:class:`Changes` set and validates a materialized tree. Each plan touches exactly
-one repository root; a multi-root repository is migrated one invocation per root.
+:class:`Changes` set and validates a materialized tree. ``Engine.affected_roots``
+names every repository-relative root the plan's changes touch; a plan may span
+more than one (two charts in one repository, each writing its own output),
+and the validation tree materializes all of them, not just the first.
 """
 
 from __future__ import annotations
@@ -62,6 +64,7 @@ _ENVELOPE_KEYS = {
 }
 _REPOSITORY_KEYS = {"preconditions"}
 _PRECONDITION_KEYS = {"path", "sha256", "absent"}
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 
 class MigrationError(Exception):
@@ -174,6 +177,14 @@ def expect_str_list(value: Any, where: str, *, unique: bool = False) -> list[str
     return list(value)
 
 
+def _reject_json_constant(value: str) -> Any:
+    # json.loads accepts NaN/Infinity/-Infinity by default (a Python extension
+    # to strict JSON); a plan carrying one would otherwise pass parsing here
+    # and surface much later, as a generated-output validation failure (exit
+    # 5, a script defect) instead of the invalid-plan exit 2 it actually is.
+    raise ValueError(f"numeric constant {value!r} is not valid JSON")
+
+
 def load_plan(
     plan_path: Path,
     expected_migration_kind: str,
@@ -186,7 +197,7 @@ def load_plan(
     except OSError as exc:
         raise bad_input(f"cannot read plan: {exc}") from None
     try:
-        raw = json.loads(text)
+        raw = json.loads(text, parse_constant=_reject_json_constant)
     except ValueError as exc:
         raise bad_input(f"plan is not valid JSON: {exc}") from None
     if not isinstance(raw, dict):
@@ -208,6 +219,7 @@ def load_plan(
     _reject_unknown(repository, _REPOSITORY_KEYS, "plan.repository")
 
     preconditions: list[Precondition] = []
+    seen_preconditions: set[str] = set()
     raw_preconditions = expect_optional(
         repository.get("preconditions"), list, "plan.repository.preconditions", []
     )
@@ -215,9 +227,13 @@ def load_plan(
         if not isinstance(entry, dict):
             raise bad_input(f"plan.repository.preconditions[{index}] must be an object")
         _reject_unknown(entry, _PRECONDITION_KEYS, f"plan.repository.preconditions[{index}]")
-        path = entry.get("path")
-        if not isinstance(path, str) or not path:
+        raw_path = entry.get("path")
+        if not isinstance(raw_path, str) or not raw_path:
             raise bad_input(f"plan.repository.preconditions[{index}].path is required")
+        path = canonical_path(raw_path, what=f"plan.repository.preconditions[{index}].path")
+        if path in seen_preconditions:
+            raise bad_input(f"plan.repository.preconditions lists {path!r} more than once")
+        seen_preconditions.add(path)
         absent = expect_bool(
             entry.get("absent"), f"plan.repository.preconditions[{index}].absent", default=False
         )
@@ -228,9 +244,10 @@ def load_plan(
                     f"plan.repository.preconditions[{index}] sets absent and sha256 together"
                 )
         else:
-            if not isinstance(sha256, str) or len(sha256) != 64:
+            if not isinstance(sha256, str) or _SHA256_RE.fullmatch(sha256) is None:
                 raise bad_input(
-                    f"plan.repository.preconditions[{index}].sha256 must be a 64-character hex digest"
+                    f"plan.repository.preconditions[{index}].sha256 must be a lowercase "
+                    "64-character hexadecimal digest"
                 )
         preconditions.append(Precondition(path=path, sha256=sha256, absent=absent))
 
@@ -241,11 +258,17 @@ def load_plan(
         _reject_unknown(inputs, input_keys, "plan.inputs")
     if decision_keys is not None:
         _reject_unknown(decisions, decision_keys, "plan.decisions")
+    if "outputOwnership" in decisions:
+        ownership = expect(decisions["outputOwnership"], dict, "plan.decisions.outputOwnership")
+        decisions["outputOwnership"] = _canonical_output_ownership(
+            ownership, "plan.decisions.outputOwnership"
+        )
     seen_targets: set[str] = set()
     for index, target in enumerate(targets):
         if not isinstance(target, dict) or not isinstance(target.get("path"), str) or not target["path"]:
             raise bad_input(f"plan.targets[{index}] must be an object with a non-empty string path")
-        _reject_unknown(target, {"path", "ownership"}, f"plan.targets[{index}]")
+        _reject_unknown(target, {"path"}, f"plan.targets[{index}]")
+        target["path"] = canonical_path(target["path"], what=f"plan.targets[{index}].path")
         if target["path"] in seen_targets:
             raise bad_input(f"plan.targets lists {target['path']!r} more than once")
         seen_targets.add(target["path"])
@@ -272,9 +295,56 @@ def join_rel(root: str, rel: str) -> str:
     ``""``, ``"."`` and ``"/"`` all mean the repository root, so the result is
     ``rel`` on its own -- never an accidental leading ``/``."""
 
-    root = root.strip("/")
-    rel = rel.lstrip("/")
-    return rel if root in ("", ".") else f"{root}/{rel}"
+    normalized_root = normalize_root(root)
+    normalized_rel = canonical_path(rel, what="root-relative path")
+    return normalized_rel if normalized_root == "" else f"{normalized_root}/{normalized_rel}"
+
+
+def canonical_path(value: str, *, what: str = "path") -> str:
+    """Canonicalize a repository-relative path for cross-structure comparison.
+
+    Backslashes normalize to ``/`` and a redundant ``.`` segment or duplicate
+    slash collapses, so ``"chart/a.json"`` and ``"chart/./a.json"`` compare
+    equal wherever paths are deduplicated or matched against each other --
+    plan targets, preconditions, an engine's own source list, and
+    ``outputOwnership`` keys. A raw string comparison would otherwise let a
+    path alias bypass duplicate-source detection or a source-equals-output
+    guard. A ``..`` segment is rejected outright, matching
+    ``resolve_within``'s traversal policy, rather than silently resolved.
+    """
+
+    if not isinstance(value, str) or not value:
+        raise bad_input(f"{what} must be a non-empty string")
+    normalized = value.replace("\\", "/")
+    if normalized.startswith("/") or (len(normalized) > 1 and normalized[1] == ":"):
+        raise bad_input(f"{what} must be repository-relative, got {value!r}")
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    if ".." in parts:
+        raise bad_input(f"{what} must not contain '..', got {value!r}")
+    if not parts:
+        raise bad_input(f"{what} must not be empty, got {value!r}")
+    return "/".join(parts)
+
+
+def _canonical_output_ownership(value: dict[Any, Any], where: str) -> dict[str, Any]:
+    """Validate ownership records and canonicalize their path keys."""
+
+    result: dict[str, Any] = {}
+    for raw_path, item in value.items():
+        path = canonical_path(raw_path, what=f"{where} key")
+        if path in result:
+            raise bad_input(f"{where} lists {path!r} more than once")
+        if not isinstance(item, dict):
+            raise bad_input(f"{where}[{raw_path!r}] must be an object")
+        _reject_unknown(item, {"sha256"}, f"{where}[{raw_path!r}]")
+        digest = item.get("sha256")
+        if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
+            raise bad_input(
+                f"{where}[{raw_path!r}].sha256 must be a lowercase "
+                "64-character hexadecimal digest"
+            )
+        result[path] = {"sha256": digest}
+    return result
 
 
 def resolve_within(repo_root: Path, relative: str, *, what: str = "path") -> Path:
@@ -319,13 +389,16 @@ def guard_output_collision(
     changed underneath the plan is a stale-plan precondition failure.
     """
 
+    output_rel = canonical_path(output_rel, what="output path")
     target = resolve_within(repo_root, output_rel, what="output path")
     if not target.exists():
         return
     actual = sha256_file(target)
     if actual == sha256_bytes(rendered.encode("utf-8")):
         return
-    declared = ownership.get(output_rel)
+    # Keep direct callers safe as well as plans normalized by load_plan.
+    canonical_ownership = _canonical_output_ownership(ownership, "decisions.outputOwnership")
+    declared = canonical_ownership.get(output_rel)
     if not isinstance(declared, dict) or "sha256" not in declared:
         raise unsupported(
             "output file collision",
@@ -355,11 +428,15 @@ def _slug(value: str) -> str:
 def dns_label(*parts: Any, keep_tail: str = "", limit: int = DNS_LABEL_MAX) -> str:
     """Build a deterministic RFC-1123 label from ``parts``.
 
-    ``keep_tail`` is a short suffix (a role or resource-kind token) that must stay
-    readable: when the full name would exceed ``limit`` the identity portion is
-    truncated and an 8-hex-char hash of it is inserted before ``keep_tail``, so
+    ``keep_tail`` is a short suffix (a role or resource-kind token) that must
+    stay readable and intact: when the full name would exceed ``limit`` the
+    identity portion is truncated -- down to nothing, if that is what it
+    takes -- and an 8-hex-char hash of it is inserted before ``keep_tail``, so
     two long identities -- or the same identity with different tails -- never
-    collapse to one name.
+    collapse to one name. ``keep_tail`` itself is never truncated: if it and
+    the disambiguating hash cannot fit within ``limit`` even with no identity
+    head at all, that is a caller error (``limit`` too small for this
+    ``keep_tail``), not something to silently cut short.
     """
 
     identity = _slug("-".join(str(p) for p in parts if p is not None and str(p) != ""))
@@ -368,10 +445,19 @@ def dns_label(*parts: Any, keep_tail: str = "", limit: int = DNS_LABEL_MAX) -> s
     if len(full) <= limit:
         return full.strip("-")
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8]
-    reserved = len(digest) + 1 + (len(tail) + 1 if tail else 0)
-    head = identity[: max(limit - reserved, 1)].strip("-")
-    result = f"{head}-{digest}" + (f"-{tail}" if tail else "")
-    return result.strip("-")[:limit]
+    tail_part = f"-{tail}" if tail else ""
+    # The smallest this can ever be: no identity head, just the hash and the
+    # tail (the separator between an empty head and the digest is dropped,
+    # not reserved) -- if even that overflows, keep_tail cannot be honored.
+    min_total = len(digest) + len(tail_part)
+    if min_total > limit:
+        raise ValueError(
+            f"dns_label: keep_tail {keep_tail!r} plus the disambiguating hash need "
+            f"{min_total} characters, which does not fit within limit={limit}"
+        )
+    head_len = max(limit - 1 - len(digest) - len(tail_part), 0)
+    head = identity[:head_len].strip("-")
+    return f"{head}-{digest}{tail_part}" if head else f"{digest}{tail_part}"
 
 
 def is_dns_label(value: str) -> bool:
@@ -436,10 +522,16 @@ class Changes:
     files: dict[str, str | None] = dataclasses.field(default_factory=dict)
 
     def set_content(self, path: str, content: str) -> None:
-        self.files[path] = content
+        self._record(path, content)
 
     def delete(self, path: str) -> None:
-        self.files[path] = None
+        self._record(path, None)
+
+    def _record(self, path: str, content: str | None) -> None:
+        canonical = canonical_path(path, what="change path")
+        if canonical in self.files and self.files[canonical] != content:
+            raise bad_input(f"conflicting changes requested for {canonical!r}")
+        self.files[canonical] = content
 
 
 def enforce_plan_scope(plan: "Plan", file_lists: dict[str, list[str]]) -> None:
@@ -558,34 +650,54 @@ class Engine(Protocol):
 
 
 def normalize_root(root: str) -> str:
-    """The single repository-relative root a plan operates on, slash-trimmed.
+    """Canonicalize one repository-relative root.
 
     ``""`` / ``"."`` / ``"/"`` all mean the repository root.
     """
 
-    parts = [
-        part
-        for part in PurePosixPath(str(root).replace("\\", "/")).parts
-        if part not in ("", ".", "/")
-    ]
-    if ".." in parts:
-        raise bad_input(f"affected root must not contain '..': {root!r}")
-    return "/".join(parts)
+    if not isinstance(root, str):
+        raise bad_input(f"affected root must be a string, got {type(root).__name__}")
+    if root.replace("\\", "/") in ("", ".", "/"):
+        return ""
+    return canonical_path(root, what="affected root")
 
 
 def _materialize_tree(repo_root: Path, roots: list[str], changes: Changes, dest: Path) -> None:
-    root = normalize_root(roots[0]) if roots else ""
-    source = repo_root if root == "" else resolve_within(repo_root, root, what="affected root")
-    if source.exists():
+    """Copy every affected root into ``dest`` for validation.
+
+    A plan may touch more than one root in a single invocation (two charts in
+    one repository, each writing its own output file); each root the engine
+    names is copied independently, and every changed path must fall under at
+    least one of them -- not just the first.
+    """
+
+    normalized: list[str] = []
+    for root in roots:
+        norm = normalize_root(root)
+        if norm not in normalized:
+            normalized.append(norm)
+    if not normalized:
+        normalized = [""]
+
+    for root in normalized:
+        source = repo_root if root == "" else resolve_within(repo_root, root, what="affected root")
+        if not source.exists():
+            continue
         target = dest if root == "" else dest / root
         target.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(source, target, symlinks=False, dirs_exist_ok=True)
+        # A root of "" materializes the whole repository; never copy .git into
+        # the validation tree -- it can be large and is never inspected.
+        shutil.copytree(
+            source, target, symlinks=False, dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(".git"),
+        )
 
-    prefix = f"{root}/" if root else ""
     for path, content in changes.files.items():
-        if root and not path.startswith(prefix):
+        if not any(
+            root == "" or path == root or path.startswith(f"{root}/") for root in normalized
+        ):
             raise unsupported(
-                f"target {path!r} is outside the affected root {root!r} declared by the plan"
+                f"target {path!r} is outside every affected root {normalized!r} declared by the plan"
             )
         file_path = dest / path
         if content is None:
@@ -625,6 +737,7 @@ def _commit(
 
     backups: dict[str, bytes | None] = {}
     applied: list[str] = []
+    temporary_paths: list[Path] = []
     try:
         for path in sorted(changes.files):
             target = resolve_within(repo_root, path, what="target path")
@@ -637,6 +750,7 @@ def _commit(
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.migration.tmp")
+            temporary_paths.append(tmp)
             # newline="" keeps the bytes exactly as built (LF), so the committed
             # file matches the hash the temporary tree validated.
             tmp.write_text(content, encoding="utf-8", newline="")
@@ -646,6 +760,7 @@ def _commit(
             report_path, payload = report
             report_path.parent.mkdir(parents=True, exist_ok=True)
             report_tmp = report_path.with_name(f".{report_path.name}.migration.tmp")
+            temporary_paths.append(report_tmp)
             report_tmp.write_bytes(payload)
             os.replace(report_tmp, report_path)
     except Exception as exc:  # noqa: BLE001 - rollback then re-raise as a typed error
@@ -655,6 +770,14 @@ def _commit(
             "write transaction failed and was rolled back",
             [str(exc)],
         ) from exc
+    finally:
+        for temporary_path in temporary_paths:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                # Preserve the original transaction error. A best-effort cleanup
+                # must not mask why the actual write or rollback failed.
+                pass
 
 
 # --------------------------------------------------------------------------- #

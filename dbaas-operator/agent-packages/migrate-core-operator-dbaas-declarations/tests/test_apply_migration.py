@@ -277,7 +277,7 @@ class ApplyMigrationTest(unittest.TestCase):
                     "operatorNamespace": "dbaas-system",
                     "serviceName": "{{ .Values.SERVICE_NAME }}",
                     "namespace": "{{ .Values.NAMESPACE }}",
-                    "outputFile": "dbaas.json",
+                    "outputFileByRoot": {"deploy": "dbaas.json"},
                 },
                 "targets": targets_for(source_rel),
             }
@@ -806,20 +806,25 @@ class ApplyMigrationTest(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn("mixes helm and plain", report["validation"][0]["details"])
 
-    def test_multiple_distinct_roots_are_rejected(self) -> None:
-        # _migration_common.py materializes only the first affected root for
-        # validation, so a plan spanning two distinct (same-kind) roots is not
-        # partially supported -- it must be rejected outright, not silently
-        # validated against only one of the two roots.
+    def test_two_roots_reuse_the_same_resource_name_without_colliding(self) -> None:
+        # Two charts in one repository, each writing its own output file, can
+        # legitimately generate a resource with the same kind/namespace/name --
+        # the duplicate check is scoped per output root, not global to the plan.
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = make_repo(tmp, json.dumps(DECLARATION_JSON), "chartA/a.json")
             (repo / "chartB").mkdir(parents=True)
             (repo / "chartB/b.json").write_text(json.dumps(DECLARATION_JSON), encoding="utf-8")
+            output_a = "chartA/dbaas-operator-resources.yaml"
+            output_b = "chartB/dbaas-operator-resources.yaml"
             plan = {
                 "schemaVersion": 1,
                 "migrationKind": "core-declarations",
-                "repository": {"preconditions": preconditions_for(repo, "chartA/a.json", "chartB/b.json")},
+                "repository": {
+                    "preconditions": preconditions_for(
+                        repo, "chartA/a.json", "chartB/b.json", output_a, output_b
+                    )
+                },
                 "inputs": {
                     "sources": [
                         {"path": "chartA/a.json", "root": "chartA", "rootKind": "plain", "documents": None},
@@ -828,11 +833,127 @@ class ApplyMigrationTest(unittest.TestCase):
                 },
                 "decisions": {"operatorNamespace": "dbaas-system", "serviceName": "svc",
                               "serviceNameExplicit": True, "namespace": "ns"},
-                "targets": targets_for("chartA/a.json", "chartB/b.json"),
+                "targets": targets_for("chartA/a.json", "chartB/b.json", output_a, output_b),
+            }
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            docs_a = [d for d in yaml.safe_load_all((repo / output_a).read_text(encoding="utf-8")) if d]
+            docs_b = [d for d in yaml.safe_load_all((repo / output_b).read_text(encoding="utf-8")) if d]
+            self.assertEqual(len(docs_a), 2)
+            self.assertEqual(len(docs_b), 2)
+            self.assertEqual(
+                {d["metadata"]["name"] for d in docs_a}, {d["metadata"]["name"] for d in docs_b}
+            )
+
+    def test_duplicate_name_within_one_root_still_blocks(self) -> None:
+        # The per-root scoping in the test above must not become "no check at
+        # all": two sources feeding the SAME root with the same identity are
+        # still a real collision.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = make_repo(tmp, json.dumps(DECLARATION_JSON), "chart/a.json")
+            (repo / "chart/b.json").write_text(json.dumps(DECLARATION_JSON), encoding="utf-8")
+            output_rel = "chart/dbaas-operator-resources.yaml"
+            plan = {
+                "schemaVersion": 1,
+                "migrationKind": "core-declarations",
+                "repository": {
+                    "preconditions": preconditions_for(repo, "chart/a.json", "chart/b.json", output_rel)
+                },
+                "inputs": {
+                    "sources": [
+                        {"path": "chart/a.json", "root": "chart", "rootKind": "plain", "documents": None},
+                        {"path": "chart/b.json", "root": "chart", "rootKind": "plain", "documents": None},
+                    ]
+                },
+                "decisions": {"operatorNamespace": "dbaas-system", "serviceName": "svc",
+                              "serviceNameExplicit": True, "namespace": "ns"},
+                "targets": targets_for("chart/a.json", "chart/b.json", output_rel),
+            }
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 4)
+            self.assertTrue(any("duplicate generated resource" in e for e in report["blocking"]))
+
+    def test_source_path_outside_its_declared_root_is_rejected(self) -> None:
+        # Materialization only checks a changed path falls under *some*
+        # affected root, not the specific root its own source entry declared
+        # -- without this check the same source could generate its
+        # declaration into a root it does not actually belong to.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "chartA/a.json"
+            output_rel = "chartB/dbaas-operator-resources.yaml"
+            repo = make_repo(tmp, json.dumps(DECLARATION_JSON), source_rel)
+            (repo / "chartB").mkdir(parents=True, exist_ok=True)
+            plan = {
+                "schemaVersion": 1,
+                "migrationKind": "core-declarations",
+                "repository": {"preconditions": preconditions_for(repo, source_rel, output_rel)},
+                "inputs": {
+                    "sources": [
+                        {"path": source_rel, "root": "chartB", "rootKind": "plain", "documents": None}
+                    ]
+                },
+                "decisions": {"operatorNamespace": "dbaas-system", "serviceName": "svc",
+                              "serviceNameExplicit": True, "namespace": "ns"},
+                "targets": targets_for(source_rel, output_rel),
             }
             code, report = run_migration(repo, plan, "check", tmp)
-            self.assertEqual(code, 2)
-            self.assertIn("spans multiple roots", report["validation"][0]["details"])
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("does not reside under its declared root", report["validation"][0]["details"])
+
+    def test_duplicate_source_path_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "chart/a.json"
+            output_rel = "chart/dbaas-operator-resources.yaml"
+            repo = make_repo(tmp, json.dumps(DECLARATION_JSON), source_rel)
+            plan = {
+                "schemaVersion": 1,
+                "migrationKind": "core-declarations",
+                "repository": {"preconditions": preconditions_for(repo, source_rel, output_rel)},
+                "inputs": {
+                    "sources": [
+                        {"path": source_rel, "root": "chart", "rootKind": "plain", "documents": None},
+                        {"path": source_rel, "root": "chart", "rootKind": "plain", "documents": None},
+                    ]
+                },
+                "decisions": {"operatorNamespace": "dbaas-system", "serviceName": "svc",
+                              "serviceNameExplicit": True, "namespace": "ns"},
+                "targets": targets_for(source_rel, output_rel),
+            }
+            code, report = run_migration(repo, plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("is listed more than once", report["validation"][0]["details"])
+
+    def test_source_path_alias_is_rejected_as_duplicate(self) -> None:
+        # "chart/a.json" and "chart/./a.json" name the same physical file; a
+        # raw string comparison would treat them as different sources and
+        # let the same declaration generate into two roots undetected (even
+        # a different nested root for the second entry, since both are still
+        # canonicalized to the same path before the duplicate check runs).
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "chart/a.json"
+            output_rel = "chart/dbaas-operator-resources.yaml"
+            repo = make_repo(tmp, json.dumps(DECLARATION_JSON), source_rel)
+            plan = {
+                "schemaVersion": 1,
+                "migrationKind": "core-declarations",
+                "repository": {"preconditions": preconditions_for(repo, source_rel, output_rel)},
+                "inputs": {
+                    "sources": [
+                        {"path": "chart/a.json", "root": "chart", "rootKind": "plain", "documents": None},
+                        {"path": "chart/./a.json", "root": "chart", "rootKind": "plain", "documents": None},
+                    ]
+                },
+                "decisions": {"operatorNamespace": "dbaas-system", "serviceName": "svc",
+                              "serviceNameExplicit": True, "namespace": "ns"},
+                "targets": targets_for(source_rel, output_rel),
+            }
+            code, report = run_migration(repo, plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("is listed more than once", report["validation"][0]["details"])
 
     def test_empty_json_array_source_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -861,6 +982,114 @@ class ApplyMigrationTest(unittest.TestCase):
             self.assertEqual(code, 4)
             self.assertTrue(any("no documents to migrate" in e for e in report["blocking"]))
             self.assertTrue((repo / source_rel).is_file(), "an empty source must not be deleted")
+
+    def test_templated_scope_produces_mixed_name_and_blocks(self) -> None:
+        # database_name_hint builds "<scope>-<type>-db"; a templated scope makes
+        # that a literal-plus-expression mix that nothing checks after render.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "deploy/dbaas.json"
+            output_rel = "deploy/dbaas-operator-resources.yaml"
+            payload = {
+                "kind": "DatabaseDeclaration",
+                "declarations": [
+                    {
+                        "classifierConfig": {
+                            "classifier": {"scope": "{{ .Values.SCOPE }}", "microserviceName": "svc"}
+                        },
+                        "type": "postgresql",
+                    }
+                ],
+            }
+            repo = make_repo(tmp, json.dumps(payload), source_rel)
+            plan = base_plan(
+                repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
+            )
+            plan["decisions"]["serviceNameExplicit"] = True
+            plan["decisions"]["serviceName"] = "svc"
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 4)
+            self.assertTrue(
+                any("contains a Helm expression" in e for e in report["blocking"])
+            )
+            self.assertFalse((repo / output_rel).exists())
+
+    def test_whole_template_resource_name_override_is_rejected(self) -> None:
+        # A templated name cannot be checked for a valid DNS-1123 label
+        # without actually rendering the chart, which this runner does not
+        # do -- so any templated name, including an explicit resourceNames
+        # override, is rejected outright rather than deferred to render time.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "chart/templates/dbaas.json"
+            output_rel = "chart/templates/dbaas-operator-resources.yaml"
+            payload = {
+                "kind": "DatabaseDeclaration",
+                "declarations": [
+                    {
+                        "classifierConfig": {"classifier": {"scope": "service", "microserviceName": "svc"}},
+                        "type": "postgresql",
+                    }
+                ],
+            }
+            repo = make_repo(tmp, json.dumps(payload), source_rel)
+            plan = base_plan(
+                repo, source_rel, root="chart", root_kind="helm", output_rel=output_rel
+            )
+            plan["decisions"]["serviceNameExplicit"] = True
+            plan["decisions"]["serviceName"] = "svc"
+            plan["decisions"]["resourceNames"] = {f"{source_rel}#0": "{{ .Values.DB_NAME }}"}
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertTrue(
+                any("contains a Helm expression" in e for e in report["blocking"])
+            )
+            self.assertFalse((repo / output_rel).exists())
+
+    def test_crlf_and_bom_source_left_untouched_when_nothing_migrates(self) -> None:
+        # Reading with utf-8-sig strips a BOM and normalizes CRLF to LF; if that
+        # decoded text were ever written back for a source nothing was migrated
+        # from, the file would be silently rewritten even though the plan
+        # changed nothing in it.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "deploy/other.yaml"
+            body = "apiVersion: v1\r\nkind: ConfigMap\r\nmetadata:\r\n  name: keep-me\r\n"
+            original_bytes = b"\xef\xbb\xbf" + body.encode("utf-8")
+            repo = tmp / "repo"
+            (repo / "deploy").mkdir(parents=True)
+            (repo / source_rel).write_bytes(original_bytes)
+            output_rel = "deploy/dbaas-operator-resources.yaml"
+            plan = base_plan(
+                repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
+            )
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(report["status"], "unchanged")
+            self.assertEqual((repo / source_rel).read_bytes(), original_bytes)
+
+    def test_json_array_with_nothing_migrated_is_left_untouched(self) -> None:
+        # A partial rewrite applies only when SOME documents were migrated; an
+        # array where NONE were must not be reserialized -- with different
+        # indentation or spacing than the original -- just because it also
+        # holds other, unmigrated content.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            source_rel = "deploy/other.json"
+            original_text = (
+                json.dumps([{"kind": "ConfigMap", "metadata": {"name": "keep"}}], indent=4) + "\n"
+            )
+            repo = tmp / "repo"
+            (repo / "deploy").mkdir(parents=True)
+            (repo / source_rel).write_text(original_text, encoding="utf-8")
+            output_rel = "deploy/dbaas-operator-resources.yaml"
+            plan = base_plan(
+                repo, source_rel, root="deploy", root_kind="plain", output_rel=output_rel
+            )
+            code, report = run_migration(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(report["status"], "unchanged")
+            self.assertEqual((repo / source_rel).read_text(encoding="utf-8"), original_text)
 
 
 if __name__ == "__main__":

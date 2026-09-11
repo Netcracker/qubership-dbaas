@@ -223,6 +223,10 @@ def _block_content_end(lines: list[str], start_line: int, min_indent: int) -> in
 
 
 def _child_key_column(mapping_node: Any) -> int:
+    # An empty mapping (`spec: {}`) has no child key to read a column from;
+    # fall back to two spaces past the mapping's own start.
+    if not mapping_node.value:
+        return mapping_node.start_mark.column + 2
     return mapping_node.value[0][0].start_mark.column
 
 
@@ -254,6 +258,19 @@ def _plan_edits(
     pod_spec = _walk(node, ["spec", "template", "spec"])
     if pod_spec is None or _is_null(pod_spec) or not _is_mapping(pod_spec):
         problems.append(f"{filename}: {kind}/{name} has no spec.template.spec mapping")
+        return
+    if not pod_spec.value:
+        # An empty mapping (`spec: {}`) has no `containers` key -- a required
+        # field on a real pod spec -- to mount into, and no child key for
+        # _plan_volumes/_plan_mounts to anchor an insertion at.
+        # _child_key_column's empty-mapping fallback only covers the column
+        # to indent at, not "where do I even put this"; without this check
+        # mapping_node.value[-1] below raises IndexError instead of failing
+        # closed with a typed error.
+        problems.append(
+            f"{filename}: {kind}/{name} spec.template.spec is an empty mapping; it must "
+            "already define a containers list to mount the generated secret into"
+        )
         return
 
     _plan_volumes(pod_spec, lines, filename, target, edits, problems)
@@ -421,13 +438,28 @@ def _plan_container_mounts(
 # --------------------------------------------------------------------------- #
 
 
+def _yaml_scalar(value: str) -> str:
+    """A value safe to splice unquoted into hand-built YAML text, or a
+    single-quoted one when it is not.
+
+    These volume/mount names and paths are ordinarily plain DNS labels, but a
+    still-templated identity (see ``_resource_build.identity_stem``) embeds a
+    ``{{ ... }}`` expression, and a value starting with ``{`` is YAML flow-
+    mapping syntax unless quoted.
+    """
+
+    if value.startswith("{{"):
+        return "'" + value.replace("'", "''") + "'"
+    return value
+
+
 def _volume_item(volume: str, secret: str, indent: int) -> str:
     pad = " " * indent
     inner = " " * (indent + 2)
     return (
-        f"{pad}- name: {volume}\n"
+        f"{pad}- name: {_yaml_scalar(volume)}\n"
         f"{inner}secret:\n"
-        f"{inner}  secretName: {secret}\n"
+        f"{inner}  secretName: {_yaml_scalar(secret)}\n"
     )
 
 
@@ -435,7 +467,7 @@ def _mount_item(mount: dict[str, Any], indent: int) -> str:
     pad = " " * indent
     inner = " " * (indent + 2)
     return (
-        f"{pad}- name: {mount['volume']}\n"
-        f"{inner}mountPath: {mount['mountPath']}\n"
+        f"{pad}- name: {_yaml_scalar(mount['volume'])}\n"
+        f"{inner}mountPath: {_yaml_scalar(mount['mountPath'])}\n"
         f"{inner}readOnly: true\n"
     )

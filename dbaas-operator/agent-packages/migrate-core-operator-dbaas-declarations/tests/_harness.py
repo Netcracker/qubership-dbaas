@@ -50,7 +50,7 @@ def run_migration(repo_root: Path, plan: dict[str, Any], mode: str, tmp: Path) -
 
 
 def targets_for(*relatives: str) -> list[dict[str, Any]]:
-    return [{"path": relative, "ownership": "own"} for relative in relatives]
+    return [{"path": relative} for relative in relatives]
 
 
 def preconditions_for(repo_root: Path, *relatives: str) -> list[dict[str, Any]]:

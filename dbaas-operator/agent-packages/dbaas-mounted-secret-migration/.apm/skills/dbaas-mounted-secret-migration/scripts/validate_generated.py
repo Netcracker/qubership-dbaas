@@ -47,6 +47,21 @@ def claim_key(classifier: dict[str, Any], db_type: str, role: str) -> str:
     return f"{database_key(classifier, db_type)}|{role.strip()}"
 
 
+def _wire_classifier(classifier: dict[str, Any]) -> dict[str, Any]:
+    """Flatten an inventory classifier to its effective wire form.
+
+    A top-level key wins over the same key repeated inside ``extraKeys`` --
+    matching ``_resource_build.py``'s ``_wire_classifier``/``cr_classifier``,
+    since ``database_key``/``claim_key`` must key an inventory datasource the
+    same way the generator keys the CR it produces from it.
+    """
+
+    wire = {key: value for key, value in classifier.items() if key != "extraKeys"}
+    for key, value in (classifier.get("extraKeys") or {}).items():
+        wire.setdefault(key, value)
+    return wire
+
+
 def describe_keys(keys: set[str]) -> str:
     return "; ".join(sorted(keys))
 
@@ -183,19 +198,18 @@ def validate_inventory(
                 "classifier.namespace must contain the effective workload namespace"
             )
             continue
-        if "extraKeys" in classifier:
-            errors.append(
-                f"inventory datasource {datasource.get('id', '<unknown>')}: classifier must use the effective "
-                "wire form; flatten classifier.extraKeys into top-level keys"
-            )
+        extra_keys = classifier.get("extraKeys")
+        if extra_keys is not None and not isinstance(extra_keys, dict):
+            errors.append(f"inventory datasource {datasource.get('id', '<unknown>')}: classifier.extraKeys must be a mapping")
             continue
-        db_key = database_key(classifier, db_type)
+        wire_classifier = _wire_classifier(classifier)
+        db_key = database_key(wire_classifier, db_type)
         expected_databases.add(db_key)
         roles = datasource.get("requestedRoles", [""])
         if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles):
             errors.append(f"inventory datasource {datasource.get('id', '<unknown>')}: requestedRoles must be strings")
             continue
-        expected_claims.update(claim_key(classifier, db_type, role) for role in roles)
+        expected_claims.update(claim_key(wire_classifier, db_type, role) for role in roles)
 
     if len(errors) > inventory_error_count:
         return

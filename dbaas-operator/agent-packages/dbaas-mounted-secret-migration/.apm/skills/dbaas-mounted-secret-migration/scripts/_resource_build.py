@@ -47,30 +47,71 @@ def dns_label(*parts: Any, keep_tail: str = "") -> str:
     return common.dns_label(*parts, keep_tail=keep_tail)
 
 
+def _is_templated(value: Any) -> bool:
+    if isinstance(value, str):
+        return "{{" in value
+    if isinstance(value, list):
+        return any(_is_templated(item) for item in value)
+    if isinstance(value, dict):
+        return any(_is_templated(item) for item in value.values())
+    return False
+
+
+# A hash of Helm's per-release-unique `.Release.Name` keeps templated identities
+# distinct without copying dots or a truncation-boundary hyphen from a legal
+# release name into generated volume names (which require a DNS label).
+_RELEASE_NAME_HASH_LEN = 8
+_RELEASE_NAME_BUDGET = _RELEASE_NAME_HASH_LEN
+_RELEASE_NAME_EXPR = f'{{{{ trunc {_RELEASE_NAME_HASH_LEN} (sha256sum .Release.Name) }}}}'
+
+# ``_with_tail`` appends a role token plus a keep_tail suffix (e.g.
+# "-admin-credentials") to a templated stem after this module returns it, so
+# the static stem must leave room for that suffix too -- not consume the
+# entire remainder of the 63-character budget itself. This is the ceiling
+# ``_with_tail`` truncates/hashes the parts+keep_tail suffix into, mirroring
+# how ``dns_label`` bounds the equivalent non-templated composition.
+_RELEASE_TAIL_BUDGET = 20
+
+
 def identity_stem(
     classifier: dict[str, Any],
     db_type: str,
     *,
     discriminator: str | None,
-) -> str:
+) -> tuple[str, bool]:
     """Build the naming stem for a SUPPORTED datasource's classifier.
 
-    ``classifier["microserviceName"]`` and ``["scope"]`` are required, non-empty
-    strings for every SUPPORTED datasource -- ``apply_migration.py`` rejects the
-    plan before this runs otherwise -- so they are read directly rather than
-    defaulted; a caller that violates that precondition is a programming error,
-    not a data condition to paper over.
+    Returns ``(stem, templated)``. ``classifier["microserviceName"]`` and
+    ``["scope"]`` are required, non-empty strings for every SUPPORTED
+    datasource -- ``apply_migration.py`` rejects the plan before this runs
+    otherwise -- so they are read directly rather than defaulted.
+
+    When either is still a Helm expression (the chart is installed more than
+    once, each time with a different value), slugifying the expression's
+    literal text would generate the identical stem for every install --
+    exactly the hazard ``_check_service_identity`` exists to prevent. Instead
+    ``stem`` embeds ``.Release.Name``, the one value Helm itself guarantees is
+    unique per release in a namespace, ahead of the remaining static parts.
+    ``templated`` tells the caller to compose the rest of the name with
+    ``_with_tail`` instead of ``dns_label``, which would mangle the embedded
+    expression.
     """
 
     microservice = classifier["microserviceName"]
     scope = classifier["scope"]
+    identity_values = {
+        key: value for key, value in _wire_classifier(classifier).items() if key != "namespace"
+    }
+    if _is_templated(identity_values) or _is_templated(db_type):
+        return _templated_identity_stem(classifier, db_type, discriminator=discriminator), True
+
     parts = [microservice, db_type.lower(), scope]
     tenant = classifier.get("tenantId")
     if tenant:
         parts.append(str(tenant))
     if discriminator:
         parts.append(str(discriminator))
-        return dns_label(*parts)
+        return dns_label(*parts), False
     extra_identity = {
         key: value
         for key, value in _wire_classifier(classifier).items()
@@ -79,7 +120,71 @@ def identity_stem(
     if extra_identity:
         digest = hashlib.sha256(canonical(extra_identity).encode("utf-8")).hexdigest()[:8]
         parts.append(digest)
-    return dns_label(*parts)
+    return dns_label(*parts), False
+
+
+def _templated_identity_stem(
+    classifier: dict[str, Any], db_type: str, *, discriminator: str | None
+) -> str:
+    static_parts = []
+    for value in (classifier["microserviceName"], db_type.lower(), classifier["scope"]):
+        if not _is_templated(value):
+            static_parts.append(value)
+    tenant = classifier.get("tenantId")
+    if tenant and not _is_templated(tenant):
+        static_parts.append(str(tenant))
+    if discriminator:
+        static_parts.append(str(discriminator))
+    static_extra = {
+        key: value
+        for key, value in _wire_classifier(classifier).items()
+        if key not in {"microserviceName", "scope", "namespace", "tenantId"}
+        and not _is_templated(value)
+    }
+    if static_extra:
+        static_parts.append(
+            hashlib.sha256(canonical(static_extra).encode("utf-8")).hexdigest()[:8]
+        )
+    # Reserve _RELEASE_NAME_BUDGET + 1 (separator) for the release-name
+    # expression ahead of this stem, and _RELEASE_TAIL_BUDGET + 1 (separator)
+    # for the parts+keep_tail suffix _with_tail appends after it, so the
+    # worst-case rendered name (release name + static stem + longest tail,
+    # e.g. "<release>-<stem>-<role>-credentials") still fits in 63 chars.
+    static_stem = common.dns_label(
+        *static_parts,
+        limit=common.DNS_LABEL_MAX - _RELEASE_NAME_BUDGET - 1 - _RELEASE_TAIL_BUDGET - 1,
+    )
+    return f"{_RELEASE_NAME_EXPR}-{static_stem}"
+
+
+def _templated_tail(*parts: str, keep_tail: str) -> str:
+    """Compose the parts+keep_tail suffix ``_with_tail`` appends to a templated stem.
+
+    Bounded to ``_RELEASE_TAIL_BUDGET`` the same way ``dns_label`` bounds a
+    static identity: readable when short, deterministically truncated and
+    hashed when ``parts`` (a caller-supplied role name) would otherwise push
+    the rendered name past the budget ``_templated_identity_stem`` reserved
+    for it.
+    """
+
+    non_empty = [str(part) for part in parts if part is not None and str(part) != ""]
+    if not non_empty:
+        return common.dns_label(keep_tail, limit=_RELEASE_TAIL_BUDGET) if keep_tail else ""
+    return common.dns_label(*non_empty, keep_tail=keep_tail, limit=_RELEASE_TAIL_BUDGET)
+
+
+def _with_tail(stem: str, *parts: str, keep_tail: str, templated: bool) -> str:
+    """Append ``parts`` and ``keep_tail`` to ``stem``.
+
+    A templated stem embeds a live Helm expression and must not be run
+    through ``dns_label``'s slug regex -- it would mangle the expression, so
+    the suffix is bounded separately by ``_templated_tail`` instead.
+    """
+
+    if templated:
+        tail = _templated_tail(*parts, keep_tail=keep_tail)
+        return f"{stem}-{tail}" if tail else stem
+    return dns_label(stem, *parts, keep_tail=keep_tail)
 
 
 def role_token(role: str) -> str:
@@ -88,7 +193,14 @@ def role_token(role: str) -> str:
 
 
 def cr_classifier(classifier: dict[str, Any]) -> dict[str, Any]:
-    """Split the inventory classifier into the CR encoding (typed + extraKeys)."""
+    """Split the inventory classifier into the CR encoding (typed + extraKeys).
+
+    A top-level key wins over the same key repeated inside ``extraKeys``, matching
+    ``_wire_classifier``'s precedence -- the identity every de-duplication, naming,
+    and legacy-declaration match is computed from. Reversing the order here would
+    let the runner delete a legacy declaration under one identity while emitting a
+    CR that resolves under another.
+    """
 
     typed: dict[str, Any] = {}
     extra: dict[str, Any] = {}
@@ -100,7 +212,7 @@ def cr_classifier(classifier: dict[str, Any]) -> dict[str, Any]:
         else:
             extra[key] = value
     for key, value in (classifier.get("extraKeys") or {}).items():
-        extra[key] = value
+        extra.setdefault(key, value)
     typed.pop("namespace", None)  # the operator derives it from metadata.namespace
     result = {key: typed[key] for key in ("microserviceName", "scope", "tenantId") if key in typed}
     if "customKeys" in typed:
@@ -134,16 +246,16 @@ def build_resources(
     }
 
     databases: dict[str, dict[str, Any]] = {}
-    names: dict[str, str] = {}
+    names: dict[str, tuple[str, bool]] = {}
     for ds in sorted(supported.values(), key=lambda d: database_key(d["classifier"], d["type"])):
         key = database_key(ds["classifier"], ds["type"])
         if key in databases:
             continue
-        stem = identity_stem(
+        stem, templated = identity_stem(
             ds["classifier"], ds["type"], discriminator=discriminators.get(ds["id"])
         )
-        name = dns_label(stem, keep_tail="db")
-        names[key] = stem
+        name = _with_tail(stem, keep_tail="db", templated=templated)
+        names[key] = (stem, templated)
         params = ds.get("parameters") or {}
         spec: dict[str, Any] = {
             "operatorNamespace": operator_namespace,
@@ -178,14 +290,14 @@ def build_resources(
         role = str(claim.get("role", ""))
         key = claim_key(ds["classifier"], ds["type"], role)
         db_key = database_key(ds["classifier"], ds["type"])
-        stem = names[db_key]
+        stem, templated = names[db_key]
         token = role_token(role)
-        secret_name = dns_label(stem, token, keep_tail="credentials")
+        secret_name = _with_tail(stem, token, keep_tail="credentials", templated=templated)
         bundle = {
-            "database": dns_label(stem, keep_tail="db"),
-            "claim": dns_label(stem, token, keep_tail="claim"),
+            "database": _with_tail(stem, keep_tail="db", templated=templated),
+            "claim": _with_tail(stem, token, keep_tail="claim", templated=templated),
             "secret": secret_name,
-            "volume": dns_label(stem, token, keep_tail="secret"),
+            "volume": _with_tail(stem, token, keep_tail="secret", templated=templated),
             "mountPath": f"{MOUNT_ROOT}/{secret_name}",
         }
         name_bundle[key] = bundle
@@ -242,14 +354,18 @@ def _check_final_name_collisions(
                 f"{meta.get('namespace', '')!r} is produced by more than one identity"
             )
         resource_owner[identity] = meta["name"]
-        for field in ("name",):
-            if not common.is_dns_label(meta[field]):
-                errors.append(f"{body['kind']} {meta[field]!r} is not a valid DNS-1123 label")
+        # A templated name (an embedded .Release.Name expression) is checked
+        # for DNS-1123 validity after render, the same as any other templated
+        # field this runner emits -- it is not a fixed label to validate here.
+        name = meta["name"]
+        if "{{" not in name and not common.is_dns_label(name):
+            errors.append(f"{body['kind']} {name!r} is not a valid DNS-1123 label")
 
     for field in ("database", "claim", "secret", "volume"):
         for bundle in name_bundle.values():
-            if not common.is_dns_label(bundle[field]):
-                errors.append(f"generated {field} name {bundle[field]!r} is not a valid DNS-1123 label")
+            value = bundle[field]
+            if "{{" not in value and not common.is_dns_label(value):
+                errors.append(f"generated {field} name {value!r} is not a valid DNS-1123 label")
     # secret / volume / mount path are per (database, role) and must never be
     # shared by two different claim identities.
     for field in ("secret", "volume", "mountPath"):

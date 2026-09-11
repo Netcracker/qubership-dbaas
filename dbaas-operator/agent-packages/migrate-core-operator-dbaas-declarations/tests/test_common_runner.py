@@ -37,6 +37,55 @@ class CommonRunnerTest(unittest.TestCase):
             common._check_dependencies(FakeEngine())
         self.assertEqual(ctx.exception.exit_code, common.EXIT_UNSUPPORTED)
 
+    def test_canonical_path_collapses_dot_segments_and_backslashes(self) -> None:
+        self.assertEqual(common.canonical_path("chart/./a.json"), "chart/a.json")
+        self.assertEqual(common.canonical_path("chart\\a.json"), "chart/a.json")
+        self.assertEqual(common.canonical_path("chart//a.json"), "chart/a.json")
+        for path in ("chart/../a.json", "/etc/a.json", "\\server\\a.json", "C:\\a.json"):
+            with self.subTest(path=path), self.assertRaises(common.MigrationError):
+                common.canonical_path(path)
+
+    def test_canonical_path_aliases_cannot_duplicate_plan_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo, source_rel, output_rel = scaffold(tmp)
+            the_plan = plan_for(repo, source_rel, output_rel)
+            duplicate = dict(the_plan["repository"]["preconditions"][0])
+            duplicate["path"] = source_rel.replace("/", "/./", 1)
+            the_plan["repository"]["preconditions"].append(duplicate)
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2)
+            self.assertIn("preconditions lists", report["validation"][0]["details"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo, source_rel, output_rel = scaffold(tmp)
+            the_plan = plan_for(repo, source_rel, output_rel)
+            the_plan["decisions"]["outputOwnership"] = {
+                output_rel: {"sha256": "0" * 64},
+                output_rel.replace("/", "/./", 1): {"sha256": "1" * 64},
+            }
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2)
+            self.assertIn("outputOwnership lists", report["validation"][0]["details"])
+
+    def test_target_path_alias_matches_the_canonical_output_path(self) -> None:
+        # "deploy/./dbaas-operator-resources.yaml" and
+        # "deploy/dbaas-operator-resources.yaml" name the same file; load_plan
+        # must canonicalize plan.targets so a plan author's alias spelling
+        # still satisfies enforce_plan_scope's "listed in plan.targets" check
+        # against the runner's own canonical output path.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo, source_rel, output_rel = scaffold(tmp)
+            the_plan = plan_for(repo, source_rel, output_rel)
+            output_name = output_rel.split("/", 1)[1]
+            for target in the_plan["targets"]:
+                if target["path"] == output_rel:
+                    target["path"] = f"deploy/./{output_name}"
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+
     def test_falsy_wrong_type_envelope_values_are_rejected(self) -> None:
         for key, bad in (("repository", []), ("inputs", []), ("decisions", []), ("targets", {})):
             with tempfile.TemporaryDirectory() as directory:
@@ -115,9 +164,17 @@ class CommonRunnerTest(unittest.TestCase):
 
     def test_join_rel_handles_the_repository_root(self) -> None:
         self.assertEqual(common.join_rel("chart", "templates/x.yaml"), "chart/templates/x.yaml")
-        self.assertEqual(common.join_rel("chart/", "/templates/x.yaml"), "chart/templates/x.yaml")
         for repo_root in ("", ".", "/"):
             self.assertEqual(common.join_rel(repo_root, "x.yaml"), "x.yaml")
+        for root, rel in (("/chart", "x.yaml"), ("chart", "/templates/x.yaml")):
+            with self.subTest(root=root, rel=rel), self.assertRaises(common.MigrationError):
+                common.join_rel(root, rel)
+
+    def test_change_set_rejects_aliasing_conflicts(self) -> None:
+        changes = common.Changes()
+        changes.set_content("deploy/./resources.yaml", "first")
+        with self.assertRaises(common.MigrationError):
+            changes.delete("deploy/resources.yaml")
 
     def test_dns_label_truncates_with_a_stable_hash(self) -> None:
         long_a = common.dns_label("x" * 80, keep_tail="credentials")

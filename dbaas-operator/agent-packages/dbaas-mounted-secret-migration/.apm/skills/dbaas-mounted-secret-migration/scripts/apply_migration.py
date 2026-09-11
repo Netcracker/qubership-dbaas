@@ -102,7 +102,7 @@ class MountedSecretEngine:
     decision_keys = _DECISION_KEYS
 
     def affected_roots(self, repo_root: Path, plan: common.Plan) -> list[str]:
-        return [_require_str(plan.decisions, "root")]
+        return [common.normalize_root(_require_str(plan.decisions, "root"))]
 
     # ----------------------------------------------------------------- #
 
@@ -110,7 +110,7 @@ class MountedSecretEngine:
         # plan.decisions keys are already checked against _DECISION_KEYS by
         # common.load_plan(decision_keys=...) before build_changes runs.
         decisions = plan.decisions
-        root = _require_str(decisions, "root")
+        root = common.normalize_root(_require_str(decisions, "root"))
         root_kind = decisions.get("rootKind", "plain")
         if root_kind not in {"helm", "plain"}:
             raise common.bad_input("plan.decisions.rootKind must be 'helm' or 'plain'")
@@ -242,25 +242,12 @@ class MountedSecretEngine:
     ) -> list[common.ValidationResult]:
         results = [common.ValidationResult("plan", "passed")]
         decisions = plan.decisions
-        root = decisions["root"]
+        root = common.normalize_root(decisions["root"])
         root_kind = decisions.get("rootKind", "plain")
         operator_namespace = plan.inputs["operatorNamespace"]
         workload_namespace = decisions.get("workloadNamespace", "")
 
         inventory_text = json.dumps({"datasources": plan.inputs["datasources"]})
-        manifest_rels = {
-            _output_path(root, root_kind, decisions.get("outputFile")),
-            *(
-                common.join_rel(root, claim["workloadFile"])
-                for claim in decisions.get("claims") or []
-                if isinstance(claim, dict) and claim.get("workloadFile")
-            ),
-        }
-        changed_manifest_rels = [
-            rel
-            for rel in sorted(manifest_rels)
-            if changes.files.get(rel) is not None and (tree_root / rel).is_file()
-        ]
 
         if root_kind == "helm":
             results.extend(
@@ -274,6 +261,19 @@ class MountedSecretEngine:
                 )
             )
         else:
+            manifest_rels = {
+                _output_path(root, root_kind, decisions.get("outputFile")),
+                *(
+                    common.join_rel(root, claim["workloadFile"])
+                    for claim in decisions.get("claims") or []
+                    if isinstance(claim, dict) and claim.get("workloadFile")
+                ),
+            }
+            changed_manifest_rels = [
+                rel
+                for rel in sorted(manifest_rels)
+                if changes.files.get(rel) is not None and (tree_root / rel).is_file()
+            ]
             inventory_path = tree_root / "__inventory.json"
             inventory_path.write_text(inventory_text, encoding="utf-8")
             manifest_paths = [tree_root / rel for rel in changed_manifest_rels]
@@ -289,7 +289,8 @@ class MountedSecretEngine:
                     )
             try:
                 errors = validate_generated.validate(
-                    manifest_paths, inventory_path, operator_namespace
+                    manifest_paths, inventory_path, operator_namespace,
+                    default_namespace=workload_namespace,
                 )
             except Exception as exc:  # noqa: BLE001
                 errors = [f"validator raised: {exc}"]
@@ -461,6 +462,26 @@ def _validate_datasource_schema(datasources: list[dict[str, Any]]) -> None:
                 raise common.bad_input(f"{where}.classifier.customKeys must be an object")
             if "tenantId" in classifier and not isinstance(classifier["tenantId"], str):
                 raise common.bad_input(f"{where}.classifier.tenantId must be a string")
+            if "extraKeys" in classifier:
+                if not isinstance(classifier["extraKeys"], dict):
+                    # _resource_build.py's _wire_classifier/cr_classifier call
+                    # .items() on this unconditionally; a non-empty list, string,
+                    # or boolean here would otherwise raise AttributeError deep
+                    # inside name/identity generation instead of failing here as
+                    # the invalid plan input it is.
+                    raise common.bad_input(f"{where}.classifier.extraKeys must be an object")
+                reserved = sorted(build.RESERVED_CLASSIFIER_KEYS & set(classifier["extraKeys"]))
+                if reserved:
+                    # cr_classifier's own extraKeys merge does not filter
+                    # reserved keys back out -- a reserved key with no
+                    # top-level shadow would otherwise reach the generated CR
+                    # nested under spec.classifier.extraKeys, where
+                    # validate_generated only catches it as a generated-output
+                    # defect (exit 5) instead of the invalid plan input it is.
+                    raise common.bad_input(
+                        f"{where}.classifier.extraKeys must not repeat reserved keys: "
+                        f"{', '.join(reserved)}"
+                    )
 
         parameters = ds.get("parameters")
         if parameters is not None:

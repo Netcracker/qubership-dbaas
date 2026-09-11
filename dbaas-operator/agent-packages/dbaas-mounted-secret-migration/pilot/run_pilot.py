@@ -76,8 +76,10 @@ def build_plan(repo: Path) -> dict:
                     "type": "postgresql",
                     "classifier": {
                         # The legacy declaration templates the service name; discovery
-                        # keeps it templated so two installs with different SERVICE_NAME
-                        # keep one database each (finding 2).
+                        # keeps it templated so a templated deployment stays templated
+                        # end to end. identity_stem cannot slug a per-release value out
+                        # of this expression, so the generated name embeds
+                        # .Release.Name instead -- see identity_stem's docstring.
                         "microserviceName": "{{ .Values.SERVICE_NAME }}",
                         "namespace": "{{ .Values.NAMESPACE }}",
                         "scope": "service",

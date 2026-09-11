@@ -13,8 +13,12 @@ database identity = canonical(classifier) | lowercase(type)
 mounted lookup    = canonical(classifier) | lowercase(type) | trim(requested role)
 ```
 
-Classifier equality includes extension keys and their JSON values. Key order does not matter; a
-missing key, extra key, different value, or nested-vs-top-level placement does matter.
+Classifier equality includes extension keys and their JSON values. Key order does not matter, and
+neither does top-level-vs-`extraKeys` placement of the same extension key -- both flatten to the
+same effective wire identity (see "Classifier mapping" below). A missing key, an extra key, a
+different value, or placement under `customKeys` instead does matter: `customKeys` stays a nested
+object in the wire identity rather than flattening, so the same key there identifies a different
+database.
 
 The operator defaults an omitted classifier namespace from `metadata.namespace` before calling the
 aggregator and writing Secret metadata. The running client normally enriches an omitted namespace
@@ -79,12 +83,16 @@ spec:
   lazy: false
 ```
 
-Optional mappings supported by the current CR contract are:
+Optional mappings the current CR contract supports are:
 
 - `BaseDbParams.NamePrefix` to `spec.namePrefix`;
-- JSON-valued database creation settings to `spec.settings` without changing their types;
-- explicitly configured versioning and initial-instantiation behavior to their corresponding
-  structures.
+- JSON-valued database creation settings to `spec.settings` without changing their types.
+
+The mounted-secret migration runner does not carry versioning or initial-instantiation behavior
+into the generated `InternalDatabase` -- there is no target structure for it in this runner's
+output. A legacy declaration that explicitly configures `versioningConfig` or
+`initialInstantiation` is left un-migrated: the runner refuses to treat it as superseded and blocks
+with the field name, rather than silently dropping the setting.
 
 Do not copy client connection-pool, migration, retry, or datasource settings into `spec.settings`.
 The CR type is `map[string]apiextensionsv1.JSON`; values may be strings, numbers, booleans, null,

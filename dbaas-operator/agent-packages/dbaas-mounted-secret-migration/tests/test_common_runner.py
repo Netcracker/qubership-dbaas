@@ -38,6 +38,13 @@ class CommonRunnerTest(unittest.TestCase):
             common._check_dependencies(FakeEngine())
         self.assertEqual(ctx.exception.exit_code, common.EXIT_UNSUPPORTED)
 
+    def test_canonical_paths_are_relative_and_unambiguous(self) -> None:
+        self.assertEqual(common.canonical_path("chart/./a.json"), "chart/a.json")
+        self.assertEqual(common.canonical_path("chart\\a.json"), "chart/a.json")
+        for path in ("chart/../a.json", "/etc/a.json", "\\server\\a.json", "C:\\a.json"):
+            with self.subTest(path=path), self.assertRaises(common.MigrationError):
+                common.canonical_path(path)
+
     def test_falsy_wrong_type_envelope_values_are_rejected(self) -> None:
         for key, bad in (("repository", []), ("inputs", []), ("decisions", []), ("targets", {})):
             with tempfile.TemporaryDirectory() as directory:
@@ -102,9 +109,39 @@ class CommonRunnerTest(unittest.TestCase):
 
     def test_join_rel_handles_the_repository_root(self) -> None:
         self.assertEqual(common.join_rel("chart", "templates/x.yaml"), "chart/templates/x.yaml")
-        self.assertEqual(common.join_rel("chart/", "/templates/x.yaml"), "chart/templates/x.yaml")
         for repo_root in ("", ".", "/"):
             self.assertEqual(common.join_rel(repo_root, "x.yaml"), "x.yaml")
+        for root, rel in (("/chart", "x.yaml"), ("chart", "/templates/x.yaml")):
+            with self.subTest(root=root, rel=rel), self.assertRaises(common.MigrationError):
+                common.join_rel(root, rel)
+
+    def test_plan_rejects_untrusted_metadata_in_path_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            the_plan["targets"][0]["ownership"] = "ignored"
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2)
+            self.assertIn("unknown properties", report["validation"][0]["details"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            output = the_plan["decisions"]["outputFile"]
+            the_plan["decisions"]["outputOwnership"] = {
+                output: {"sha256": "not-a-digest"}
+            }
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2)
+            self.assertIn("64-character", report["validation"][0]["details"])
+
+    def test_change_set_rejects_aliasing_conflicts(self) -> None:
+        changes = common.Changes()
+        changes.set_content("chart/./values.yaml", "first")
+        with self.assertRaises(common.MigrationError):
+            changes.set_content("chart/values.yaml", "second")
 
     def test_dns_label_truncates_with_a_stable_hash(self) -> None:
         long_a = common.dns_label("x" * 80, keep_tail="credentials")

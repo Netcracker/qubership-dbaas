@@ -89,10 +89,14 @@ runner blocks the whole apply if a plan claim targets a non-`SUPPORTED` identity
 `SUPPORTED` datasource that still carries a non-empty `parameters.physicalDatabaseId`, so a
 mislabelled physical binding cannot slip through.
 
-Record the inventory under `inputs.datasources` in the effective runtime wire form: the classifier
-carries the resolved workload namespace and top-level extension keys directly (no `extraKeys` in the
-inventory). `classifier.namespace` must equal `decisions.workloadNamespace`, so a Helm layout uses
-`{{ .Values.NAMESPACE }}` in both places and a plain layout uses the same concrete namespace.
+Record the inventory under `inputs.datasources` with the resolved workload namespace in
+`classifier.namespace`. A custom key may be given as a top-level classifier key or nested under
+`classifier.extraKeys` -- both are accepted and generate the same CR; a top-level key wins over the
+same key repeated inside `extraKeys`, matching the generator's flattening precedence, since the
+identity every de-duplication, naming, and legacy-declaration match is computed from is the
+flattened result, not the raw classifier as written. `classifier.namespace` must equal
+`decisions.workloadNamespace`, so a Helm layout uses `{{ .Values.NAMESPACE }}` in both places and a
+plain layout uses the same concrete namespace.
 
 ```json
 {
@@ -141,7 +145,10 @@ Record under `decisions`:
   more than `<microservice>-<type>-<scope>`. Without one, the runner appends the first eight hex
   characters of the canonical-classifier SHA-256. Two datasources that resolve to the same
   `(classifier, type)` must carry the same discriminator (or none); a disagreement is a blocking
-  error, since the generated names would otherwise depend on inventory order.
+  error, since the generated names would otherwise depend on inventory order. Also set it to
+  distinguish two datasources whose `classifier.microserviceName` or `.scope` are both still
+  templated with the same `db_type`/static `scope`: those cannot be told apart by classifier alone,
+  since the runner reads unrendered chart source.
 - **`supersededDeclarations`**: legacy declaration files the runner should delete, given as
   repository-relative paths. The runner does not take your word for what a file contains: it parses
   each file, requires every document to be a `DatabaseDeclaration` — either a standalone declaration

@@ -88,9 +88,11 @@ identities unless the production profile uses the same path.
 
 ## Legacy declarations and runtime proof
 
-Compare existing `DatabaseDeclaration` classifiers against the actual builder output. Preserve
-explicit versioning and initial-instantiation behavior. Preserve structured settings as their
-corresponding YAML values instead of stringifying them.
+Compare existing `DatabaseDeclaration` classifiers against the actual builder output.
+`InternalDatabase` has no field for versioning or initial-instantiation behavior, and the
+mounted-secret runner blocks (rather than silently drops) a declaration that sets either -- see
+`references/contracts.md`; do not migrate that datasource automatically. Preserve structured
+settings as their corresponding YAML values instead of stringifying them.
 
 Exercise every named datasource because CDI may initialize it lazily. Prove migrations and DML with
 REST unreachable, then verify retained REST fallback separately. Test CDI startup ordering and

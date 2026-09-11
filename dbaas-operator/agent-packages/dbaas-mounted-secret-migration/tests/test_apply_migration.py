@@ -187,6 +187,50 @@ class MountedSecretApplyTest(unittest.TestCase):
                 any("must equal decisions.originService" in e for e in report["blocking"])
             )
 
+    def test_templated_microservice_name_embeds_release_name(self) -> None:
+        # identity_stem cannot slug a per-release value out of a Helm
+        # expression -- .Release.Name is the value Helm itself guarantees is
+        # unique per release, so the generated name embeds it instead of the
+        # expression's literal text (which every release would share).
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            the_plan["inputs"]["datasources"][0]["classifier"]["microserviceName"] = (
+                "{{ .Values.SERVICE_NAME }}"
+            )
+            the_plan["decisions"]["originService"] = "{{ .Values.SERVICE_NAME }}"
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            output = repo / "chart/templates/dbaas-mounted-secret-resources.yaml"
+            docs = [d for d in yaml.safe_load_all(output.read_text(encoding="utf-8")) if d]
+            internal = next(d for d in docs if d["kind"] == "InternalDatabase")
+            self.assertIn(".Release.Name", internal["metadata"]["name"])
+            self.assertNotIn("values-service-name", internal["metadata"]["name"])
+
+            # The volume/mount patch hand-builds YAML text (it never
+            # re-serializes the workload); the templated volume name must
+            # still be quoted correctly so the patched file parses.
+            deployment = yaml.safe_load(
+                (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            )
+            pod = deployment["spec"]["template"]["spec"]
+            volume_names = [v["name"] for v in pod["volumes"]]
+            self.assertTrue(any(".Release.Name" in name for name in volume_names))
+
+    def test_templated_microservice_name_with_discriminator_applies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            the_plan["inputs"]["datasources"][0]["classifier"]["microserviceName"] = (
+                "{{ .Values.SERVICE_NAME }}"
+            )
+            the_plan["decisions"]["originService"] = "{{ .Values.SERVICE_NAME }}"
+            the_plan["decisions"]["nameDiscriminators"] = {"orders-postgresql-service": "orders"}
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+
     def test_helm_block_action_in_workload_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -676,6 +720,51 @@ class MountedSecretApplyTest(unittest.TestCase):
             self.assertEqual(code, 4)
             self.assertTrue(any("standalone Helm action" in e for e in report["blocking"]))
 
+    def test_malformed_extra_keys_is_a_typed_invalid_plan_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            the_plan["inputs"]["datasources"][0]["classifier"]["extraKeys"] = ["not", "an", "object"]
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("classifier.extraKeys must be an object", report["validation"][0]["details"])
+
+    def test_reserved_key_inside_extra_keys_is_rejected_at_plan_validation(self) -> None:
+        # cr_classifier's extraKeys merge does not filter reserved keys back
+        # out, so a reserved key with no top-level shadow would otherwise
+        # reach the generated CR nested under spec.classifier.extraKeys and
+        # only be caught there, as a generated-output defect (exit 5)
+        # instead of the invalid plan input it actually is.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            the_plan["inputs"]["datasources"][0]["classifier"]["extraKeys"] = {
+                "tenantId": "sneaky"
+            }
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn(
+                "classifier.extraKeys must not repeat reserved keys", report["validation"][0]["details"]
+            )
+
+    def test_empty_pod_spec_mapping_is_a_typed_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            (repo / "chart/templates/deployment.yaml").write_text(
+                "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n"
+                "  namespace: '{{ .Values.NAMESPACE }}'\n"
+                "spec:\n  template:\n    spec: {}\n",
+                encoding="utf-8",
+            )
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 4)
+            self.assertTrue(
+                any("spec.template.spec is an empty mapping" in e for e in report["blocking"])
+            )
+
     def test_empty_inline_volumes_list_becomes_a_block_list(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -715,6 +804,79 @@ class MountedSecretApplyTest(unittest.TestCase):
             self.assertEqual(code, 0, report.get("__stderr"))
             names = {v["name"]: v["status"] for v in report["validation"]}
             self.assertEqual(names.get("validate_rendered"), "passed")
+
+    def test_plain_root_workload_without_namespace_validates(self) -> None:
+        # The generated CRs carry an explicit metadata.namespace, but a plain
+        # (non-Helm) workload manifest normally omits its own -- the namespace
+        # comes from `kubectl apply -n`. The validator must resolve that
+        # omission against decisions.workloadNamespace, not a bare "default".
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            (repo / "deploy").mkdir(parents=True)
+            deployment = (
+                "apiVersion: apps/v1\n"
+                "kind: Deployment\n"
+                "metadata:\n"
+                "  name: orders\n"
+                "spec:\n"
+                "  template:\n"
+                "    spec:\n"
+                "      containers:\n"
+                "        - name: orders\n"
+                "          image: orders:latest\n"
+            )
+            (repo / "deploy" / "deployment.yaml").write_text(deployment, encoding="utf-8")
+            output = "deploy/dbaas-mounted-secret-resources.yaml"
+            touched = ("deploy/deployment.yaml", output)
+            the_plan = {
+                "schemaVersion": 1,
+                "migrationKind": "mounted-secret",
+                "repository": {"preconditions": preconditions_for(repo, *touched)},
+                "inputs": {
+                    "operatorNamespace": "dbaas-system",
+                    "datasources": [
+                        {
+                            "id": "orders-postgresql-service",
+                            "type": "postgresql",
+                            "classifier": {
+                                "microserviceName": "orders",
+                                "namespace": "orders-ns",
+                                "scope": "service",
+                            },
+                            "requestedRoles": [""],
+                            "parameters": {},
+                            "migrationFeasibility": "SUPPORTED",
+                            "compatibility": {
+                                "mode": "NATIVE_MOUNTED_PROVIDER", "evidence": "resolved graph"
+                            },
+                        }
+                    ],
+                },
+                "decisions": {
+                    "root": "deploy",
+                    "rootKind": "plain",
+                    "workloadNamespace": "orders-ns",
+                    "originService": "orders",
+                    "claims": [
+                        {
+                            "datasourceId": "orders-postgresql-service",
+                            "role": "",
+                            "workloadFile": "deployment.yaml",
+                            "workloadKind": "Deployment",
+                            "workloadName": "orders",
+                            "containers": ["orders"],
+                            "initContainers": [],
+                        }
+                    ],
+                    "supersededDeclarations": [],
+                },
+                "targets": targets_for(*touched),
+            }
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            names = {v["name"]: v["status"] for v in report["validation"]}
+            self.assertEqual(names.get("validate_generated"), "passed")
 
     def test_string_false_disc_map_and_non_string_discriminator_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
