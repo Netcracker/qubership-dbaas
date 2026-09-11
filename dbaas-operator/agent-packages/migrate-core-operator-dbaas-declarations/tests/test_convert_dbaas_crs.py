@@ -153,6 +153,75 @@ settings:
         self.assertEqual(resource["kind"], "DatabaseAccessPolicy")
         self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas-system")
 
+    ADDRESS_DERIVED_OPERATOR_NAMESPACE = (
+        '{{ index (splitList "." (first (splitList ":" '
+        '(last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
+    )
+
+    @unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
+    def test_address_derived_operator_namespace_expression_is_preserved(self) -> None:
+        content = json.dumps(
+            [
+                {
+                    "apiVersion": "nc.core.dbaas/v3",
+                    "kind": "DatabaseDeclaration",
+                    "declarations": [
+                        {
+                            "classifierConfig": {
+                                "classifier": {"scope": "service", "microserviceName": "dca"}
+                            },
+                            "type": "postgresql",
+                        }
+                    ],
+                },
+                {
+                    "apiVersion": "nc.core.dbaas/v3",
+                    "kind": "DbPolicy",
+                    "microserviceName": "dca",
+                    "services": [{"name": "inventory", "roles": ["readonly"]}],
+                },
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "input.json"
+            output_path = Path(directory) / "output.yaml"
+            input_path.write_text(content, encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CONVERTER),
+                    "--input",
+                    str(input_path),
+                    "--output",
+                    str(output_path),
+                    "--namespace",
+                    "{{ .Values.NAMESPACE }}",
+                    "--operator-namespace",
+                    self.ADDRESS_DERIVED_OPERATOR_NAMESPACE,
+                    "--service-name",
+                    "{{ .Values.SERVICE_NAME }}",
+                ],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+            output = output_path.read_text(encoding="utf-8") if output_path.exists() else None
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNotNone(output)
+        resources = [doc for doc in yaml.safe_load_all(output) if doc]
+        self.assertEqual(
+            {resource["kind"] for resource in resources},
+            {"InternalDatabase", "DatabaseAccessPolicy"},
+        )
+        for resource in resources:
+            self.assertEqual(
+                resource["spec"]["operatorNamespace"],
+                self.ADDRESS_DERIVED_OPERATOR_NAMESPACE,
+                f"{resource['kind']} did not preserve the operator-namespace expression",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

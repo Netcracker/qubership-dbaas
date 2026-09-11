@@ -83,7 +83,7 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Set up JDK 21
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -268,10 +268,11 @@ jobs:
       # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
       # quadrant tests prove every datasource reads its connection from the mount. Tenant databases are
       # materialized by the operator (a pinned-tenant InternalDatabase get-or-creates after apply).
+      # Keep the operator namespace as the second DNS label.
       - name: "Pass A — deploy sample services (broken aggregator + mounted secrets)"
         run: |
           chmod +x .github/scripts/deploy-sample-services.sh
-          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator-unreachable.invalid:8080" true
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator-unreachable.$TEST_NAMESPACE:8080" true
 
       - name: "Pass A — wait for sample services"
         run: |
