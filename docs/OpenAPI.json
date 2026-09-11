@@ -9242,7 +9242,7 @@
         ],
         "parameters": [
           {
-            "description": "Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc. or all - to list all registered physical databases",
+            "description": "Type of database, for example: MongoDB, PostgreSQL, opensearch, etc. or all - to list all registered physical databases",
             "required": true,
             "name": "type",
             "in": "path",
@@ -9299,7 +9299,7 @@
             }
           },
           {
-            "description": "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.",
+            "description": "Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.",
             "required": true,
             "name": "type",
             "in": "path",
@@ -9390,7 +9390,7 @@
             }
           },
           {
-            "description": "Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc.",
+            "description": "Type of database, for example: MongoDB, PostgreSQL, opensearch, etc.",
             "required": true,
             "name": "type",
             "in": "path",
@@ -9451,7 +9451,7 @@
             }
           },
           {
-            "description": "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.",
+            "description": "Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.",
             "required": true,
             "name": "type",
             "in": "path",
