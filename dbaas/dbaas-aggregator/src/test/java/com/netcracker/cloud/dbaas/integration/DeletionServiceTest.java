@@ -1,14 +1,17 @@
 package com.netcracker.cloud.dbaas.integration;
 
+import com.github.tomakehurst.wiremock.http.Fault;
 import com.netcracker.cloud.dbaas.DatabaseType;
 import com.netcracker.cloud.dbaas.dto.RuleType;
 import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.role.DatabaseRole;
 import com.netcracker.cloud.dbaas.entity.pg.rule.PerMicroserviceRule;
 import com.netcracker.cloud.dbaas.entity.pg.rule.PerNamespaceRule;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDbState;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
+import com.netcracker.cloud.dbaas.integration.config.WireMockResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -24,9 +27,9 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.ServiceUnavailableException;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +41,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.service.DeletionService.MARKED_FOR_DROP;
 import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.*;
@@ -45,8 +49,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
 
 @QuarkusTest
+@QuarkusTestResource(WireMockResource.class)
 @QuarkusTestResource(PostgresqlContainerResource.class)
 class DeletionServiceTest {
     private static final RetryPolicy<Object> ASYNC_DELETION_RETRY_POLICY = new RetryPolicy<>()
@@ -76,10 +82,17 @@ class DeletionServiceTest {
     CompositeNamespaceService compositeNamespaceService;
     @InjectMock
     DbaaSHelper dbaaSHelper;
+    @Inject
+    DbaasAdapterRESTClientFactory factory;
+    @Inject
+    AdapterActionTrackerClient adapterActionTrackerClient;
 
     DbaasAdapterRESTClientV2 dbaasAdapterRESTClient;
     @Inject
     AsyncOperations asyncOperations;
+
+    @ConfigProperty(name = "wiremock.url")
+    String wiremockAddress;
 
     @BeforeEach
     public void prepare() {
@@ -237,14 +250,36 @@ class DeletionServiceTest {
     }
 
     @Test
-    void testRegisterDeletionError() {
+    void testRegisterDeletionError_BadResponse() {
+        DbaasAdapter adapter = factory.createDbaasAdapterClientV2(
+                "u",
+                "p",
+                wiremockAddress,
+                DatabaseType.POSTGRESQL.toString(),
+                "id",
+                adapterActionTrackerClient,
+                new ApiVersion(List.of(new ApiVersion.Spec("", 2, 10, List.of(2))))
+        );
+        when(dbaaService.getAdapter(eq(POSTGRES_ADAPTER_ID))).thenReturn(Optional.of(adapter));
+        WireMockResource.getServer().stubFor(
+                post(urlPathMatching("/api/v2/dbaas/adapter/" + DatabaseType.POSTGRESQL + "/resources/bulk-drop"))
+                        .willReturn(aResponse()
+                                .withStatus(500)
+                                .withHeader("Content-Type", "application/json")
+                                .withBody("""
+                                        {
+                                          "error": "INTERNAL_ERROR",
+                                          "message": "Adapter failure"
+                                        }
+                                        """))
+        );
+        
         Database database = new DatabaseBuilder()
                 .registry()
                 .build();
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
         assertEquals(1, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
         assertTrue(databaseDbaasRepository.findById(database.getId()).isPresent());
-        doThrow(new ServiceUnavailableException()).when(dbaasAdapterRESTClient).dropDatabase(database.getDatabaseRegistry().getFirst());
 
         QuarkusTransaction.requiringNew().run(() -> {
             deletionService.dropRegistrySafe(database.getDatabaseRegistry().getFirst());
@@ -252,7 +287,51 @@ class DeletionServiceTest {
 
         assertTrue(databaseDbaasRepository.findById(database.getId()).isPresent());
         verify(logicalDbOperationErrorRepository).persist(any(LogicalDbOperationError.class));
-        assertTrue(logicalDbOperationErrorRepository.findAll().stream().anyMatch(error -> error.getDatabase().getId().equals(database.getId())));
+        Optional<LogicalDbOperationError> deletionError = logicalDbOperationErrorRepository.findAll().stream().filter(error -> error.getDatabase().getId().equals(database.getId())).findFirst();
+        assertTrue(deletionError.isPresent());
+        assertTrue(deletionError.get().getErrorMessage().contains("Adapter failure"));
+        assertEquals(500, deletionError.get().getHttpCode());
+        verify(encryption, times(0)).deletePassword(any(Database.class));
+        assertEquals(1, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
+        Database updatedDatabase = databaseDbaasRepository.findById(database.getId()).get();
+        assertEquals(AbstractDbState.DatabaseStateStatus.DELETING_FAILED, updatedDatabase.getDbState().getDatabaseState());
+    }
+
+    @Test
+    void testRegisterDeletionError_NoResponse() {
+        DbaasAdapter adapter = factory.createDbaasAdapterClientV2(
+                "u",
+                "p",
+                wiremockAddress,
+                DatabaseType.POSTGRESQL.toString(),
+                "id",
+                adapterActionTrackerClient,
+                new ApiVersion(List.of(new ApiVersion.Spec("", 2, 10, List.of(2))))
+        );
+        when(dbaaService.getAdapter(eq(POSTGRES_ADAPTER_ID))).thenReturn(Optional.of(adapter));
+        WireMockResource.getServer().stubFor(
+                post(urlPathMatching("/api/v2/dbaas/adapter/" + DatabaseType.POSTGRESQL + "/resources/bulk-drop"))
+                        .willReturn(aResponse()
+                                .withFault(Fault.CONNECTION_RESET_BY_PEER))
+        );
+
+        Database database = new DatabaseBuilder()
+                .registry()
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(database.getDatabaseRegistry().getFirst());
+        assertEquals(1, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
+        assertTrue(databaseDbaasRepository.findById(database.getId()).isPresent());
+
+        QuarkusTransaction.requiringNew().run(() -> {
+            deletionService.dropRegistrySafe(database.getDatabaseRegistry().getFirst());
+        });
+
+        assertTrue(databaseDbaasRepository.findById(database.getId()).isPresent());
+        verify(logicalDbOperationErrorRepository).persist(any(LogicalDbOperationError.class));
+        Optional<LogicalDbOperationError> deletionError = logicalDbOperationErrorRepository.findAll().stream().filter(error -> error.getDatabase().getId().equals(database.getId())).findFirst();
+        assertTrue(deletionError.isPresent());
+        assertTrue(deletionError.get().getErrorMessage().contains("Connection reset"));
+        assertEquals(0, deletionError.get().getHttpCode());
         verify(encryption, times(0)).deletePassword(any(Database.class));
         assertEquals(1, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
         Database updatedDatabase = databaseDbaasRepository.findById(database.getId()).get();
