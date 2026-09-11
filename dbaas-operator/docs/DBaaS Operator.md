@@ -287,16 +287,17 @@ See [InternalDatabase Status Reference](#internaldatabase-status-reference) for 
 **`GET /api/declarations/v1/operation/{trackingId}/status`**
 
 After a `202 Accepted` from the apply endpoint, the controller polls this endpoint with the returned `{trackingId}`
-(persisted in `status.trackingId`) every `pollRequeueAfter` until the operation reaches a terminal state. The response
-body carries a `status` (`TaskState`) field — `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` / `FAILED` / `TERMINATED` — so
-outcomes are driven by that value as well as by the HTTP code.
+(persisted in `status.trackingId`) until the operation reaches a terminal state. Each poll uses the shared
+[exponential poll backoff](#exponential-poll-backoff): 5 s, 10 s, 20 s, 40 s, then capped at 60 s, with up to 10%
+jitter. The response body carries a `status` (`TaskState`) field — `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` /
+`FAILED` / `TERMINATED` — so outcomes are driven by that value as well as by the HTTP code.
 
 **Possible responses and operator behavior:**
 
 | Response | Situation | Operator outcome |
 |----------|-----------|-----------------|
 | `status=COMPLETED` | Provisioning finished | `Succeeded` — `Ready=True`, reason `DatabaseProvisioned`; `trackingId` cleared |
-| `status=IN_PROGRESS` / `NOT_STARTED` | Still running | `WaitingForDependency` — requeued after the poll interval, reason `ProvisioningStarted` |
+| `status=IN_PROGRESS` / `NOT_STARTED` | Still running | `WaitingForDependency` — requeued with the poll backoff, reason `ProvisioningStarted` |
 | `status=FAILED` | Provisioning failed | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected`; `trackingId` cleared |
 | `status=TERMINATED` | Canceled mid-flight (aggregator restart or admin terminate) | `BackingOff` — `trackingId` cleared and the operation is **resubmitted** on the next reconcile, reason `OperationTerminated` |
 | HTTP `401` | Missing or invalid credentials | `BackingOff` — `trackingId` kept, retried, reason `Unauthorized` |
@@ -685,7 +686,8 @@ phase summarizes them and carries no information they do not already have.
 
 - **`Stalled=True`** — fix the spec. The controller will not retry on its own.
 - **`Ready=False` + `Stalled=False`** — transient; the controller is retrying. See
-  [Reconcile Backoff](#reconcile-backoff) for which paths back off and which re-poll at a fixed interval.
+  [Reconcile Backoff](#reconcile-backoff) for which paths use the workqueue rate limiter and which use the
+  exponential poll backoff.
 - **`Ready=True` + `Stalled=False`** — the steady state, not a retry. Nothing is scheduled beyond the
   kind's own resync or watch events: every kind re-reconciles on a spec change, an `ExternalDatabase`
   on its periodic resync, and a `DatabaseSecretClaim` on a rotation trigger or its hourly safety net.
@@ -1303,9 +1305,10 @@ spec:
 | `sourceClassifier` | Required when `approach=clone` | Classifier of the source database to clone from. **Constraint:** `sourceClassifier.microserviceName` must equal `classifier.microserviceName` (enforced by the controller) |
 
 > **Note on async provisioning:** the operator stores the aggregator's `trackingId` in `status.trackingId` and polls
-> until the operation completes (every 5 s). While polling, `status.phase` is `WaitingForDependency` and
-> `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingId` and
-> start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
+> until the operation completes, using the [exponential poll backoff](#exponential-poll-backoff) (5 s, 10 s, 20 s, 40 s,
+> capped at 60 s, with jitter). While polling, `status.phase` is `WaitingForDependency` and
+> `status.conditions[].reason` is `ProvisioningStarted`. Spec changes during polling clear the stale `trackingId`,
+> reset the poll backoff, and start a fresh submission — see [Status Reference](#internaldatabase-status-reference).
 
 #### How InternalDatabase Works
 
@@ -1314,7 +1317,7 @@ A reconcile is triggered when any of the following happens:
 - The CR is created.
 - The CR spec changes (i.e., `metadata.generation` increments).
 - A polling cycle: while an async operation is in progress (`status.trackingId` is set), the controller re-enqueues
-  itself every 5 seconds.
+  itself with the [exponential poll backoff](#exponential-poll-backoff).
 
 The reconcile loop has two branches:
 
@@ -1396,8 +1399,9 @@ This materializes the database exactly as the tenant's first runtime connection 
 - **possibly asynchronous** — the aggregator answers `200`/`201` when the database is ready, and `202 Accepted` when it
   only started creating it. A `202` body carries no usable credentials (`password: null`, requested role absent), so
   the operator treats it as *not done*: the CR goes to `WaitingForDependency` with `Ready=False` / reason
-  `ProvisioningStarted` and is re-tried every 5 s until the database answers with credentials. There is no `trackingId`
-  for this endpoint, so the retry repeats the idempotent apply + get-or-create rather than polling;
+  `ProvisioningStarted` and is re-tried with the [exponential poll backoff](#exponential-poll-backoff) until the database
+  answers with credentials. There is no `trackingId` for this endpoint, so the retry repeats the idempotent apply +
+  get-or-create rather than polling — but the same in-memory backoff step still advances across those retries;
 - **gating** — if it fails, the CR does **not** become `Succeeded`: a transient/5xx failure surfaces as `BackingOff` and
   is retried on the next reconcile, exactly like the `apply` call;
 - **observable** — recorded on `dbaas_aggregator_requests_total` and `dbaas_aggregator_request_duration_seconds` under
@@ -1425,7 +1429,7 @@ Shared phases, conditions, reasons, and diagnostic rules are described in
 - While `trackingId` is non-empty, every reconcile goes through the POLL branch (no resubmission).
 - An **empty** `trackingId` together with `WaitingForDependency` is not an inconsistency: it is the
   tenant-materialization wait, which has nothing to poll and instead repeats the idempotent apply +
-  get-or-create every 5 s.
+  get-or-create with the [exponential poll backoff](#exponential-poll-backoff).
 
 **`status.pendingOperationGeneration`** — the `metadata.generation` value captured when `trackingId` was set. If a newer
 `generation` is observed during a reconcile, the stale `trackingId` is discarded and the operation is re-submitted with
@@ -1472,7 +1476,8 @@ polling `404` (expired `trackingId`).
 **Diagnostic rules** — in addition to the [shared rules](#common-status-model):
 
 - **`Ready=False` with phase `WaitingForDependency`** — not an error: something is still provisioning and the
-  controller re-checks every 5 seconds. Only phase `BackingOff` means a failed call is being retried.
+  controller re-checks with the [exponential poll backoff](#exponential-poll-backoff). Only phase `BackingOff` means a
+  failed call is being retried.
   Read `status.trackingId` to tell the two waits apart: **set** means the declarative operation is being
   polled; **empty** means the pinned-tenant database is still being created and the controller repeats the
   apply + get-or-create. An empty `trackingId` here is expected — that endpoint returns none. If the wait
@@ -2088,7 +2093,7 @@ current. Two phase behaviors are specific to this kind:
 
 | Phase | Kind-specific behavior |
 |-------|------------------------|
-| `BackingOff` | `Unauthorized` and `AggregatorError` retry with [exponential backoff](#reconcile-backoff), but `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` re-poll at a **fixed 5-second interval** that never widens. |
+| `BackingOff` | `Unauthorized` and `AggregatorError` use the [workqueue rate limiter](#reconcile-backoff); `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` use the [exponential poll backoff](#exponential-poll-backoff). |
 | `Processing` (stuck) | A Kubernetes API error while reading or writing the target Secret — including `forbidden` from missing [namespaced Secret RBAC](#secret-access-namespaced) — returns before any condition is written. The CR keeps `phase: Processing` with no `Ready` condition and no event; the reconcile is retried with exponential backoff. Check the operator log. |
 
 **`status.firstNotFoundAt`** — timestamp of the first `DatabaseNotFound` (404) response in the current streak. Set on
@@ -2138,10 +2143,10 @@ label, and `AggregatorError` also covers a `404` without a TMF body (blue-green:
 
 - **`Stalled=True`** — besides a spec error, this also covers a conflicting sibling claim or a pre-existing
   Secret owned by something else.
-- **`Stalled=False` + `Ready=False`** — note the two retry regimes above: the
-  not-found family re-polls every 5 seconds indefinitely rather than backing off. A persistent `DatabaseNotFound`
-  usually means the `InternalDatabase` for this classifier has not provisioned yet — or the classifier is wrong (watch
-  for `DatabaseNotFoundTimeout`).
+- **`Stalled=False` + `Ready=False`** — note the two retry regimes above: the not-found family shares the
+  [exponential poll backoff](#exponential-poll-backoff) rather than the workqueue rate limiter. A persistent
+  `DatabaseNotFound` usually means the `InternalDatabase` for this classifier has not provisioned yet — or the
+  classifier is wrong (watch for `DatabaseNotFoundTimeout`).
 - **`status.lastRotatedAt`** — when this was last advanced tells you when credentials last actually changed.
 - **Request correlation** — unlike the other kinds, the `DatabaseSecretClaim` reconciler does **not** write
   `status.lastRequestId`. Correlate through the `requestId=` suffix carried by this CR's Kubernetes Events and by the
@@ -2323,17 +2328,7 @@ A base delay of zero or less, or a maximum below the base, falls back to the def
 make the operator retry without waiting. The startup log reports the delays actually in use:
 `Backoff configured base=1s max=5m0s jitter=10%`.
 
-**Backoff does not cover every retry.** Several paths requeue after a fixed interval with no error, which
-bypasses the rate limiter entirely:
-
-| Interval | Path |
-|----------|------|
-| 5 s | `InternalDatabase` async poll and `TERMINATED` resubmit; `DatabaseSecretClaim` `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` |
-| 1 s | `DatabaseSecretClaim` Secret create/update race reconverge |
-| 10 min | `ExternalDatabase` resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`) |
-| 1 h | `DatabaseSecretClaim` rotation safety net |
-
-**Example sequence for a single object:**
+**Example workqueue rate-limiter sequence for a single object:**
 
 | Failure | Delay before next attempt |
 |---------|--------------------------|
@@ -2346,7 +2341,7 @@ bypasses the rate limiter entirely:
 
 The counter is reset when a reconcile succeeds — the next failure starts from `--backoff-base-delay` again.
 
-**To tune** (example Deployment args):
+**To tune the workqueue rate limiter** (example Deployment args):
 
 ```yaml
 args:
@@ -2356,3 +2351,41 @@ args:
   - --backoff-base-delay=5s
   - --backoff-max-delay=10m
 ```
+
+**Backoff does not cover every retry.** Several paths requeue with no error, which bypasses the rate limiter
+entirely. Most of them requeue after a fixed interval:
+
+| Interval | Path |
+|----------|------|
+| 1 s | `DatabaseSecretClaim` Secret create/update race reconverge |
+| 10 min | `ExternalDatabase` resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`) |
+| 1 h | `DatabaseSecretClaim` rotation safety net |
+
+Two families of "not ready yet" polling instead use their own exponential poll backoff — see below.
+
+#### Exponential Poll Backoff
+
+`InternalDatabase`'s async poll and pinned-tenant materialization wait, and
+`DatabaseSecretClaim`'s `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` paths all
+requeue with a nil error, so they never touch the workqueue rate limiter described above. Instead, each object's own
+poll backoff advances through a fixed, bounded sequence: **5 s → 10 s → 20 s → 40 s → 60 s**, then stays capped at
+60 s. Jitter is applied upward below the cap and downward at the cap, so the actual delay ranges are **[5 s, 5.5 s)**,
+**[10 s, 11 s)**, **[20 s, 22 s)**, **[40 s, 44 s)**, then **(54 s, 60 s]**. This keeps CRs created in the same rollout
+wave from staying synchronized without exceeding the one-minute cap. A one-minute cap (rather than, say, five minutes)
+keeps a provisioning completion from taking several extra minutes to become visible.
+
+The step is private, in-memory controller state keyed by object namespace/name, UID, and generation; it does not add
+fields to the CRD or write implementation details into CR status. It resets to the initial 5 s interval whenever:
+
+- the operator restarts or leadership moves to another replica;
+- a new logical async operation starts (a fresh `trackingId`, or a fresh pinned-tenant materialization cycle after
+  the declarative apply completes);
+- a newer `metadata.generation` is observed (a spec edit always restarts polling at 5 s);
+- the operation reaches a terminal outcome (`COMPLETED`, `FAILED`, `TERMINATED`, a lost `trackingId`) or the CR
+  otherwise resolves (a `DatabaseSecretClaim` receives non-empty `connectionProperties`, or either kind reaches a
+  permanent validation/conflict state).
+
+A transient error (`401`, `5xx`, network failure) leaves the poll backoff untouched: those paths return a non-nil
+error and are retried by the workqueue rate limiter instead, so a temporary outage does not reset healthy polling
+back to 5 s once it recovers. `TERMINATED` also ends the old operation and schedules its resubmit after the initial
+5 s interval rather than carrying forward the completed operation's step.
