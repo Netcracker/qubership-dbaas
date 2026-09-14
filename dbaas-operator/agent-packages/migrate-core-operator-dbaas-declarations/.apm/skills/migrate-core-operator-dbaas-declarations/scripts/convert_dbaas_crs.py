@@ -49,6 +49,47 @@ DB_POLICY_FIELDS = {
     "disableGlobalPermissions",
 }
 PRESERVED_METADATA_FIELDS = {"name", "namespace"}
+# Kubernetes-managed metadata that is never meaningful to carry onto a brand-new
+# resource; dropping these needs no warning. Anything else dropped (labels,
+# annotations, ...) still warns -- it may carry deployment-relevant information.
+SILENTLY_DROPPED_METADATA_FIELDS = {
+    "creationTimestamp",
+    "resourceVersion",
+    "uid",
+    "generation",
+    "managedFields",
+    "selfLink",
+    "ownerReferences",
+    "finalizers",
+}
+
+
+class TemplatedNameRequired(Exception):
+    """A default resource name is templated, or mixes literal text with a Helm
+    expression, and no explicit override was supplied.
+
+    Slugging the template source text into one fixed literal would collide
+    across every release of the same chart; the caller must supply an
+    explicit, release-specific ``override_name`` instead (see
+    ``resource_name``).
+    """
+
+    def __init__(self, hint: str) -> None:
+        super().__init__(f"templated identity requires an explicit target name: {hint!r}")
+        self.hint = hint
+
+
+def is_templated(value: Any) -> bool:
+    return isinstance(value, str) and "{{" in value
+
+
+def is_whole_template(value: str) -> bool:
+    """Whether ``value`` is entirely one ``{{ ... }}`` Helm expression, as opposed
+    to literal text mixed with one. Only a whole-template value's rendered
+    result is the deployer's responsibility to keep DNS-1123-safe; a mixed
+    value cannot be checked at all and must never be produced automatically."""
+
+    return re.fullmatch(r"\{\{.*\}\}", value.strip()) is not None
 
 
 def main() -> int:
@@ -78,23 +119,30 @@ def main() -> int:
     docs = load_documents(source, warnings)
     resources: list[dict[str, Any]] = []
 
-    for doc_index, doc in enumerate(docs, start=1):
-        if doc is None:
-            continue
-        for item_index, item in enumerate(as_legacy_items(doc), start=1):
-            resources.extend(convert_item(item, doc_index, item_index, args, warnings, errors))
+    try:
+        for doc_index, doc in enumerate(docs, start=1):
+            if doc is None:
+                continue
+            for item_index, item in enumerate(as_legacy_items(doc), start=1):
+                resources.extend(convert_item(item, doc_index, item_index, args, warnings, errors))
+    except TemplatedNameRequired as exc:
+        raise SystemExit(
+            f"{exc}. This CLI has no per-item name override; either give the source resource a "
+            "concrete metadata.name, or migrate it through the package writer (apply_migration.py) "
+            "with an explicit, release-specific plan name instead."
+        ) from None
 
     if not resources:
         raise SystemExit("No supported DBaaS declarations found")
 
-    warn_duplicate_resources(resources, warnings)
+    reject_duplicate_resources(resources, errors)
     for warning in warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         raise SystemExit(
-            f"Conversion failed with {len(errors)} invalid setting value(s); the output file was not written"
+            f"Conversion failed with {len(errors)} error(s); the output file was not written"
         )
     Path(args.output).write_text(dump_yaml_documents(resources), encoding="utf-8")
     print(f"Wrote {len(resources)} resource(s) to {args.output}", file=sys.stderr)
@@ -181,12 +229,19 @@ def convert_item(
         body = dict(item)
         metadata = dict(item.get("metadata") or {})
 
-    warn_dropped_metadata(metadata, f"Document {doc_index}", warnings)
+    reject_dropped_metadata(metadata, f"Document {doc_index}", errors)
 
     if legacy_kind_lower == "databasedeclaration":
         declarations = body.get("declarations")
         if declarations is None:
-            declarations = [body]
+            # No declarations[] wrapper: the document itself is the one
+            # declaration, but it still carries envelope fields (apiVersion,
+            # kind, metadata) that DATABASE_DECLARATION_FIELDS was never
+            # meant to validate -- those belong to the document, not the
+            # declaration body, and would otherwise be rejected as unknown.
+            declarations = [
+                {k: v for k, v in body.items() if k not in ("apiVersion", "kind", "subKind", "metadata")}
+            ]
         if not isinstance(declarations, list):
             warnings.append(f"Document {doc_index}: DatabaseDeclaration.declarations is not a list")
             return []
@@ -210,7 +265,7 @@ def convert_item(
         return resources
 
     if legacy_kind_lower == "dbpolicy":
-        return [convert_db_policy(body, metadata, doc_index, item_index, args, warnings)]
+        return [convert_db_policy(body, metadata, doc_index, item_index, args, warnings, errors)]
 
     warnings.append(f"Document {doc_index}: skipped unsupported kind/subKind {legacy_kind!r}")
     return []
@@ -225,18 +280,19 @@ def convert_database_declaration(
     args: argparse.Namespace,
     warnings: list[str],
     errors: list[str],
+    override_name: str | None = None,
 ) -> dict[str, Any]:
-    warn_unknown_fields(
+    reject_unknown_fields(
         declaration,
         DATABASE_DECLARATION_FIELDS,
         f"DatabaseDeclaration #{declaration_index}",
-        warnings,
+        errors,
     )
     classifier_config = declaration.get("classifierConfig") or {}
     classifier = classifier_config.get("classifier") if isinstance(classifier_config, dict) else None
     if not isinstance(classifier, dict):
         classifier = {}
-        warnings.append(f"DatabaseDeclaration #{declaration_index}: missing classifierConfig.classifier")
+        errors.append(f"DatabaseDeclaration #{declaration_index}: missing classifierConfig.classifier")
     default_name = database_name_hint(declaration, classifier, doc_index, declaration_index)
     metadata = target_metadata(
         old_metadata,
@@ -245,8 +301,11 @@ def convert_database_declaration(
         doc_index,
         declaration_index,
         disambiguate_parent=multiple_declarations,
+        override_name=override_name,
     )
-    target_classifier = convert_classifier(classifier, args.service_name)
+    target_classifier = convert_classifier(
+        classifier, args.service_name, errors, f"DatabaseDeclaration #{declaration_index} classifier"
+    )
     legacy_namespace = target_classifier.pop("namespace", None)
     if legacy_namespace not in (None, "", metadata["namespace"]):
         warnings.append(
@@ -261,15 +320,19 @@ def convert_database_declaration(
 
     for field in ("type", "namePrefix", "physicalDatabaseId", "versioningConfig", "initialInstantiation"):
         if field in declaration:
-            spec[field] = convert_nested_classifiers(declaration[field], args.service_name)
+            spec[field] = convert_nested_classifiers(
+                declaration[field], args.service_name, errors, f"DatabaseDeclaration #{declaration_index}.{field}"
+            )
 
     if "lazy" in declaration:
-        spec["lazy"] = coerce_bool(declaration["lazy"])
-        if not isinstance(spec["lazy"], bool):
-            warnings.append(
-                f"InternalDatabase {metadata['name']} has non-boolean lazy; "
-                "use true or false before applying"
+        coerced = coerce_bool(declaration["lazy"])
+        if not isinstance(coerced, bool):
+            errors.append(
+                f"InternalDatabase {metadata['name']} has non-boolean lazy {declaration['lazy']!r}; "
+                "use true or false"
             )
+        else:
+            spec["lazy"] = coerced
 
     if "settings" in declaration:
         settings = declaration["settings"]
@@ -397,8 +460,10 @@ def convert_db_policy(
     item_index: int,
     args: argparse.Namespace,
     warnings: list[str],
+    errors: list[str],
+    override_name: str | None = None,
 ) -> dict[str, Any]:
-    warn_unknown_fields(body, DB_POLICY_FIELDS, "DatabaseAccessPolicy", warnings)
+    reject_unknown_fields(body, DB_POLICY_FIELDS, "DatabaseAccessPolicy", errors)
     source_microservice_name = body.get("microserviceName") or label_value(
         old_metadata, "app.kubernetes.io/instance"
     )
@@ -412,8 +477,8 @@ def convert_db_policy(
             "verify it against the owning service"
         )
     if not microservice_name:
+        errors.append("DatabaseAccessPolicy.spec.microserviceName could not be derived")
         microservice_name = "TODO-service-name"
-        warnings.append("DatabaseAccessPolicy.spec.microserviceName could not be derived")
 
     spec: dict[str, Any] = {
         "operatorNamespace": args.operator_namespace,
@@ -423,37 +488,56 @@ def convert_db_policy(
         if field in body:
             spec[field] = body[field]
     if "disableGlobalPermissions" in body:
-        spec["disableGlobalPermissions"] = coerce_bool(body["disableGlobalPermissions"])
+        coerced = coerce_bool(body["disableGlobalPermissions"])
+        if not isinstance(coerced, bool):
+            errors.append(
+                f"DatabaseAccessPolicy.spec.disableGlobalPermissions {body['disableGlobalPermissions']!r} "
+                "is not a boolean"
+            )
+        else:
+            spec["disableGlobalPermissions"] = coerced
 
-    if "services" not in spec and "policy" not in spec:
-        warnings.append("DatabaseAccessPolicy has neither services nor policy")
+    if not spec.get("services") and not spec.get("policy"):
+        errors.append("DatabaseAccessPolicy must have a non-empty services or policy list")
 
     return {
         "apiVersion": "dbaas.netcracker.com/v1",
         "kind": "DatabaseAccessPolicy",
-        "metadata": target_metadata(old_metadata, args, "database-access-policy", doc_index, item_index),
+        "metadata": target_metadata(
+            old_metadata, args, "database-access-policy", doc_index, item_index, override_name=override_name
+        ),
         "spec": spec,
     }
 
 
-def convert_nested_classifiers(value: Any, service_name: str) -> Any:
+def convert_nested_classifiers(value: Any, service_name: str, errors: list[str], context: str) -> Any:
     if isinstance(value, dict):
         converted = {}
         for key, nested in value.items():
             if key == "sourceClassifier" and isinstance(nested, dict):
-                converted[key] = convert_classifier(nested, service_name)
+                converted[key] = convert_classifier(nested, service_name, errors, f"{context}.sourceClassifier")
             else:
-                converted[key] = convert_nested_classifiers(nested, service_name)
+                converted[key] = convert_nested_classifiers(nested, service_name, errors, context)
         return converted
     if isinstance(value, list):
-        return [convert_nested_classifiers(item, service_name) for item in value]
+        return [convert_nested_classifiers(item, service_name, errors, context) for item in value]
     return value
 
 
-def convert_classifier(classifier: dict[str, Any], service_name: str) -> dict[str, Any]:
+def convert_classifier(
+    classifier: dict[str, Any], service_name: str, errors: list[str], context: str
+) -> dict[str, Any]:
+    # The wire-form "extraKeys" is a target-CR concept this converter
+    # introduces; a legacy classifier that already uses that literal key name
+    # would silently collide with it below -- reject rather than guess which
+    # one wins.
+    if "extraKeys" in classifier:
+        errors.append(f"{context} already has a literal 'extraKeys' key; rename it before migrating")
     converted: dict[str, Any] = {}
     extra_keys: dict[str, Any] = {}
     for key, value in classifier.items():
+        if key == "extraKeys":
+            continue
         if key in RESERVED_CLASSIFIER_KEYS:
             if key == "microserviceName" and isinstance(value, str):
                 converted[key] = normalize_service_template(value, service_name)
@@ -489,6 +573,7 @@ def target_metadata(
     doc_index: int,
     item_index: int,
     disambiguate_parent: bool = False,
+    override_name: str | None = None,
 ) -> dict[str, Any]:
     return {
         "name": resource_name(
@@ -498,6 +583,7 @@ def target_metadata(
             doc_index,
             item_index,
             disambiguate_parent=disambiguate_parent,
+            override_name=override_name,
         ),
         "namespace": old_metadata.get("namespace") or args.namespace,
     }
@@ -510,13 +596,34 @@ def resource_name(
     doc_index: int,
     item_index: int,
     disambiguate_parent: bool = False,
+    override_name: str | None = None,
 ) -> str:
+    if override_name is not None:
+        # A caller-supplied override (e.g. a plan's nameOverrides entry) is
+        # deliberately constructed, unlike an auto-derived default -- it may
+        # freely embed a Helm expression (typically ".Release.Name", for a
+        # release-specific name) alongside literal text; the whole-template
+        # restriction below exists only to stop *automatically assembling*
+        # such a mix from untrusted pieces. An override's rendered value is
+        # instead checked by the caller's render-time DNS-1123 validation.
+        return override_name if is_templated(override_name) else sanitize_name(override_name)
+
     old_name = old_metadata.get("name")
     if old_name:
         name = f"{old_name}-{item_index}" if disambiguate_parent else str(old_name)
-        return sanitize_name(name)
-    prefix = args.name_prefix or default_prefix
-    return sanitize_name(f"{prefix}-{doc_index}-{item_index}")
+    else:
+        prefix = args.name_prefix or default_prefix
+        name = f"{prefix}-{doc_index}-{item_index}"
+
+    if is_templated(name):
+        if is_whole_template(name):
+            return name
+        # A templated scope/logical name mixed with literal text (e.g. the
+        # "-2" multi-declaration suffix, or database_name_hint's own
+        # "<scope>-<type>-db" shape) cannot be checked for a valid rendered
+        # name and must never be produced automatically.
+        raise TemplatedNameRequired(name)
+    return sanitize_name(name)
 
 
 def label_value(metadata: dict[str, Any], key: str) -> Any:
@@ -526,25 +633,44 @@ def label_value(metadata: dict[str, Any], key: str) -> Any:
     return None
 
 
-def warn_unknown_fields(
+def reject_unknown_fields(
     source: dict[str, Any],
     known_fields: set[str],
     context: str,
-    warnings: list[str],
+    errors: list[str],
 ) -> None:
+    # An unrecognized field on a legacy declaration/policy is exactly the
+    # silent-data-loss risk this converter exists to close -- block instead
+    # of dropping it with a warning the caller can ignore.
     unknown = sorted(set(source) - known_fields)
     if unknown:
-        warnings.append(f"{context} has unsupported fields that were dropped: {', '.join(unknown)}")
+        errors.append(f"{context} has unsupported fields that would be dropped: {', '.join(unknown)}")
 
 
-def warn_dropped_metadata(metadata: dict[str, Any], context: str, warnings: list[str]) -> None:
-    dropped = sorted(set(metadata) - PRESERVED_METADATA_FIELDS)
+def reject_dropped_metadata(metadata: dict[str, Any], context: str, errors: list[str]) -> None:
+    # Kubernetes-managed fields are silently safe to drop; anything else
+    # (labels, annotations, ...) may carry deployment-relevant information
+    # this converter has no mapping for. A warning the caller can ignore
+    # still lets --apply delete the source, so this blocks instead --
+    # consistent with the package's fail-closed rule that ambiguity never
+    # gets resolved by a warning acknowledgement.
+    dropped = sorted(
+        set(metadata) - PRESERVED_METADATA_FIELDS - SILENTLY_DROPPED_METADATA_FIELDS
+    )
     if dropped:
-        warnings.append(f"{context} metadata fields were dropped: {', '.join(dropped)}")
+        errors.append(f"{context} metadata fields would be dropped: {', '.join(dropped)}")
 
 
-def warn_duplicate_resources(resources: list[dict[str, Any]], warnings: list[str]) -> None:
+def reject_duplicate_resources(
+    resources: list[dict[str, Any]], errors: list[str], *, root: str = ""
+) -> None:
+    # Called once per output root by a multi-root caller, so two independent
+    # roots may legitimately reuse the same generated name -- only a
+    # collision within one root's own resource list is rejected. A duplicate
+    # identity would silently overwrite one CR with another when applied, so
+    # this blocks instead of warning.
     seen: set[tuple[str, str, str]] = set()
+    prefix = f"{root}: " if root else ""
     for resource in resources:
         metadata = resource.get("metadata") or {}
         identity = (
@@ -553,15 +679,17 @@ def warn_duplicate_resources(resources: list[dict[str, Any]], warnings: list[str
             str(metadata.get("name") or ""),
         )
         if identity in seen:
-            warnings.append(
-                f"Duplicate generated resource kind={identity[0]} namespace={identity[1]} name={identity[2]}"
+            errors.append(
+                f"{prefix}duplicate generated resource kind={identity[0]} "
+                f"namespace={identity[1]} name={identity[2]}"
             )
         seen.add(identity)
 
 
 def sanitize_name(value: str) -> str:
-    if "{{" in value or "}}" in value:
-        return value
+    # Callers resolve templating (whole-template passthrough vs
+    # TemplatedNameRequired for a mixed value) before ever reaching here; this
+    # function only slugs a fully concrete name.
     value = value.lower()
     value = re.sub(r"[^a-z0-9-]+", "-", value)
     value = re.sub(r"-+", "-", value).strip("-")

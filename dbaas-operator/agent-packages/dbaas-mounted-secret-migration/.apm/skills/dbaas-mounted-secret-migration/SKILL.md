@@ -8,7 +8,7 @@ description: >-
 
 # Migrate DBaaS provisioning to mounted Secrets
 
-Inventory every logical database identity before editing manifests. Generate one
+Inventory every logical database identity before building a plan. Generate one
 `InternalDatabase` for each unique `(classifier, type)` and one `DatabaseSecretClaim` for each
 unique `(classifier, type, requested userRole)`. Keep dynamic tenant provisioning on the existing
 runtime path.
@@ -19,15 +19,19 @@ Detect the framework and read its reference:
 - [Spring](references/frameworks/spring.md)
 - [Quarkus and BSS clients](references/frameworks/quarkus.md)
 
-Report other frameworks as outside scope.
-
-For tenant, shard, schema, bucket, or logical-to-physical behavior, also read
+Report other frameworks as outside scope. For tenant, shard, schema, bucket, or
+logical-to-physical behavior, also read
 [dynamic-topologies.md](references/dynamic-topologies.md). Framework references define discovery
 and Secret consumption; the CR identity rules below remain common.
 
-Read [contracts.md](references/contracts.md) before generating resources. Read
+Read [contracts.md](references/contracts.md) before building a plan, and
 [testing.md](references/testing.md) when validating generated output or running a cluster test.
-Use `scripts/validate_generated.py` for deterministic inventory/resource/mount consistency checks.
+
+`scripts/apply_migration.py` is the only process allowed to create, modify, or delete files in the
+consumer repository. Once discovery produces a plan, run it with `--check` to validate, then call
+it with `--apply` exactly once to write -- never hand-edit a generated resource, a patched workload
+manifest, `values.yaml`/`values.schema.json`, or a superseded declaration afterward. If the writer
+blocks, fix the plan (or the source it points at) and rerun both steps.
 
 ## 1. Verify generated-secret compatibility
 
@@ -73,10 +77,8 @@ For every call path, resolve:
 - the source locations that prove the result.
 
 Do not infer scope solely from `ServiceDatabase` or `TenantDatabase`. Both APIs accept an explicit
-`DbParams.Classifier` that overrides their default classifier. Trace that function.
-
-Do not default an unresolved database type to PostgreSQL. Mark the datasource `AMBIGUOUS` and stop
-generation for it.
+`DbParams.Classifier` that overrides their default classifier; trace that function. Do not default
+an unresolved database type to PostgreSQL -- mark the datasource `AMBIGUOUS` and stop generation.
 
 ### Feasibility
 
@@ -91,7 +93,9 @@ Classify an identity as:
 - `AMBIGUOUS`: type, classifier, role, or parameter flow cannot be proven statically.
 
 `TenantDatabase(...)` with its default classifier is dynamic. A custom classifier supplied through
-`DbParams.Classifier` may be static; judge the function, not the method name.
+`DbParams.Classifier` may be static; judge the function, not the method name. Only a `SUPPORTED`
+identity belongs in the plan built in step 4 -- the writer rejects any other value outright rather
+than filtering around it.
 
 ### Deduplicate by identity
 
@@ -102,183 +106,114 @@ Canonicalize classifier maps by keys and values for comparison.
 - Different classifier keys or values require different `InternalDatabase` resources.
 - Different requested roles share the database but require separate claims and mounted Secrets.
 
-Inventory classifiers use the effective runtime wire form: include the resolved workload namespace and
-place top-level extension keys directly in the classifier. Do not use `extraKeys` in inventory JSON;
-`extraKeys` is only the CR encoding described in section 3.
-
-Produce the inventory before making changes:
-
 The operator assignment is a deploy-time value, not a namespace baked into the repository. Expose it
-as `DBAAS_OPERATOR_NAMESPACE` — a Helm value the service populates when it deploys (for example through
-Argo CD) — and template `spec.operatorNamespace` from it. The operator reads its own namespace from
-`CLOUD_NAMESPACE` (injected from its Pod), so the two only have to agree at deploy time; nothing needs
-to be hardcoded here.
+as `DBAAS_OPERATOR_NAMESPACE` -- a Helm value the service populates when it deploys (for example
+through Argo CD) -- and record it as the placeholder `{{ .Values.DBAAS_OPERATOR_NAMESPACE }}` in
+the plan's `operatorNamespace`; the writer registers that value, with an empty default, in
+`values.yaml`/`values.schema.json` for you. The operator reads its own namespace from
+`CLOUD_NAMESPACE`, so nothing needs to be hardcoded here. Only for plain manifests, which cannot
+template a value, resolve a concrete namespace instead: prefer an explicit deployment value, verify
+it against the intended `dbaas-operator` Deployment or Pod when a cluster is available, and stop and
+ask if it cannot be proven -- never assume `dbaas-system` or reuse the workload namespace.
 
-For a Helm layout, record `operatorNamespace` in the inventory as the placeholder
-`{{ .Values.DBAAS_OPERATOR_NAMESPACE }}` and let the deployment supply the real value. Only for plain
-manifests, which cannot template a value, resolve a concrete namespace instead: prefer an explicit
-deployment value, verify it against the intended `dbaas-operator` Deployment or Pod when a cluster is
-available, and stop and ask if it cannot be proven — never assume `dbaas-system` or reuse the workload
-namespace by default.
+Report all dynamic, blocked, and ambiguous entries; never generate placeholders that could create
+the wrong database.
+
+## 3. Map the imperative request onto plan fields
+
+Preserve the runtime request exactly when filling in each datasource's `classifier` and
+`parameters`:
+
+- typed classifier keys go to `classifier.microserviceName`, `scope`, `namespace`, and `tenantId`;
+- a runtime top-level extension key goes to `classifier.extraKeys` (Mongo's default classifier, for
+  example, adds top-level `dbClassifier: default`); a runtime nested `customKeys` object goes to
+  `classifier.customKeys`;
+- `BaseDbParams.NamePrefix` goes to `parameters.namePrefix`; `BaseDbParams.Settings` (preserving
+  each value's JSON type, never stringified) goes to `parameters.settings`;
+- `BaseDbParams.Role` becomes one entry in `requestedRoles` exactly, including the difference
+  between omitted/empty and an explicit role;
+- connection-pool, migration, retry, and client options remain application configuration, not plan
+  fields;
+- `PhysicalDatabaseId` has no confirmed field in the current `InternalDatabase` contract and the
+  writer refuses a non-empty `parameters.physicalDatabaseId` outright: mark that identity `BLOCKED`
+  during inventory instead.
+
+When a legacy `DatabaseDeclaration` supersedes into this migration, the writer refuses to delete or
+splice it if it sets `versioningConfig`, `initialInstantiation`, or a non-default `lazy` -- there is
+no proven mapping for those in the mounted-secret contract. Migrate the datasource itself, but leave
+that declaration out of `supersededDeclarations` and flag it for manual follow-up.
+
+## 4. Build the plan and call the writer
+
+Group inventory datasources and workload claims by deployment root -- a plan may cover more than
+one root, and identity/collision checks stay scoped to each root, so two roots may reuse a name.
+`helmValues` (omitted above) overrides a chart value the writer does not otherwise resolve.
 
 ```json
 {
-  "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
-  "datasources": [
+  "roots": [
     {
-      "id": "orders-postgresql-service",
-      "type": "postgresql",
-      "classifier": {
-        "microserviceName": "orders",
-        "namespace": "orders-ns",
-        "scope": "service"
-      },
-      "requestedRoles": [""],
-      "parameters": {
-        "namePrefix": "",
-        "settings": {},
-        "physicalDatabaseId": ""
-      },
-      "codeLocations": ["internal/storage/postgres.go:42"],
-      "migrationFeasibility": "SUPPORTED"
+      "root": "chart",
+      "kind": "helm",
+      "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
+      "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
+      "workloadNamespace": "{{ .Values.NAMESPACE }}",
+      "originService": "orders",
+      "datasources": [
+        {
+          "id": "orders-postgresql-service",
+          "type": "postgresql",
+          "classifier": {"microserviceName": "orders", "scope": "service"},
+          "requestedRoles": [""],
+          "parameters": {"namePrefix": "", "settings": {}}
+        }
+      ],
+      "claims": [
+        {
+          "datasourceId": "orders-postgresql-service", "role": "",
+          "workloadFile": "templates/deployment.yaml", "workloadKind": "Deployment",
+          "workloadName": "orders", "containers": ["orders"], "initContainers": []
+        }
+      ],
+      "supersededDeclarations": [{"path": "templates/dbaas-declaration.yaml"}],
+      "sourceHashes": {"templates/deployment.yaml": "<sha256>", "templates/dbaas-declaration.yaml": "<sha256>"}
     }
   ]
 }
 ```
 
-Report all dynamic, blocked, and ambiguous entries. Never generate placeholders that could create
-the wrong database.
+`sourceHashes` keys are root-relative and must record the SHA-256 of every file this root reads
+(every workload file, every superseded-declaration file, `values.yaml`, `values.schema.json`) at the
+moment of discovery; the writer refuses to act on a hash that no longer matches (something changed
+underneath the plan -- rebuild it).
 
-## 3. Map the imperative request
+A datasource's `resourceName` is required only when `classifier.microserviceName` or
+`classifier.scope` is still a Helm expression, and must itself embed `.Release.Name`, the one value
+Helm guarantees unique per release -- the writer rejects both a plan that omits it for a templated
+identity and one that slugifies the template text into a fixed literal instead (every release of
+the chart would then generate the same name).
 
-Preserve the runtime request exactly:
+Run, from the directory containing this `SKILL.md`:
 
-- typed classifier keys map to `spec.classifier.microserviceName`, `scope`, `namespace`, and
-  `tenantId`;
-- a runtime top-level extension key maps to `spec.classifier.extraKeys` so it remains top-level on
-  the wire;
-- a runtime nested `customKeys` object maps to `spec.classifier.customKeys`;
-- `BaseDbParams.NamePrefix` maps to `InternalDatabase.spec.namePrefix`;
-- database-creation `BaseDbParams.Settings` map to `InternalDatabase.spec.settings`; preserve each
-  value's JSON type instead of converting it to a string;
-- `BaseDbParams.Role` maps to `DatabaseSecretClaim.spec.userRole` exactly, including the difference
-  between omitted/empty and an explicit role;
-- connection-pool, migration, retry, and client options remain application configuration;
-- `PhysicalDatabaseId` has no confirmed field in the current `InternalDatabase` contract: mark it
-  `BLOCKED` unless the target operator/aggregator contract proves a mapping.
-
-When replacing a legacy `DatabaseDeclaration`, preserve explicit `versioningConfig` and
-`initialInstantiation` only after verifying that its classifier matches the runtime request.
-Preserve array, boolean, numeric, null, and nested settings as their corresponding YAML values.
-
-Mongo's default classifier adds top-level `dbClassifier: default`. Preserve it under `extraKeys`.
-Apply the same rule to any custom top-level classifier extension.
-
-## 4. Choose collision-free names
-
-Build a stable DNS label from the full identity, not only service and scope.
-
-1. Start with `<microservice>-<type>-<scope>`.
-1. Append a static tenant ID for tenant scope.
-1. Append a short meaningful discriminator for additional classifier identity fields. If no safe,
-   concise discriminator exists, append the first eight lowercase hex characters of a SHA-256 hash
-   of the canonical classifier JSON.
-1. Normalize to lowercase DNS-1123 syntax and keep Kubernetes names at most 63 characters. Preserve
-   the hash suffix when truncating.
-
-Use these suffixes:
-
-```text
-InternalDatabase:    <identity>-db
-DatabaseSecretClaim: <identity>-<role-or-default>-claim
-Secret:              <identity>-<role-or-default>-credentials
-Volume:              <identity>-<role-or-default>-secret
+```bash
+python scripts/apply_migration.py --repo-root <repo> --plan <plan.json> --check
+python scripts/apply_migration.py --repo-root <repo> --plan <plan.json> --apply
 ```
 
-Check every generated resource, Secret, volume, and mount name for collisions before writing.
+Read the JSON result on stdout. Exit 0 covers a `valid` (`--check`), `changed`, or `unchanged`
+(`--apply`) result; 2 is an invalid plan, 3 a stale source hash, 4 an unsupported input or missing
+dependency (including `helm` for a helm root), 5 a generated-output validation failure. Every
+blocking entry names the file and the reason.
 
-## 5. Generate resources
+## 5. Cases the writer refuses rather than guesses at
 
-For every supported database identity, generate an `InternalDatabase`. For every requested role of
-that identity, generate a claim. Use the canonical templates in
-[contracts.md](references/contracts.md).
+An empty or missing pod-spec mapping; a standalone Helm block action or assignment inside a
+workload manifest; a volume/mount name that already exists pointing at a different secret; a
+templated classifier identity with no `resourceName`, or one with no live `.Release.Name`
+expression; a superseded declaration carrying `physicalDatabaseId`, `versioningConfig`,
+`initialInstantiation`, or a non-default `lazy` (see step 3); a migration source path that is also
+the generated output path; a plain-manifest output that still contains a Helm expression after
+generation; a missing `helm` binary for a helm root.
 
-Rules:
-
-- Set every generated CR's `spec.operatorNamespace` to the `operatorNamespace` recorded in the
-  inventory — the `{{ .Values.DBAAS_OPERATOR_NAMESPACE }}` placeholder for a Helm layout, or the
-  resolved namespace for plain manifests. Do not derive it from `metadata.namespace`.
-- Set `metadata.namespace` to the workload namespace.
-- Omit `classifier.namespace` and let the operator derive it, or set it to the workload namespace
-  consistently in both resources. Never copy a differing legacy namespace.
-- Copy the complete classifier and type identically into the paired claim.
-- Add non-empty `app.kubernetes.io/name` to each claim; it becomes `originService`.
-- Set `lazy` to a YAML boolean, normally `false`, unless the existing deployment contract explicitly
-  requires lazy provisioning. Never quote boolean values.
-- Omit defaulted optional fields instead of inventing values.
-- Do not add `initialInstantiation` or versioning behavior unless the existing configuration
-  requires it.
-
-Prefer the consumer repository's existing Helm/declaration layout. For plain manifests, use a
-coherent existing manifests directory. Do not create backup files; rely on version-control diffs.
-
-## 6. Mount every generated Secret
-
-Update each `Deployment` or `StatefulSet` container that consumes the corresponding role:
-
-```yaml
-volumes:
-  - name: orders-postgresql-service-default-secret
-    secret:
-      secretName: orders-postgresql-service-default-credentials
-
-containers:
-  - name: orders
-    volumeMounts:
-      - name: orders-postgresql-service-default-secret
-        mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials
-        readOnly: true
-```
-
-Name the mount directory after `DatabaseSecretClaim.spec.secretName`. This is the skill's
-generation convention for unique, validator-checkable mounts; the client matches the Secret by
-`metadata.json`, not by the directory name. Preserve existing Helm
-expressions, volumes, mounts, init containers, and sidecars. Mount only into containers that use the
-database.
-
-## 7. Validate before completion
-
-Perform all applicable checks from [testing.md](references/testing.md):
-
-1. Render Helm templates before validating YAML.
-1. Run `scripts/validate_generated.py --inventory <inventory.json> <rendered-or-plain-yaml>`.
-1. Validate syntax and run client-side and server-side dry runs when a suitable cluster is present.
-1. Compare canonical classifiers and type between each InternalDatabase and claim.
-1. Verify every generated managed CR carries `spec.operatorNamespace`. On rendered Helm output, pass
-   `--operator-namespace <deployed-namespace>` to `validate_generated.py` to assert it resolved to the
-   intended operator.
-1. Verify claim role against every client request role.
-1. Verify that all names are unique and DNS-compatible.
-1. Verify each claim Secret has at least one consuming volume/mount and every consumer uses the
-   required path and read-only mode. Multiple application containers may intentionally share it.
-1. Confirm unsupported dynamic call paths were not removed or redirected.
-
-Do not use a one-InternalDatabase-to-one-claim count check: multiple roles legitimately create
-multiple claims for one database.
-
-## Completion report
-
-Report:
-
-- every discovered logical database identity and its evidence;
-- the operator assignment used — the `DBAAS_OPERATOR_NAMESPACE` deploy-time value for a Helm layout, or
-  the resolved namespace and its evidence for plain manifests;
-- supported, dynamic, blocked, and ambiguous counts;
-- the deduplication decisions;
-- every generated or modified file;
-- validation commands and their actual results;
-- dependency compatibility evidence;
-- remaining runtime fallback paths and why they remain.
-
-Call the migration complete only when generated mounted Secrets match the client lookup key:
-`canonical classifier | lowercase type | trimmed requested role`.
+A warning is never permission to drop data: an unresolved ambiguity blocks the run instead of
+guessing.

@@ -18,7 +18,9 @@ Old generic YAML CR:
 - `subKind: DatabaseDeclaration` or `subKind: DbPolicy`
 - declaration body under `spec`
 - Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions or include lines under
-  labels. Quote template scalar values or use the converter's Helm fallback, then review the output.
+  labels. `apply_migration.py` blanks out a whole-document `{{- if ... }}` / `{{- end }}` guard automatically
+  before parsing and re-wraps it around the generated output; any other unparseable Helm construct blocks the run
+  (exit 4) instead of falling back to a converter pass that needs manual review.
 
 Target CRDs:
 
