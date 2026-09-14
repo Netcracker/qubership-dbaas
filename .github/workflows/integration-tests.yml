@@ -316,14 +316,29 @@ jobs:
           path: fluentbit-logs/**
           if-no-files-found: warn
 
-      - name: Collect K8s diagnostics (kubectl)
+      - name: Collect MinIO diagnostics
+        id: collect_minio_logs
+        if: always()
+        run: |
+          chmod +x .github/scripts/collect-minio-logs.sh && \
+          .github/scripts/collect-minio-logs.sh
+
+      - name: Upload MinIO diagnostics
+        if: always() && steps.collect_minio_logs.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: minio-k8s-diagnostics
+          path: minio-logs/*
+          if-no-files-found: warn
+
+      - name: Collect DBaaS diagnostics
         id: collect_logs
         if: always()
         run: |
           chmod +x .github/scripts/get-dbaas-logs.sh && \
           .github/scripts/get-dbaas-logs.sh
 
-      - name: Upload K8s diagnostics (kubectl)
+      - name: Upload DBaaS diagnostics
         if: always() && steps.collect_logs.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
