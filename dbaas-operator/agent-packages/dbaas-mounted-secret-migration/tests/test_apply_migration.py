@@ -381,6 +381,142 @@ class HelmApplyTest(unittest.TestCase):
             self.assertFalse((repo / "chart" / "values.schema.json").exists())
             self.assertIn('DBAAS_OPERATOR_NAMESPACE: ""', (repo / "chart" / "values.yaml").read_text(encoding="utf-8"))
 
+    def test_schema_edits_preserve_unrelated_bytes_across_representative_shapes(self) -> None:
+        # (name, before, expected exact result, expected blocking-message substring).
+        # Exactly one of (expected, expected_error) is set per row.
+        cases = [
+            (
+                "pretty, property missing",
+                "{\n"
+                '  "$schema": "https://json-schema.org/draft-07/schema#",\n'
+                '  "type": "object",\n'
+                '  "properties": {\n'
+                '    "NAMESPACE": {\n'
+                '      "type": "string",\n'
+                '      "description": "target namespace"\n'
+                "    }\n"
+                "  },\n"
+                '  "required": [\n'
+                '    "NAMESPACE"\n'
+                "  ]\n"
+                "}\n",
+                "{\n"
+                '  "$schema": "https://json-schema.org/draft-07/schema#",\n'
+                '  "type": "object",\n'
+                '  "properties": {\n'
+                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"},\n'
+                '    "NAMESPACE": {\n'
+                '      "type": "string",\n'
+                '      "description": "target namespace"\n'
+                "    }\n"
+                "  },\n"
+                '  "required": [\n'
+                '    "NAMESPACE"\n'
+                "  ]\n"
+                "}\n",
+                None,
+            ),
+            (
+                "compact one-liner, property missing",
+                '{"type":"object","properties":{"NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
+                '{"type":"object","properties":{"DBAAS_OPERATOR_NAMESPACE": {"type": "string"},'
+                '"NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
+                None,
+            ),
+            (
+                "required removal leaves other entries and properties untouched",
+                "{\n"
+                '  "type": "object",\n'
+                '  "properties": {\n'
+                '    "NAMESPACE": {"type": "string"},\n'
+                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"}\n'
+                "  },\n"
+                '  "required": [\n'
+                '    "NAMESPACE",\n'
+                '    "DBAAS_OPERATOR_NAMESPACE"\n'
+                "  ]\n"
+                "}\n",
+                "{\n"
+                '  "type": "object",\n'
+                '  "properties": {\n'
+                '    "NAMESPACE": {"type": "string"},\n'
+                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"}\n'
+                "  },\n"
+                '  "required": [\n'
+                '    "NAMESPACE"\n'
+                "  ]\n"
+                "}\n",
+                None,
+            ),
+            (
+                "already correct is left completely unchanged",
+                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
+                '"DBAAS_OPERATOR_NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
+                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
+                '"DBAAS_OPERATOR_NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
+                None,
+            ),
+            (
+                "CRLF and missing final newline are preserved",
+                "{\r\n"
+                '  "type": "object",\r\n'
+                '  "properties": {\r\n'
+                '    "NAMESPACE": {"type": "string"}\r\n'
+                "  }\r\n"
+                "}",  # deliberately no trailing newline
+                "{\r\n"
+                '  "type": "object",\r\n'
+                '  "properties": {\r\n'
+                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"},\r\n'
+                '    "NAMESPACE": {"type": "string"}\r\n'
+                "  }\r\n"
+                "}",
+                None,
+            ),
+            (
+                "wrong existing property value is replaced",
+                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
+                '"DBAAS_OPERATOR_NAMESPACE":{"type":"integer"}},"required":[]}',
+                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
+                '"DBAAS_OPERATOR_NAMESPACE":{"type": "string"}},"required":[]}',
+                None,
+            ),
+            (
+                "empty pretty properties gets a properly indented insertion, not a compact one",
+                '{\n  "type": "object",\n  "properties": {\n  }\n}\n',
+                '{\n  "type": "object",\n  "properties": {\n    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"}\n  }\n}\n',
+                None,
+            ),
+            (
+                "mixed line endings are rejected instead of being rewritten",
+                '{"type":"object",\r\n"properties":{"NAMESPACE":{"type":"string"}}}\n',
+                None,
+                "mixed line endings",
+            ),
+            (
+                "a tab in otherwise-valid JSON is reported as unsupported, not invalid",
+                '{"type":"object","properties":\t{"NAMESPACE":{"type":"string"}}}',
+                None,
+                "valid JSON layout is unsupported",
+            ),
+        ]
+
+        for name, before, expected, expected_error in cases:
+            with self.subTest(name):
+                with tempfile.TemporaryDirectory() as directory:
+                    tmp = Path(directory)
+                    repo = scaffold(tmp)
+                    schema_path = repo / "chart" / "values.schema.json"
+                    schema_path.write_bytes(before.encode("utf-8"))
+                    code, report = run_migration(repo, plan(repo), "apply", tmp)
+                    if expected_error is not None:
+                        self.assertEqual(code, 4, report.get("__stderr"))
+                        self.assertIn(expected_error, "".join(report.get("blocking", [])))
+                        continue
+                    self.assertEqual(code, 0, report.get("__stderr"))
+                    after = schema_path.read_bytes().decode("utf-8")
+                    self.assertEqual(after, expected)
+
     def test_literal_operator_namespace_does_not_touch_values(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)

@@ -1352,23 +1352,159 @@ def update_values(repo_root: Path, root_plan: dict[str, Any], changes: Changes) 
     schema_path = resolve_within(repo_root, schema_rel, what="values schema file")
     if not schema_path.is_file():
         return
+    # newline="" so CRLF reaches _edit_values_schema verbatim -- it does its
+    # own CRLF normalize/restore round trip, the same pattern patch_workload
+    # uses for a workload manifest.
+    with schema_path.open(encoding="utf-8", newline="") as handle:
+        raw = handle.read()
     try:
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        schema = json.loads(raw)
     except ValueError as exc:
         raise bad_input(f"{schema_rel}: invalid JSON: {exc}") from None
     if not isinstance(schema, dict):
         return
-    properties = schema.setdefault("properties", {})
+    properties = schema.get("properties")
     required = schema.get("required")
-    changed = False
-    if properties.get(DBAAS_OPERATOR_NAMESPACE_VALUE) != {"type": "string"}:
-        properties[DBAAS_OPERATOR_NAMESPACE_VALUE] = {"type": "string"}
-        changed = True
-    if isinstance(required, list) and DBAAS_OPERATOR_NAMESPACE_VALUE in required:
-        required.remove(DBAAS_OPERATOR_NAMESPACE_VALUE)
-        changed = True
-    if changed:
-        changes.set_content(schema_rel, json.dumps(schema, indent=2) + "\n")
+    properties_correct = isinstance(properties, dict) and properties.get(DBAAS_OPERATOR_NAMESPACE_VALUE) == {
+        "type": "string"
+    }
+    required_needs_removal = isinstance(required, list) and DBAAS_OPERATOR_NAMESPACE_VALUE in required
+    if properties_correct and not required_needs_removal:
+        return  # already semantically correct -- leave the file untouched
+
+    edited = _edit_values_schema(raw, schema_rel, properties_correct, required_needs_removal)
+    changes.set_content(schema_rel, edited)
+
+
+def _insert_yaml_member(work: str, map_node: Any, key: str, value: Any) -> tuple[int, int, str]:
+    """Edit tuple inserting ``key: value`` as the first member of the
+    (already-composed) YAML/JSON mapping node ``map_node``.
+
+    Matches the mapping's own compact-vs-pretty style -- a first member
+    that starts on the same line as ``{`` versus one on its own indented
+    line -- instead of always gluing a compact entry onto the "{" line,
+    which would look wrong pasted into an otherwise pretty object.
+    """
+
+    open_index = map_node.start_mark.index
+    entry_text = json.dumps(key) + ": " + json.dumps(value)
+    if not map_node.value:
+        close_index = map_node.end_mark.index - 1  # index of '}'
+        inner = work[open_index + 1 : close_index]
+        if "\n" not in inner:
+            return open_index + 1, open_index + 1, entry_text
+        # A pretty (but empty) mapping: match the closing brace's own
+        # indentation, one level deeper, instead of gluing a compact entry
+        # onto the "{" line -- the closing "}" itself stays untouched and
+        # keeps the original whitespace leading up to it.
+        line_start = work.rfind("\n", 0, close_index) + 1
+        closing_indent = work[line_start:close_index]
+        return open_index + 1, open_index + 1, "\n" + closing_indent + "  " + entry_text
+    first_key = map_node.value[0][0]
+    pretty = "\n" in work[open_index:first_key.start_mark.index]
+    entry = entry_text + ","
+    if pretty:
+        entry = "\n" + " " * first_key.start_mark.column + entry
+    return open_index + 1, open_index + 1, entry
+
+
+def _edit_values_schema(raw: str, schema_rel: str, properties_correct: bool, required_needs_removal: bool) -> str:
+    """Apply only the byte spans that need to change, leaving every other
+    byte -- property order, indentation, compact vs. pretty layout,
+    newline style -- exactly as it was.
+
+    Locates those spans the same way ``patch_workload`` locates spans in a
+    workload manifest: compose the (CRLF-normalized) text with PyYAML and
+    read node start/end marks, never a custom parser.
+    """
+
+    uses_crlf = "\r\n" in raw
+    if uses_crlf and "\n" in raw.replace("\r\n", ""):
+        raise unsupported(f"{schema_rel}: mixed line endings; cannot edit in place")
+    work = raw.replace("\r\n", "\n") if uses_crlf else raw
+    try:
+        root = yaml.compose(work)
+    except yaml.YAMLError as exc:
+        # The caller already proved this is valid JSON via json.loads(); a
+        # compose() failure here means PyYAML's (YAML 1.1) grammar rejects
+        # some valid-JSON construct (a literal tab used as whitespace, for
+        # example) -- not that the document itself is invalid.
+        raise unsupported(f"{schema_rel}: valid JSON layout is unsupported for in-place editing: {exc}") from None
+    if not _is_mapping(root):
+        raise unsupported(f"{schema_rel}: not a JSON object at the top level; cannot edit in place")
+
+    def top_member(name: str) -> Any | None:
+        for key_node, value_node in root.value:
+            if key_node.value == name:
+                return value_node
+        return None
+
+    edits: list[tuple[int, int, str]] = []
+
+    if not properties_correct:
+        properties_node = top_member("properties")
+        if properties_node is None:
+            edits.append(
+                _insert_yaml_member(work, root, "properties", {DBAAS_OPERATOR_NAMESPACE_VALUE: {"type": "string"}})
+            )
+        elif not _is_mapping(properties_node):
+            raise unsupported(f"{schema_rel}: properties is not a JSON object; cannot edit in place")
+        else:
+            prop_value_node = None
+            for key_node, value_node in properties_node.value:
+                if key_node.value == DBAAS_OPERATOR_NAMESPACE_VALUE:
+                    prop_value_node = value_node
+                    break
+            if prop_value_node is None:
+                edits.append(_insert_yaml_member(work, properties_node, DBAAS_OPERATOR_NAMESPACE_VALUE, {"type": "string"}))
+            else:
+                edits.append(
+                    (prop_value_node.start_mark.index, prop_value_node.end_mark.index, json.dumps({"type": "string"}))
+                )
+
+    if required_needs_removal:
+        required_node = top_member("required")
+        if required_node is None or not required_node.tag.endswith(":seq"):
+            raise unsupported(f"{schema_rel}: required is not a JSON array; cannot edit in place")
+        target = next((item for item in required_node.value if item.value == DBAAS_OPERATOR_NAMESPACE_VALUE), None)
+        if target is None:
+            raise unsupported(f"{schema_rel}: could not relocate {DBAAS_OPERATOR_NAMESPACE_VALUE!r} in required")
+        seq_start = required_node.start_mark.index
+        seq_end = required_node.end_mark.index
+        elem_start = target.start_mark.index
+        elem_end = target.end_mark.index
+        # Remove the element plus one adjacent comma (and its whitespace),
+        # preferring the preceding comma so the remaining array keeps its
+        # existing per-line layout with nothing left to reformat.
+        before = elem_start
+        while before > seq_start + 1 and work[before - 1] in " \t\n":
+            before -= 1
+        if before > seq_start + 1 and work[before - 1] == ",":
+            edits.append((before - 1, elem_end, ""))
+        else:
+            after = elem_end
+            while after < seq_end - 1 and work[after] in " \t\n":
+                after += 1
+            if after < seq_end - 1 and work[after] == ",":
+                after += 1
+                while after < seq_end - 1 and work[after] in " \t\n":
+                    after += 1
+            edits.append((elem_start, after, ""))
+
+    for start, end, replacement in sorted(edits, key=lambda e: -e[0]):
+        work = work[:start] + replacement + work[end:]
+
+    try:
+        result = json.loads(work)
+    except ValueError as exc:
+        raise unsupported(f"{schema_rel}: edited JSON is invalid: {exc}") from None
+    if result.get("properties", {}).get(DBAAS_OPERATOR_NAMESPACE_VALUE) != {"type": "string"}:
+        raise unsupported(f"{schema_rel}: edit did not produce the expected properties.{DBAAS_OPERATOR_NAMESPACE_VALUE}")
+    result_required = result.get("required")
+    if isinstance(result_required, list) and DBAAS_OPERATOR_NAMESPACE_VALUE in result_required:
+        raise unsupported(f"{schema_rel}: edit did not remove {DBAAS_OPERATOR_NAMESPACE_VALUE} from required")
+
+    return work.replace("\n", "\r\n") if uses_crlf else work
 
 
 # --------------------------------------------------------------------------- #
