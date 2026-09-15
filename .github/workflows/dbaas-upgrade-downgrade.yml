@@ -1,0 +1,16 @@
+name: DBaaS Aggregator Upgrade/Downgrade Availability
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  transition:
+    name: Transition
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Run
+        run: echo "DBaaS aggregator upgrade/downgrade availability check"
