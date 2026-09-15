@@ -121,6 +121,36 @@ func TestHandlePostgresItems_RejectsUnsupportedMethod(t *testing.T) {
 	assertErrorResponse(t, recorder, http.StatusMethodNotAllowed)
 }
 
+func TestHandleUpdatePostgresItem_RejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "invalid JSON", body: `{`},
+		{name: "missing id and name", body: `{}`},
+		{name: "missing id", body: `{"name":"valid"}`},
+		{name: "zero id", body: `{"id":0,"name":"valid"}`},
+		{name: "negative id", body: `{"id":-1,"name":"valid"}`},
+		{name: "blank name", body: `{"id":1,"name":"   "}`},
+		{name: "name too long", body: `{"id":1,"name":"` + strings.Repeat("a", 201) + `"}`},
+		{name: "trailing JSON", body: `{"id":1,"name":"valid"}{"id":2,"name":"other"}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPut, "/postgres/items", strings.NewReader(tc.body))
+			(&App{}).Handler().ServeHTTP(recorder, request)
+
+			assertErrorResponse(t, recorder, http.StatusBadRequest)
+		})
+	}
+}
+
 func TestHandleCreatePostgresItem_RejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 

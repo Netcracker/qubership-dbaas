@@ -1,0 +1,72 @@
+# dbaas-aggregator Helm values overlay for the upgrade/downgrade availability test.
+#
+# This restates the chart's own default values (helm-templates/dbaas-aggregator/values.yaml) explicitly
+# rather than relying on Helm's implicit merge, plus bootstrap/dbaas-values.yaml's addressing/credential
+# keys the chart has no default for — so a future change to either file can't silently change what this
+# test deploys. Two deliberate differences from that combination: REPLICAS raised to 2 (the transition
+# test requires two ready replicas throughout), and every credential placeholder that
+# bootstrap/dbaas-values.yaml hardcodes to the literal "password" instead sourced from ${...} —
+# deploy-fixture.sh generates and exports random values for these before this file is rendered with
+# envsubst, and masks them immediately, so no fixed credential is ever deployed or printed.
+#
+# The chart's own template already renders REPLICAS into a RollingUpdate strategy with a hardcoded
+# maxSurge/maxUnavailable of 25%/25% (helm-templates/dbaas-aggregator/templates/deployment.yaml) —
+# at 2 replicas that is maxUnavailable=0 (25% of 2 rounds down to 0) and maxSurge=1, so a rollout can
+# only ever add a third pod before removing an old one and never drops below two ready replicas.
+
+# ${TAG} is the ONLY thing that differs between the initial deploy and the transition step: the caller
+# exports TAG=<initial tag> for deploy-fixture.sh and TAG=<target tag> for transition-aggregator.sh,
+# then re-renders this same file. IMAGE_REPOSITORY is fixed — only the tag moves.
+DECLARATIVE_HOOK_IMAGE: ghcr.io/netcracker/qubership-dbaas-validation-image:${TAG}
+IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas
+TAG: ${TAG}
+
+APPLICATION_NAME: dbaas
+SERVICE_NAME: ${DBAAS_SERVICE_NAME}
+CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
+READONLY_CONTAINER_FILE_SYSTEM_ENABLED: false
+REPLICA_ROLLING_TIMEOUT_SECONDS: 600
+LIVENESS_PROBE_INITIAL_DELAY_SECONDS: 120
+REGION_DBAAS: ${REGION_DBAAS}
+NODE_SELECTOR_DBAAS_KEY: ${NODE_SELECTOR_DBAAS_KEY}
+# Explicit — never Recreate. The plan requires the test to fail early if the live Deployment ever uses
+# a recreate strategy; evaluate-probes.sh / transition-aggregator.sh independently check the rendered
+# Deployment's strategy type as a second line of defense against this value being lost on `helm upgrade`.
+DBAAS_RECREATE_DEPLOYMENT_STRATEGY: false
+
+LOG_LEVEL: "INFO"
+DBAAS_LOG_LEVEL: "INFO"
+
+DISABLE_DEPRECATED_API: false
+
+PRODUCTION_MODE: true
+POSTGRES_HOST: 'pg-patroni.${PG_NAMESPACE}'
+POSTGRES_PORT: '5432'
+DBAAS_SECURITY_CONFIGURATION_LOCATION: '/etc/dbaas/security'
+DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION: '/etc/dbaas/global_permissions'
+DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES: ''
+DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED: false
+
+DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED: true
+KUBERNETES_M2M_ENABLED: ${KUBERNETES_M2M_ENABLED}
+
+MEM_ARGS: "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=136m -XX:MaxMetaspaceSize=136m -XX:ReservedCodeCacheSize=64M -XX:CompressedClassSpaceSize=32M -XX:MinMetaspaceExpansion=1M -XX:MaxMetaspaceExpansion=8M -XX:CodeCacheExpansionSize=256k -XX:MaxDirectMemorySize=10m -XX:+UseParallelGC -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90"
+MEMORY_LIMIT: "520Mi"
+CPU_LIMIT: "2"
+CPU_REQUEST: "100m"
+# Two replicas is an availability prerequisite of this test, not a chart default — see header comment.
+REPLICAS: 2
+
+BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD: ${BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD}
+DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD: ${DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD}
+DBAAS_TENANT_PASSWORD: ${DBAAS_TENANT_PASSWORD}
+DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD: ${DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD}
+DISCR_TOOL_USER_PASSWORD: ${DISCR_TOOL_USER_PASSWORD}
+POSTGRES_DBAAS_USER: postgres
+POSTGRES_DBAAS_PASSWORD: ${POSTGRES_PASSWORD}
+POSTGRES_DBAAS_DATABASE_NAME: dbaas
+DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS: 20
+DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS: 3
+DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS: 3
+DBAAS_BACKUP_RESTORE_CHECK_INTERVAL: 1m
+DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT: PT10M
