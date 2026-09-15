@@ -1,0 +1,89 @@
+# Continuous-mode probe (PROBE_MODE=probe, the default). Runs for the lifetime of the transition test,
+# polling dbaas-aggregator and the sample service from inside the cluster and writing one JSON result
+# line per probe cycle to stdout — evaluate-probes.sh reads it back via `kubectl logs`. Deliberately not
+# reached over kubectl port-forward: a port-forward drop would be indistinguishable from a real outage.
+#
+# The one-shot pre-/post-transition functional checks (PROBE_MODE=verify / verify-post) run as separate
+# Kubernetes Jobs built inline by deploy-fixture.sh / transition-aggregator.sh from this same image —
+# they need no separate Deployment manifest.
+#
+# __NAMESPACE__, __IMAGE__, and __CREDENTIALS_SECRET__ are substituted by the deploying script before
+# kubectl apply, matching the convention in test-apps/dbaas-agent-stub/deploy.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbaas-availability-probe
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: dbaas-availability-probe
+    app.kubernetes.io/component: test-fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dbaas-availability-probe
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dbaas-availability-probe
+    spec:
+      serviceAccountName: dbaas-availability-probe
+      containers:
+        - name: dbaas-availability-probe
+          image: __IMAGE__
+          imagePullPolicy: Never
+          env:
+            - name: PROBE_MODE
+              value: probe
+            - name: AGGREGATOR_URL
+              value: http://dbaas-aggregator.__NAMESPACE__:8080
+            - name: SAMPLE_SERVICE_URL
+              value: http://go-test-app-service.__NAMESPACE__:8080
+            - name: NAMESPACE
+              value: __NAMESPACE__
+            - name: MICROSERVICE_NAME
+              value: go-test-app-service
+            - name: CLASSIFIER_SCOPE
+              value: service
+            - name: DB_TYPE
+              value: postgresql
+            - name: PROBE_INTERVAL_MS
+              value: "500"
+            - name: PROBE_REQUEST_TIMEOUT_MS
+              value: "5000"
+            - name: DBAAS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: __CREDENTIALS_SECRET__
+                  key: username
+            - name: DBAAS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: __CREDENTIALS_SECRET__
+                  key: password
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 96Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dbaas-availability-probe
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: dbaas-availability-probe
