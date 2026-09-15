@@ -19,7 +19,7 @@ Contract:
 
 Plan shape (one entry per deployment root; a plan may declare more than one --
 identity and collision checks are scoped to each root, so two roots may legitimately
-reuse the same generated name)::
+reuse the same generated name when their workload namespaces differ)::
 
     {
       "roots": [
@@ -101,6 +101,7 @@ MOUNT_ROOT = "/etc/secrets/dbaas-secrets"
 DBAAS_OPERATOR_NAMESPACE_VALUE = "DBAAS_OPERATOR_NAMESPACE"
 _TAIL_BUDGET = 20
 _PILOT_RELEASE = "dbaas-migration-pilot"
+_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class MigrationError(Exception):
@@ -341,6 +342,7 @@ _DATASOURCE_KEYS = {
     "id", "type", "classifier", "requestedRoles", "parameters", "migrationFeasibility",
     "resourceName", "codeLocations",
 }
+_PARAMETER_KEYS = {"namePrefix", "settings", "physicalDatabaseId"}
 _CLAIM_KEYS = {
     "datasourceId", "role", "workloadFile", "workloadKind", "workloadName",
     "containers", "initContainers",
@@ -375,6 +377,7 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
 
     seen_roots: set[str] = set()
     seen_outputs: set[str] = set()
+    seen_namespaces: set[str] = set()
     for index, entry in enumerate(roots):
         where = f"plan.roots[{index}]"
         _reject_unknown(entry, _ROOT_KEYS, where)
@@ -391,6 +394,10 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
         for key in ("operatorNamespace", "workloadNamespace", "originService"):
             if not isinstance(entry.get(key), str) or not entry[key].strip():
                 raise bad_input(f"{where}.{key} is required and must be a non-empty string")
+        if not is_templated(entry["operatorNamespace"]) and not is_dns_label(entry["operatorNamespace"]):
+            raise bad_input(f"{where}.operatorNamespace must be a valid RFC-1123 namespace label")
+        if not is_templated(entry["workloadNamespace"]) and not is_dns_label(entry["workloadNamespace"]):
+            raise bad_input(f"{where}.workloadNamespace must be a valid RFC-1123 namespace label")
         output_file = entry.get("outputFile")
         if not isinstance(output_file, str) or not output_file:
             raise bad_input(f"{where}.outputFile is required")
@@ -398,15 +405,25 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
         if output_path in seen_outputs:
             raise bad_input(f"two roots write to the same outputFile {output_path!r}")
         seen_outputs.add(output_path)
+        if entry["workloadNamespace"] in seen_namespaces:
+            raise bad_input(
+                f"{where}.workloadNamespace {entry['workloadNamespace']!r} is shared by another root; "
+                "use one root per target namespace so duplicate resources are checked together"
+            )
+        seen_namespaces.add(entry["workloadNamespace"])
         entry["_outputPath"] = output_path
         output_sha256 = entry.get("outputSha256")
-        if output_sha256 is not None and (not isinstance(output_sha256, str) or len(output_sha256) != 64):
+        if output_sha256 is not None and (
+            not isinstance(output_sha256, str) or _SHA256.fullmatch(output_sha256) is None
+        ):
             raise bad_input(f"{where}.outputSha256 must be a 64-character hex digest or null")
+        entry["outputSha256"] = output_sha256.lower() if output_sha256 is not None else None
 
         datasources = entry.get("datasources")
         if not isinstance(datasources, list) or not datasources:
             raise bad_input(f"{where}.datasources must be a non-empty list")
         ids: set[str] = set()
+        identities: set[tuple[str, str]] = set()
         for ds_index, ds in enumerate(datasources):
             ds_where = f"{where}.datasources[{ds_index}]"
             _reject_unknown(ds, _DATASOURCE_KEYS, ds_where)
@@ -434,6 +451,42 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             for key in ("microserviceName", "scope"):
                 if not isinstance(classifier.get(key), str) or not classifier[key].strip():
                     raise bad_input(f"{ds_where}.classifier.{key} is required and must be a non-empty string")
+            if not is_templated(classifier["scope"]) and classifier["scope"] not in ("service", "tenant"):
+                raise bad_input(f"{ds_where}.classifier.scope must be 'service' or 'tenant'")
+            for key in ("namespace", "tenantId"):
+                if key in classifier and not isinstance(classifier[key], str):
+                    raise bad_input(f"{ds_where}.classifier.{key} must be a string")
+            custom_keys = classifier.get("customKeys")
+            if custom_keys is not None and (
+                not isinstance(custom_keys, dict) or not validator.is_json_value(custom_keys)
+            ):
+                raise bad_input(f"{ds_where}.classifier.customKeys must be an object containing valid JSON")
+            classifier_namespace = classifier.get("namespace")
+            # cr_classifier() unconditionally drops classifier.namespace (typed.pop("namespace",
+            # None)) since the operator always materializes InternalDatabase/DatabaseSecretClaim
+            # in the workload namespace -- so dropping the pin is only safe when it is already
+            # provably redundant. Exact string equality with workloadNamespace proves that even
+            # while workloadNamespace is still a Helm expression (the same literal expression
+            # renders to the same value in both places, whatever that ends up being); anything
+            # else -- a literal differing from a concrete workloadNamespace, or any pin at all
+            # once workloadNamespace is a *different* Helm expression whose rendered value cannot
+            # be compared -- is not provably redundant, so it blocks rather than being dropped
+            # unverified.
+            if classifier_namespace and classifier_namespace != entry["workloadNamespace"]:
+                if is_templated(entry["workloadNamespace"]):
+                    raise unsupported(
+                        f"{ds_where}.classifier.namespace {classifier_namespace!r} is pinned, but "
+                        f"{where}.workloadNamespace {entry['workloadNamespace']!r} is a different Helm "
+                        "expression -- whether the rendered namespace will match the pin cannot be "
+                        "proven, and the operator always materializes into the workload namespace "
+                        "regardless, so this pin cannot be migrated unverified"
+                    )
+                raise unsupported(
+                    f"{ds_where}.classifier.namespace {classifier_namespace!r} differs from "
+                    f"{where}.workloadNamespace {entry['workloadNamespace']!r}; the operator always "
+                    "materializes into the workload namespace, so a classifier pinned to a "
+                    "different namespace cannot be migrated"
+                )
             extra_keys = classifier.get("extraKeys")
             if extra_keys is not None:
                 if not isinstance(extra_keys, dict):
@@ -441,22 +494,50 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
                 reserved = sorted(RESERVED_CLASSIFIER_KEYS & set(extra_keys))
                 if reserved:
                     raise bad_input(f"{ds_where}.classifier.extraKeys must not repeat reserved keys: {', '.join(reserved)}")
+                if not validator.is_json_value(extra_keys):
+                    raise bad_input(f"{ds_where}.classifier.extraKeys must contain valid JSON")
+            for key, value in classifier.items():
+                if key not in RESERVED_CLASSIFIER_KEYS | {"extraKeys"} and not validator.is_json_value(value):
+                    raise bad_input(f"{ds_where}.classifier.{key} must be a valid JSON value")
+            # Two datasources sharing one (classifier, type) identity is
+            # always ambiguous, never a legitimate shape: build_resources()
+            # and verify_superseded() would each have to pick one of them as
+            # authoritative, and nothing forces those two independent picks
+            # to agree -- reject it here instead of letting them silently
+            # disagree about which datasource's parameters were "the ones
+            # that got migrated".
+            identity = (canonical(wire_classifier(classifier)), ds["type"].lower())
+            if identity in identities:
+                raise bad_input(
+                    f"{ds_where}: datasource identity (classifier, type) duplicates an earlier "
+                    f"datasource in {where}.datasources"
+                )
+            identities.add(identity)
             roles = ds.get("requestedRoles", [""])
             if not isinstance(roles, list) or not roles or not all(isinstance(r, str) for r in roles):
                 raise bad_input(f"{ds_where}.requestedRoles must be a non-empty list of strings")
             ds["requestedRoles"] = roles
-            parameters = ds.get("parameters") or {}
-            if not isinstance(parameters, dict):
-                raise bad_input(f"{ds_where}.parameters must be an object")
-            physical_id = parameters.get("physicalDatabaseId")
-            if physical_id:
+            # `or {}` would coerce a present-but-falsy value (`[]`, `""`, `0`) to `{}`
+            # before the type check below ever saw it -- only a genuinely absent
+            # (None/missing) parameters is a legitimate default; anything else present
+            # must be validated as given, not silently replaced.
+            parameters = ds.get("parameters")
+            if parameters is None:
+                parameters = {}
+            else:
+                _reject_unknown(parameters, _PARAMETER_KEYS, f"{ds_where}.parameters")
+            if "physicalDatabaseId" in parameters:
                 raise unsupported(
-                    f"{ds_where}: physicalDatabaseId {physical_id!r} has no proven mapping in the "
+                    f"{ds_where}: physicalDatabaseId {parameters['physicalDatabaseId']!r} has no proven mapping in the "
                     "mounted-secret contract"
                 )
-            settings = parameters.get("settings") or {}
-            if not isinstance(settings, dict) or not all(
-                isinstance(k, str) and validator.is_json_value(v) for k, v in settings.items()
+            name_prefix = parameters.get("namePrefix")
+            if name_prefix is not None and not isinstance(name_prefix, str):
+                raise bad_input(f"{ds_where}.parameters.namePrefix must be a string")
+            settings = parameters.get("settings")
+            if settings is not None and (
+                not isinstance(settings, dict)
+                or not all(isinstance(k, str) and validator.is_json_value(v) for k, v in settings.items())
             ):
                 raise bad_input(f"{ds_where}.parameters.settings must map string keys to valid JSON values")
             ds["parameters"] = parameters
@@ -503,7 +584,7 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             if not isinstance(decl.get("path"), str) or not decl["path"]:
                 raise bad_input(f"{decl_where}.path is required")
             doc_index = decl.get("documentIndex")
-            if doc_index is not None and not isinstance(doc_index, int):
+            if doc_index is not None and (isinstance(doc_index, bool) or not isinstance(doc_index, int)):
                 raise bad_input(f"{decl_where}.documentIndex must be an integer or null")
             decl["_path"] = join_rel(norm_root, decl["path"], what=f"{decl_where}.path")
 
@@ -516,15 +597,35 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
 
         source_hashes = entry.get("sourceHashes", {})
         if not isinstance(source_hashes, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) and len(v) == 64 for k, v in source_hashes.items()
+            isinstance(k, str) and isinstance(v, str) and _SHA256.fullmatch(v) is not None
+            for k, v in source_hashes.items()
         ):
             raise bad_input(f"{where}.sourceHashes must map repository-relative paths to sha256 hex digests")
-        entry["sourceHashes"] = {
-            join_rel(norm_root, key, what=f"{where}.sourceHashes key"): value
-            for key, value in source_hashes.items()
-        }
+        normalized_hashes: dict[str, str] = {}
+        for key, value in source_hashes.items():
+            path = join_rel(norm_root, key, what=f"{where}.sourceHashes key")
+            if path in normalized_hashes:
+                raise bad_input(f"{where}.sourceHashes contains duplicate path {path!r}")
+            normalized_hashes[path] = value.lower()
+        entry["sourceHashes"] = normalized_hashes
 
-        touched = {c["_workloadPath"] for c in claims} | {d["_path"] for d in declarations}
+        workload_paths = {c["_workloadPath"] for c in claims}
+        declaration_paths = {d["_path"] for d in declarations}
+        # apply_workload_patches() and verify_superseded() each independently
+        # compute a new version of any file they touch and write it into the
+        # same shared Changes object; whichever runs second wins and the
+        # other's edit is silently discarded. Rather than trying to make one
+        # pass aware of the other's in-memory edit (and recompute byte spans
+        # that would have shifted under it), refuse the overlap outright: a
+        # claim's workload file must not also be a superseded-declaration
+        # source in the same root.
+        overlap = sorted(workload_paths & declaration_paths)
+        if overlap:
+            raise bad_input(
+                f"{where}: a workload file cannot also be a superseded declaration source in "
+                f"the same root: {', '.join(overlap)}"
+            )
+        touched = workload_paths | declaration_paths
         # update_values() reads -- and sometimes writes -- values.yaml and
         # values.schema.json under exactly this same condition; those files
         # need the same stale-plan protection as every workload/declaration
@@ -666,14 +767,29 @@ def materialize_tree(repo_root: Path, root: str, changes: Changes, dest: Path) -
                 file_path.unlink()
             continue
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8", newline="")
+        # write_bytes, not write_text(..., newline=""): the newline= keyword
+        # on Path.write_text() is Python 3.10+ only, and TypeErrors on the
+        # stock Python 3.9 shipped by macOS, RHEL 8/9, and Debian 11. Writing
+        # the already-encoded bytes directly needs no newline parameter at
+        # all -- there is no text-mode translation to disable.
+        file_path.write_bytes(content.encode("utf-8"))
 
 
 def _secure_temp_write(target: Path, content: bytes) -> None:
+    # mkstemp() always creates its temp file mode 0600, regardless of the file it is about
+    # to replace -- os.replace() then carries that mode over verbatim, silently stripping
+    # group/other read and the executable bit from whatever the target had before (a
+    # 0755 script, say). Restore the original mode, or use the normal 0644 mode for a
+    # newly generated manifest.
+    try:
+        original_mode = target.stat().st_mode & 0o777
+    except OSError:
+        original_mode = 0o644
     fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=str(target.parent))
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(content)
+        os.chmod(tmp_name, original_mode)
         os.replace(tmp_name, target)
     except BaseException:
         try:
@@ -684,13 +800,15 @@ def _secure_temp_write(target: Path, content: bytes) -> None:
 
 
 def commit(repo_root: Path, changes: Changes) -> None:
-    backups: dict[str, bytes | None] = {}
+    backups: dict[str, tuple[bytes, int] | None] = {}
     applied: list[str] = []
     try:
         for path in sorted(changes.files):
             target = resolve_within(repo_root, path, what="target path")
             content = changes.files[path]
-            backups[path] = target.read_bytes() if target.is_file() else None
+            backups[path] = (
+                (target.read_bytes(), target.stat().st_mode & 0o777) if target.is_file() else None
+            )
             if content is None:
                 if target.is_file():
                     target.unlink()
@@ -701,13 +819,15 @@ def commit(repo_root: Path, changes: Changes) -> None:
     except Exception as exc:  # noqa: BLE001 - roll back then report typed
         for path in reversed(applied):
             target = resolve_within(repo_root, path, what="target path")
-            original = backups.get(path)
-            if original is None:
+            backup = backups.get(path)
+            if backup is None:
                 if target.is_file():
                     target.unlink()
             else:
+                original, mode = backup
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(original)
+                os.chmod(target, mode)
         # The documented contract has only 2/3/4/5; a write-transaction failure
         # (permissions, disk full, ...) is an environment/dependency problem,
         # not a plan-content one, so it maps to EXIT_UNSUPPORTED rather than a
@@ -864,6 +984,8 @@ def _indent(line: str) -> int:
 
 def _find_workload(nodes: list[Any], kind: str, name: str) -> Any:
     for node in nodes:
+        if not _is_mapping(node):
+            continue
         mapping = {k.value: v for k, v in node.value if hasattr(k, "value")}
         kind_node = mapping.get("kind")
         metadata_node = mapping.get("metadata")
@@ -987,6 +1109,14 @@ def patch_workload(text: str, *, filename: str, targets: list[dict[str, Any]]) -
     if yaml is None:  # pragma: no cover
         raise WorkloadError([f"{filename}: PyYAML is required"])
     uses_crlf = "\r\n" in text
+    # A file that mixes "\r\n" and bare "\n" is not "CRLF" or "LF", it is both -- normalizing
+    # to "\n" for editing and then unconditionally re-adding "\r\n" to every line on the way
+    # out (below) would convert every originally-bare-"\n" line to "\r\n" too, rewriting lines
+    # this function never touched. There is no line-ending-preserving edit here (unlike the
+    # byte-span splicing elsewhere in this file), so block instead of guessing which lines
+    # were meant to keep which ending.
+    if uses_crlf and "\n" in text.replace("\r\n", ""):
+        raise WorkloadError([f"{filename}: mixed line endings; cannot edit in place"])
     work = text.replace("\r\n", "\n") if uses_crlf else text
     had_trailing_newline = work.endswith("\n")
     for lineno, line in enumerate(work.splitlines(), start=1):
@@ -1135,7 +1265,13 @@ def apply_workload_patches(repo_root: Path, root_plan: dict[str, Any], name_bund
 
 def _as_legacy_items(doc: Any) -> list[Any]:
     if isinstance(doc, dict) and doc.get("kind") == "DBaaS":
-        doc = doc.get("spec") or {}
+        outer_sub_kind = doc.get("subKind")
+        spec = doc.get("spec")
+        if not isinstance(spec, dict):
+            return [spec]
+        doc = dict(spec)
+        if not doc.get("kind") and not doc.get("subKind") and outer_sub_kind:
+            doc["subKind"] = outer_sub_kind
     if isinstance(doc, dict) and str(doc.get("kind") or doc.get("subKind") or "").lower() == "databasedeclaration":
         declarations = doc.get("declarations")
         if declarations is None:
@@ -1148,6 +1284,24 @@ def _as_legacy_items(doc: Any) -> list[Any]:
         # declaration -- with the dropped entry deleted right along with it.
         return list(declarations)
     return []
+
+
+def _is_phantom_empty_node(node: Any) -> bool:
+    """True only for the zero-width ``ScalarNode`` a comment-only or otherwise empty
+    document composes to, never for a real ``null``/``~`` document.
+
+    Both compose to a node tagged ``:null``, so the tag alone cannot tell them apart --
+    an explicit ``null`` or ``~`` document has real content (``value`` is the literal
+    text, and its marks span that text), while an empty one composes to ``value == ""``
+    with ``start_mark.index == end_mark.index``: a zero-width node whose marks can
+    alias the *next* real document's span. Filtering on the zero width, not the tag, is
+    what excludes only the phantom without also dropping a genuine null document.
+    """
+
+    return (
+        node.tag.endswith(":null")
+        and node.start_mark.index == node.end_mark.index
+    )
 
 
 def _split_yaml_source(text: str, path: str) -> tuple[str, list[dict[str, Any]]]:
@@ -1168,10 +1322,20 @@ def _split_yaml_source(text: str, path: str) -> tuple[str, list[dict[str, Any]]]
     if yaml is None:  # pragma: no cover
         raise unsupported(f"{path}: PyYAML is required to read YAML declarations")
     try:
-        nodes = [n for n in yaml.compose_all(text) if n is not None]
+        # A comment-only or otherwise empty document does not compose to Python None
+        # (that only happens past the last document in the stream) -- it composes to a
+        # zero-width ScalarNode whose marks can fall inside the range this function
+        # would otherwise attribute to the *next* real document, making both compute
+        # the same byte span. Excluding only that phantom node (see
+        # _is_phantom_empty_node), not Python None nor every ":null"-tagged node, is
+        # what keeps every remaining document's span its own without also dropping a
+        # document that is an explicit, real `null`/`~` value.
+        nodes = [n for n in yaml.compose_all(text) if n is not None and not _is_phantom_empty_node(n)]
     except yaml.YAMLError as exc:
         raise unsupported(f"{path}: not valid YAML: {exc}") from None
-    marker_starts = [m.start() for m in re.finditer(r"^---[ \t]*\r?\n", text, re.M)]
+    marker_starts = [
+        m.start() for m in re.finditer(r"^---(?:[ \t]+#[^\r\n]*)?[ \t]*\r?\n", text, re.M)
+    ]
     docs = []
     for node in nodes:
         preceding = [m for m in marker_starts if m <= node.start_mark.index]
@@ -1206,7 +1370,11 @@ def _check_declaration_items(
         lazy = item.get("lazy")
         if lazy not in (None, False, "false", "False"):
             problems.append(f"{where}: declaration sets non-default lazy={lazy!r}; not superseding")
-        classifier = ((item.get("classifierConfig") or {}).get("classifier")) or {}
+        classifier_config = item.get("classifierConfig")
+        classifier = classifier_config.get("classifier") if isinstance(classifier_config, dict) else None
+        if not isinstance(classifier, dict):
+            problems.append(f"{where}: declaration classifierConfig.classifier must be an object; not superseding")
+            continue
         db_type = str(item.get("type", "")).lower()
         identity = (canonical(wire_classifier(classifier)), db_type)
         ds = known.get(identity)
@@ -1230,6 +1398,29 @@ def _check_declaration_items(
                 "parameters.namePrefix; not superseding"
             )
     return problems
+
+
+def _identity_overlaps_known(items: list[Any], known: dict[tuple[str, str], dict[str, Any]]) -> bool:
+    """True when any item's (classifier, type) identity matches a migrated datasource,
+    independent of whether its settings/namePrefix also match.
+
+    Identity alone is what a running deployment uses to decide "is this the same
+    database" -- two declarations sharing it will race each other (and the operator's
+    generated resource) regardless of whether their settings happen to agree, so a
+    settings difference must not be read as "this document is unrelated."
+    """
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        classifier_config = item.get("classifierConfig")
+        classifier = classifier_config.get("classifier") if isinstance(classifier_config, dict) else None
+        if not isinstance(classifier, dict):
+            continue
+        db_type = str(item.get("type", "")).lower()
+        if (canonical(wire_classifier(classifier)), db_type) in known:
+            return True
+    return False
 
 
 def verify_superseded(repo_root: Path, root_plan: dict[str, Any], changes: Changes) -> None:
@@ -1316,6 +1507,22 @@ def verify_superseded(repo_root: Path, root_plan: dict[str, Any], changes: Chang
             problems.extend(_check_declaration_items(f"{path}#{index}", _as_legacy_items(doc["value"]), known))
         if problems:
             raise unsupported("a superseded declaration is not fully proven migrated", problems)
+        # A document this plan does *not* address but that shares a migrated
+        # datasource's (classifier, type) identity is a live legacy declaration left
+        # racing the generated resource -- the same silent-duplicate-provisioning risk
+        # supersededDeclarations exists to close, just for a document nobody remembered
+        # to list. This must fire on identity alone: a settings/namePrefix difference
+        # does not make the two declarations unrelated, it only means whichever one
+        # wins the race provisions with the wrong parameters. Block instead of leaving it.
+        for index, doc in enumerate(docs, start=1):
+            if index in addressed:
+                continue
+            if _identity_overlaps_known(_as_legacy_items(doc["value"]), known):
+                raise unsupported(
+                    "a document not addressed by supersededDeclarations shares a migrated "
+                    "datasource's classifier/type identity",
+                    [f"{path}#{index}: add this documentIndex to supersededDeclarations too"],
+                )
         # Splice out only the addressed documents; every other document --
         # including any unrelated content sharing this file -- is retained
         # byte-for-byte from its own original span. The preamble (if any) is
@@ -1340,13 +1547,19 @@ def update_values(repo_root: Path, root_plan: dict[str, Any], changes: Changes) 
     values_path = resolve_within(repo_root, values_rel, what="values file")
     if not values_path.is_file():
         raise unsupported(f"{values_rel}: values file missing")
-    values_text = values_path.read_text(encoding="utf-8")
+    # Path.read_text() performs universal-newline translation -- every "\r\n" in the file
+    # would silently become "\n" in values_text, and that flattened text is what gets
+    # echoed back as the unchanged prefix below, rewriting a CRLF file's every existing
+    # line as LF. Decoding raw bytes instead performs no such translation.
+    values_text = values_path.read_bytes().decode("utf-8")
     if not any(
         line[:1] not in (" ", "\t") and line.split(":", 1)[0].rstrip() == DBAAS_OPERATOR_NAMESPACE_VALUE
         for line in values_text.splitlines()
     ):
-        suffix = "" if values_text.endswith("\n") else "\n"
-        changes.set_content(values_rel, f'{values_text}{suffix}{DBAAS_OPERATOR_NAMESPACE_VALUE}: ""\n')
+        newline = "\r\n" if "\r\n" in values_text else "\n"
+        separator = "" if values_text.endswith("\n") else newline
+        ending = newline if values_text.endswith("\n") else ""
+        changes.set_content(values_rel, f'{values_text}{separator}{DBAAS_OPERATOR_NAMESPACE_VALUE}: ""{ending}')
 
     schema_rel = join_rel(root_plan["_root"], root_plan.get("schemaFile", "values.schema.json"), what="schemaFile")
     schema_path = resolve_within(repo_root, schema_rel, what="values schema file")
@@ -1536,6 +1749,31 @@ def _chart_values(chart_dir: Path) -> dict[str, Any]:
     return loaded if isinstance(loaded, dict) else {}
 
 
+def _value_at(values: dict[str, Any], dotted_key: str) -> Any:
+    current: Any = values
+    for part in dotted_key.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _values_tree(values: dict[str, str]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for dotted_key, value in values.items():
+        current = result
+        parts = dotted_key.split(".")
+        for part in parts[:-1]:
+            child = current.setdefault(part, {})
+            if not isinstance(child, dict):
+                raise bad_input(f"helmValues key {dotted_key!r} conflicts with another key")
+            current = child
+        if parts[-1] in current and isinstance(current[parts[-1]], dict):
+            raise bad_input(f"helmValues key {dotted_key!r} conflicts with another key")
+        current[parts[-1]] = value
+    return result
+
+
 def _inventory_classifier(classifier: dict[str, Any], workload_namespace: str) -> dict[str, Any]:
     # effective_classifier (validate_generated.py) always injects
     # classifier.namespace from the generated CR's metadata.namespace before
@@ -1564,10 +1802,16 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
             return [{"name": "no-helm-in-plain-output", "status": "failed", "details": f"{root_plan['_outputPath']}: a plain-manifest output must not contain Helm expressions"}]
         inventory_path = tree_root / "__inventory.json"
         inventory_path.write_text(json.dumps({"datasources": inventory_datasources}), encoding="utf-8")
-        errors = validator.validate(
-            [tree_root / root_plan["_outputPath"]] + [tree_root / c["_workloadPath"] for c in root_plan["claims"]],
-            inventory_path, root_plan["operatorNamespace"], default_namespace=root_plan["workloadNamespace"],
-        )
+        try:
+            errors = validator.validate(
+                [tree_root / root_plan["_outputPath"]]
+                + [tree_root / c["_workloadPath"] for c in root_plan["claims"]],
+                inventory_path,
+                root_plan["operatorNamespace"],
+                default_namespace=root_plan["workloadNamespace"],
+            )
+        except (TypeError, ValueError) as exc:
+            errors = [str(exc)]
         results.append({"name": "validate-generated", "status": "failed" if errors else "passed", "details": "; ".join(errors)})
         return results
 
@@ -1583,24 +1827,33 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
     resolved: dict[str, str] = {}
     overrides: dict[str, str] = {}
     for key in value_keys:
-        existing = chart_values.get(key)
+        existing = _value_at(chart_values, key)
         # DBAAS_OPERATOR_NAMESPACE is deliberately registered with an empty
         # default (update_values) so the chart stays installable before a
-        # deployer supplies the real value -- using that empty default here
-        # would make spec.operatorNamespace's required-non-empty check fail
-        # on every render, not just a genuinely broken one. Simulate a
-        # deployer having filled it in, the same as any other value this
-        # runner does not itself own a default for.
-        if key != DBAAS_OPERATOR_NAMESPACE_VALUE and isinstance(existing, (str, int, float, bool)):
+        # deployer supplies the real value -- validating against that empty
+        # placeholder would make spec.operatorNamespace's required-non-empty
+        # check fail on every render, not just a genuinely broken one, so a
+        # pilot value stands in for it *only* when the chart has not already
+        # supplied a real one. When the chart's own values.yaml pins a real
+        # (possibly invalid) value, rendering with it is the whole point of
+        # this check -- silently substituting a clean pilot value instead
+        # would make expected_operator_ns below compare the substitution
+        # against itself and never catch a genuinely bad pinned value.
+        if key == DBAAS_OPERATOR_NAMESPACE_VALUE and existing in (None, ""):
+            resolved[key] = overrides[key] = _pilot_value(key)
+        elif isinstance(existing, (str, int, float, bool)):
             resolved[key] = str(existing)
         else:
             resolved[key] = overrides[key] = _pilot_value(key)
     overrides.update(root_plan["helmValues"])
     resolved.update(root_plan["helmValues"])
     release_namespace = _resolve_templates(root_plan["workloadNamespace"], resolved) or _PILOT_RELEASE
-    cmd = [helm, "template", _PILOT_RELEASE, str(chart_dir), "--namespace", release_namespace]
-    for key, value in sorted(overrides.items()):
-        cmd += ["--set", f"{key}={value}"]
+    values_file = tree_root / ".dbaas-migration-values.yaml"
+    values_file.write_text(yaml.safe_dump(_values_tree(overrides), sort_keys=True), encoding="utf-8")
+    cmd = [
+        helm, "template", _PILOT_RELEASE, str(chart_dir),
+        "--namespace", release_namespace, "--values", str(values_file),
+    ]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -1619,7 +1872,12 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
     else:
         substituted = _resolve_templates(root_plan["operatorNamespace"], resolved)
         expected_operator_ns = substituted if "{{" not in substituted else None
-    errors = validator.validate([rendered_path], rendered_inventory, expected_operator_ns, default_namespace=release_namespace)
+    try:
+        errors = validator.validate(
+            [rendered_path], rendered_inventory, expected_operator_ns, default_namespace=release_namespace
+        )
+    except (TypeError, ValueError) as exc:
+        errors = [str(exc)]
     results.append({"name": "validate-rendered", "status": "failed" if errors else "passed", "details": "; ".join(errors)})
     return results
 

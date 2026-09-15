@@ -92,7 +92,9 @@ Use `metadata.namespace` from the old generic CR if present. For Helm charts, pr
 namespace: "{{ .Values.NAMESPACE }}"
 ```
 
-Do not copy status blocks. Do not copy old generic CR labels unless the target deployment tooling still requires them.
+Do not copy status blocks. `apply_migration.py` carries `metadata.labels` and `metadata.annotations` forward from
+the source verbatim -- they are ordinary Kubernetes metadata with no converter-owned mapping, and deployment
+tooling may depend on them surviving onto the generated CR.
 
 ## Validation checklist
 

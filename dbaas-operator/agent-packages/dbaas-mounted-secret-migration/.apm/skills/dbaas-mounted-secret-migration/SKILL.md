@@ -146,7 +146,8 @@ that declaration out of `supersededDeclarations` and flag it for manual follow-u
 ## 4. Build the plan and call the writer
 
 Group inventory datasources and workload claims by deployment root -- a plan may cover more than
-one root, and identity/collision checks stay scoped to each root, so two roots may reuse a name.
+one root, but each root must target a distinct workload namespace. Roots may reuse a name only when
+those namespaces differ.
 `helmValues` (omitted above) overrides a chart value the writer does not otherwise resolve.
 
 ```json
@@ -186,6 +187,25 @@ one root, and identity/collision checks stay scoped to each root, so two roots m
 (every workload file, every superseded-declaration file, `values.yaml`, `values.schema.json`) at the
 moment of discovery; the writer refuses to act on a hash that no longer matches (something changed
 underneath the plan -- rebuild it).
+
+Each `supersededDeclarations` entry addresses one YAML file's contents through its optional
+`documentIndex`: omit it to address the whole file (every top-level `---`-separated document must
+be a proven, migrated declaration, or the run blocks); set it to a 1-based document number to
+address only that document, leaving every other document in the file untouched. List one entry per
+document when a single file interleaves declarations with unrelated content (a `ConfigMap`, say) or
+mixes declarations that migrate on different schedules. `documentIndex` is not supported for a JSON
+source -- a JSON array is always all-or-nothing. Any document the plan leaves unaddressed that still
+shares a migrated datasource's `(classifier, type)` identity blocks the run: list it too, even if its
+settings differ from what was migrated -- a settings mismatch does not make the two declarations
+unrelated, it only decides which one wins the race against the generated resource.
+
+Numbering counts *parsed* documents, not raw `---`-separated regions: a region that is empty or holds
+only a comment produces no document at all and consumes no index, so it is skipped when counting --
+the document before it and the document after it are adjacent index numbers. An explicit `null` or
+`~` document is a real document with real content, unlike an empty/comment-only region, and does
+consume its own index. When a file mixes any of these, count with a YAML-aware tool rather than by
+eye; a wrong guess surfaces as `--check` reporting a mismatch (wrong content, or `documentIndex` out
+of range) against the document it actually resolved, addressed as `<path>#<index>`.
 
 A datasource's `resourceName` is required only when `classifier.microserviceName` or
 `classifier.scope` is still a Helm expression, and must itself embed `.Release.Name`, the one value

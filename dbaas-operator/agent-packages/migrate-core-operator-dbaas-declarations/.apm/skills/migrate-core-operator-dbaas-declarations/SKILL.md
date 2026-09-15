@@ -23,8 +23,8 @@ change the plan (or the source) and re-run the writer.
    Common locations include `**/dbaas-configuration.json`, `deployments/`,
    `<service-name>-deployments/`, and Helm chart `templates/`/`declarations/` directories. Group
    what you find by the chart or manifest root that will own its generated output file -- a plan
-   may cover more than one root, and each root's duplicate-resource and validation checks are
-   independent of every other root's.
+   may cover more than one root, but each root must target a distinct namespace so duplicate
+   resources cannot be hidden across independently validated roots.
 2. **Plan.** Build one JSON plan outside the consumer repository (see `scripts/apply_migration.py`'s
    module docstring for the exact shape). For each root, record: the root path (`""`/`"."` for the
    repository root), `"helm"` or `"plain"` kind, `operatorNamespace`/`serviceName`/`namespace`
@@ -38,6 +38,12 @@ change the plan (or the source) and re-run the writer.
 4. **Apply.** Once `--check` reports `valid`, run the same command with `--apply`. Do nothing else
    to the affected files; a warning in the result is not permission to proceed around a block.
 
+Treat the JSON envelope as a draft, not a final answer: `status: "changed"` and exit 0 only mean the
+writer did exactly what the plan said, not that the plan said the right thing. Resolve every
+converter warning before treating the migration as done -- read what each one describes (a filled-in
+or assumed field, a fallback name, a dropped value) against the actual source, and re-run the writer
+against a corrected plan if a warning turns out to describe something wrong.
+
 ## What the writer accepts and what it blocks
 
 Supported source shapes:
@@ -49,9 +55,9 @@ Supported source shapes:
 - a YAML file with one or more `---`-separated documents -- each document is independently either
   fully migrated (removed, along with its own `---` separator) or left byte-for-byte untouched;
   documents are never spliced apart below that granularity;
-- a Helm guard is preserved only when it wraps one entire document (`{{- if ... }}` immediately
-  after that document's `---`, `{{- end }}` as its last line) -- it carries over around the
-  generated replacement. A guard that does not bracket a whole document blocks the run.
+- a Helm guard is preserved only when it wraps one entire document. Leading comments/blank lines
+  before `{{- if ... }}` and trailing comments/blank lines after `{{- end }}` are preserved; a
+  guard that does not bracket the whole document blocks the run.
 
 Always blocking, before anything is written:
 
@@ -70,8 +76,8 @@ Always blocking, before anything is written:
   resource once the chart is templated;
 - a plain root's generated output containing any `{{ ... }}` Helm expression, or a rendered
   Kubernetes name over 63 characters / not a DNS-1123 label;
-- two resources in one root computing the same `(kind, namespace, name)` -- scoped per root, so two
-  independent charts may legitimately reuse a name;
+- two resources in one root computing the same `(kind, namespace, name)`, or two roots targeting
+  the same namespace. Independent roots may reuse a name only in distinct namespaces;
 - `helm` missing from `PATH` for a helm root (a missing dependency, distinct from a validation
   failure).
 

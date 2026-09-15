@@ -27,8 +27,8 @@ Plan shape::
           "namePrefix": "",
           "helmValues": {"SERVICE_NAME": "orders", "NAMESPACE": "orders-ns"},
           "outputFile": "templates/dbaas-operator-resources.yaml",
-          "sources": [{"path": "templates/dbaas-configuration.json", "sha256": "<hash>"}],
-          "nameOverrides": {"templates/dbaas-configuration.json#1#1": "orders-db"}
+          "sources": [{"path": "chart/templates/dbaas-configuration.json", "sha256": "<hash>"}],
+          "nameOverrides": {"chart/templates/dbaas-configuration.json#1#1#1": "orders-db"}
         }
       ]
     }
@@ -36,9 +36,8 @@ Plan shape::
 A source is matched against the plan's recorded SHA-256 before it is read.
 Every supported item in a source is converted; a source is deleted only when
 every item in it converted successfully. A ``nameOverrides`` key addresses
-one generated resource as ``<source path>#<doc index>#<declaration index>``
-(1-based, matching the document/declaration enumeration the shared converter
-already uses) and is required whenever that resource's default name would be
+one generated resource as ``<source path>#<doc index>#<item index>#<declaration index>``
+(all 1-based) and is required whenever that resource's default name would be
 templated or would mix literal text with a Helm expression.
 """
 
@@ -47,6 +46,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -70,7 +70,6 @@ EXIT_STALE_SOURCE = 3
 EXIT_UNSUPPORTED = 4
 EXIT_VALIDATION = 5
 
-_DNS_LABEL = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
 _GUARD_IF = re.compile(r"^\s*\{\{-?\s*if\b.*-?\}\}\s*$")
 _GUARD_END = re.compile(r"^\s*\{\{-?\s*end\s*-?\}\}\s*$")
 _ANY_VALUE_REF = re.compile(r"\.Values\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)")
@@ -80,6 +79,7 @@ _ROOT_KEYS = {
     "namePrefix", "helmValues", "outputFile", "outputSha256", "sources", "nameOverrides",
 }
 _SOURCE_KEYS = {"path", "sha256"}
+_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class PlanError(Exception):
@@ -161,6 +161,8 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
 
     output_paths: set[str] = set()
     source_paths: set[str] = set()
+    seen_roots: set[str] = set()
+    seen_namespaces: set[str] = set()
     normalized_roots = []
     for index, root in enumerate(roots):
         where = f"plan.roots[{index}]"
@@ -172,16 +174,36 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
         norm = dict(root)
         if "root" not in root:
             raise PlanError(f"{where}.root is required (use \"\" or \".\" for the repository root)")
-        norm["root"] = "" if root["root"] in ("", ".") else canonical_path(root["root"], f"{where}.root")
+        root_path = root["root"]
+        if not isinstance(root_path, str):
+            raise PlanError(f"{where}.root must be a string")
+        norm["root"] = "" if root_path in ("", ".") else canonical_path(root_path, f"{where}.root")
+        # Two plan entries for the same physical root would each be validated (and, for a
+        # helm root, rendered) independently -- neither entry's duplicate-object check would
+        # ever see the other's generated resources, even though both land in the same chart
+        # once applied. One entry per root closes that blind spot.
+        if norm["root"] in seen_roots:
+            raise PlanError(f"{where}.root {root['root']!r} is declared more than once")
+        seen_roots.add(norm["root"])
         if root.get("kind") not in ("helm", "plain"):
             raise PlanError(f"{where}.kind must be 'helm' or 'plain'")
         for key in ("operatorNamespace", "serviceName", "namespace"):
             if not isinstance(root.get(key), str) or not root[key].strip():
                 raise PlanError(f"{where}.{key} is required and must be a non-empty string")
-        if "helmValues" in root and not isinstance(root["helmValues"], dict):
-            raise PlanError(f"{where}.helmValues must be an object")
-        if "nameOverrides" in root and not isinstance(root["nameOverrides"], dict):
-            raise PlanError(f"{where}.nameOverrides must be an object")
+        if root["namespace"] in seen_namespaces:
+            raise PlanError(
+                f"{where}.namespace {root['namespace']!r} is shared by another root; "
+                "use one root per target namespace so duplicate resources are checked together"
+            )
+        seen_namespaces.add(root["namespace"])
+        if "namePrefix" in root and not isinstance(root["namePrefix"], str):
+            raise PlanError(f"{where}.namePrefix must be a string")
+        for field in ("helmValues", "nameOverrides"):
+            value = root.get(field)
+            if value is None:
+                continue
+            if not isinstance(value, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
+                raise PlanError(f"{where}.{field} must be an object with string keys and string values")
         sources = root.get("sources")
         if not isinstance(sources, list) or not sources:
             raise PlanError(f"{where}.sources must be a non-empty array")
@@ -195,12 +217,12 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
                 raise PlanError(f"{s_where} has unknown properties: {', '.join(unknown)}")
             path = canonical_path(source.get("path"), f"{s_where}.path")
             sha256 = source.get("sha256")
-            if not isinstance(sha256, str) or len(sha256) != 64:
+            if not isinstance(sha256, str) or _SHA256.fullmatch(sha256) is None:
                 raise PlanError(f"{s_where}.sha256 must be a 64-character hex digest")
             if path in source_paths:
                 raise PlanError(f"source {path!r} is listed more than once across plan.roots")
             source_paths.add(path)
-            norm_sources.append({"path": path, "sha256": sha256})
+            norm_sources.append({"path": path, "sha256": sha256.lower()})
         norm["sources"] = norm_sources
         output_rel = canonical_path(root.get("outputFile"), f"{where}.outputFile") if root.get("outputFile") else None
         if output_rel is None:
@@ -211,8 +233,11 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
         output_paths.add(full_output)
         norm["outputFile"] = full_output
         output_sha256 = root.get("outputSha256")
-        if output_sha256 is not None and (not isinstance(output_sha256, str) or len(output_sha256) != 64):
+        if output_sha256 is not None and (
+            not isinstance(output_sha256, str) or _SHA256.fullmatch(output_sha256) is None
+        ):
             raise PlanError(f"{where}.outputSha256 must be a 64-character hex digest or null")
+        norm["outputSha256"] = output_sha256.lower() if output_sha256 is not None else None
         normalized_roots.append(norm)
 
     if output_paths & source_paths:
@@ -291,6 +316,24 @@ def _sanitize_guards(text: str) -> str:
     return "".join(out)
 
 
+def _is_phantom_empty_node(node: Any) -> bool:
+    """True only for the zero-width ``ScalarNode`` a comment-only or otherwise empty
+    document composes to, never for a real ``null``/``~`` document.
+
+    Both compose to a node tagged ``:null``, so the tag alone cannot tell them apart --
+    an explicit ``null`` or ``~`` document has real content (``value`` is the literal
+    text, and its marks span that text), while an empty one composes to ``value == ""``
+    with ``start_mark.index == end_mark.index``: a zero-width node whose marks can
+    alias the *next* real document's span. Filtering on the zero width, not the tag, is
+    what excludes only the phantom without also dropping a genuine null document.
+    """
+
+    return (
+        node.tag.endswith(":null")
+        and node.start_mark.index == node.end_mark.index
+    )
+
+
 def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]]]:
     """Return ``(preamble, docs)``: one ``docs`` entry per top-level document,
     with an exact byte span that starts at that document's own leading
@@ -310,11 +353,25 @@ def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]
     """
 
     try:
-        nodes = [n for n in yaml.compose_all(_sanitize_guards(text)) if n is not None]
+        # A comment-only or otherwise empty document does not compose to Python None
+        # (that only happens past the last document in the stream) -- it composes to a
+        # zero-width ScalarNode whose marks can fall inside the range this function
+        # would otherwise attribute to the *next* real document, making both compute
+        # the same byte span. Excluding only that phantom node (see
+        # _is_phantom_empty_node), not Python None nor every ":null"-tagged node, is
+        # what keeps every remaining document's span its own without also dropping a
+        # document that is an explicit, real `null`/`~` value.
+        nodes = [
+            n
+            for n in yaml.compose_all(_sanitize_guards(text))
+            if n is not None and not _is_phantom_empty_node(n)
+        ]
     except yaml.YAMLError as exc:
         raise UnsupportedError(f"{rel}: not valid YAML: {exc}") from None
 
-    marker_starts = [m.start() for m in re.finditer(r"^---[ \t]*\r?\n", text, re.M)]
+    marker_starts = [
+        m.start() for m in re.finditer(r"^---(?:[ \t]+#[^\r\n]*)?[ \t]*\r?\n", text, re.M)
+    ]
     docs = []
     for node in nodes:
         preceding = [m for m in marker_starts if m <= node.start_mark.index]
@@ -326,13 +383,18 @@ def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]
         lines = content.splitlines(keepends=True)
         guard = None
         inner = content
+        meaningful = [
+            index for index, line in enumerate(lines)
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
         if (
-            len(lines) >= 2
-            and _GUARD_IF.match(lines[0].rstrip("\r\n"))
-            and _GUARD_END.match(lines[-1].rstrip("\r\n"))
+            len(meaningful) >= 2
+            and _GUARD_IF.match(lines[meaningful[0]].rstrip("\r\n"))
+            and _GUARD_END.match(lines[meaningful[-1]].rstrip("\r\n"))
         ):
-            guard = lines[0].rstrip("\r\n")
-            inner = "".join(lines[1:-1])
+            first, last = meaningful[0], meaningful[-1]
+            guard = ("".join(lines[: first + 1]), "".join(lines[last:]))
+            inner = "".join(lines[first + 1:last])
         elif any(_GUARD_IF.match(l.rstrip("\r\n")) or _GUARD_END.match(l.rstrip("\r\n")) for l in lines):
             raise UnsupportedError(
                 f"{rel}: a Helm guard action does not wrap the entire document; partial guards are unsupported"
@@ -419,8 +481,8 @@ def parse_source(repo_root: Path, rel: str) -> tuple[str, list[dict[str, Any]], 
 # --------------------------------------------------------------------------- #
 
 
-def _name_key(rel: str, doc_index: int, declaration_index: int) -> str:
-    return f"{rel}#{doc_index}#{declaration_index}"
+def _name_key(rel: str, doc_index: int, item_index: int, declaration_index: int) -> str:
+    return f"{rel}#{doc_index}#{item_index}#{declaration_index}"
 
 
 def _args_for_root(root: dict[str, Any]) -> argparse.Namespace:
@@ -428,7 +490,16 @@ def _args_for_root(root: dict[str, Any]) -> argparse.Namespace:
     ns.operator_namespace = root["operatorNamespace"]
     ns.namespace = root["namespace"]
     ns.service_name = root["serviceName"]
-    ns.service_name_explicit = True
+    # False, not True: convert_db_policy() only overrides a source's own
+    # microserviceName when this is True (matching convert_dbaas_crs.py's
+    # own CLI, where it is True only when a caller passed --service-name
+    # explicitly). root["serviceName"] is a required plan field, so setting
+    # this True unconditionally would make it *always* win over -- and
+    # silently delete the evidence for -- a source's own microserviceName,
+    # which is wrong the moment one root's sources cover more than one
+    # microservice. False here means root["serviceName"] is the fallback
+    # used only when a source does not specify its own.
+    ns.service_name_explicit = False
     ns.name_prefix = root.get("namePrefix") or ""
     return ns
 
@@ -442,7 +513,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
     warnings: list[str] = []
     errors: list[str] = []
     resources: list[dict[str, Any]] = []
-    entries: list[tuple[dict[str, Any], str | None]] = []
+    entries: list[tuple[dict[str, Any], tuple[str, str] | None]] = []
     changes: dict[str, str | None] = {}
 
     for source in root["sources"]:
@@ -466,12 +537,18 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
             if not supported:
                 continue
             guard = doc.get("guard") if not is_json else None
-            for item in convert.as_legacy_items(value):
+            for item_index, item in enumerate(convert.as_legacy_items(value), start=1):
                 kind = str(item.get("kind", ""))
                 sub_kind = str(item.get("subKind", ""))
                 legacy_kind = (sub_kind or kind).lower()
-                body = dict(item.get("spec") or {}) if kind == "DBaaS" else dict(item)
-                metadata = dict(item.get("metadata") or {})
+                body_value = item.get("spec") if kind == "DBaaS" else item
+                metadata_value = item.get("metadata")
+                if not isinstance(body_value, dict):
+                    raise UnsupportedError(f"{rel}#{doc_index}#{item_index}: spec must be an object")
+                if metadata_value is not None and not isinstance(metadata_value, dict):
+                    raise UnsupportedError(f"{rel}#{doc_index}#{item_index}: metadata must be an object")
+                body = dict(body_value)
+                metadata = dict(metadata_value or {})
                 convert.reject_dropped_metadata(metadata, f"{rel}#{doc_index}", errors)
 
                 if legacy_kind == "databasedeclaration":
@@ -492,7 +569,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                             raise UnsupportedError(
                                 f"{rel}#{doc_index}: declaration #{declaration_index} is not an object"
                             )
-                        key = _name_key(rel, doc_index, declaration_index)
+                        key = _name_key(rel, doc_index, item_index, declaration_index)
                         override = overrides.get(key)
                         if override is not None:
                             used_overrides.add(key)
@@ -503,13 +580,14 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                             )
                         except convert.TemplatedNameRequired as exc:
                             raise UnsupportedError(
-                                f"{rel}#{doc_index}#{declaration_index}: {exc}; add a plan.roots[].nameOverrides "
+                                f"{rel}#{doc_index}#{item_index}#{declaration_index}: {exc}; "
+                                "add a plan.roots[].nameOverrides "
                                 f"entry for key {key!r}"
                             ) from None
                         resources.append(resource)
                         entries.append((resource, guard))
                 elif legacy_kind == "dbpolicy":
-                    key = _name_key(rel, doc_index, 1)
+                    key = _name_key(rel, doc_index, item_index, 1)
                     override = overrides.get(key)
                     if override is not None:
                         used_overrides.add(key)
@@ -519,7 +597,8 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                         )
                     except convert.TemplatedNameRequired as exc:
                         raise UnsupportedError(
-                            f"{rel}#{doc_index}#1: {exc}; add a plan.roots[].nameOverrides entry for key {key!r}"
+                            f"{rel}#{doc_index}#{item_index}#1: {exc}; "
+                            f"add a plan.roots[].nameOverrides entry for key {key!r}"
                         ) from None
                     resources.append(resource)
                     entries.append((resource, guard))
@@ -537,7 +616,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
         elif all(supported for _d, supported in doc_results):
             changes[rel] = None
         elif not any(supported for _d, supported in doc_results):
-            pass  # every document was irrelevant -- leave the source untouched
+            changes[rel] = preamble + text[docs[0]["start"]:]  # report it without changing its bytes
         else:
             # The preamble (if any) is reattached whenever some document
             # survives, regardless of which document(s) that is.
@@ -554,6 +633,8 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
         raise UnsupportedError("no supported declarations were found for this root")
 
     convert.reject_duplicate_resources(resources, errors, root=root["root"] or ".")
+    for resource in resources:
+        convert.validate_target_resource(resource, errors)
     if errors:
         raise UnsupportedError("; ".join(errors))
 
@@ -562,12 +643,13 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
     return changes, warnings
 
 
-def _render_output(entries: list[tuple[dict[str, Any], str | None]]) -> str:
+def _render_output(entries: list[tuple[dict[str, Any], tuple[str, str] | None]]) -> str:
     chunks = []
     for resource, guard in entries:
         body = yaml.safe_dump(resource, sort_keys=False, allow_unicode=False, default_flow_style=False)
         if guard:
-            chunks.append(f"---\n{guard}\n{body.rstrip(chr(10))}\n{{{{- end }}}}\n")
+            prefix, suffix = guard
+            chunks.append(f"---\n{prefix}{body}{suffix}")
         else:
             chunks.append(f"---\n{body}")
     return "".join(chunks)
@@ -578,43 +660,37 @@ def _render_output(entries: list[tuple[dict[str, Any], str | None]]) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _is_dns_label(name: Any) -> bool:
-    return isinstance(name, str) and 1 <= len(name) <= 63 and _DNS_LABEL.fullmatch(name) is not None
-
-
 def _check_generated_object(obj: dict[str, Any], problems: list[str]) -> None:
-    identity = f"{obj.get('kind')}/{(obj.get('metadata') or {}).get('name')}"
-    name = (obj.get("metadata") or {}).get("name")
-    if "{{" not in str(name) and not _is_dns_label(name):
-        problems.append(f"{identity}: name is not a valid DNS-1123 label of at most 63 characters")
-    spec = obj.get("spec") or {}
-    operator_ns = spec.get("operatorNamespace")
-    if not str(operator_ns or "").strip():
-        problems.append(f"{identity}: spec.operatorNamespace is required")
-    elif "{{" not in str(operator_ns) and not _is_dns_label(operator_ns):
-        # Both CRDs pattern this as an RFC-1123 label; a plausible-looking
-        # non-empty string (uppercase, a space) would otherwise pass here
-        # only to be rejected by the API server at admission.
-        problems.append(f"{identity}: spec.operatorNamespace {operator_ns!r} is not a valid RFC-1123 namespace label")
-    if obj.get("kind") == "InternalDatabase":
-        classifier = spec.get("classifier") or {}
-        for key in ("microserviceName", "scope"):
-            if not classifier.get(key):
-                problems.append(f"{identity}: spec.classifier.{key} is required")
-        scope = classifier.get("scope")
-        if isinstance(scope, str) and "{{" not in scope and scope not in ("service", "tenant"):
-            problems.append(f"{identity}: spec.classifier.scope must be 'service' or 'tenant', got {scope!r}")
-        if not spec.get("type"):
-            problems.append(f"{identity}: spec.type is required")
-    elif obj.get("kind") == "DatabaseAccessPolicy":
-        if not spec.get("microserviceName"):
-            problems.append(f"{identity}: spec.microserviceName is required")
-        if not spec.get("services") and not spec.get("policy"):
-            problems.append(f"{identity}: spec.services or spec.policy is required")
+    convert.validate_target_resource(obj, problems)
 
 
 def _pilot_value(key: str) -> str:
     return f"pilot-{key.lower().replace('_', '-')}"
+
+
+def _value_at(values: dict[str, Any], dotted_key: str) -> Any:
+    current: Any = values
+    for part in dotted_key.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _values_tree(values: dict[str, str]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for dotted_key, value in values.items():
+        current = result
+        parts = dotted_key.split(".")
+        for part in parts[:-1]:
+            child = current.setdefault(part, {})
+            if not isinstance(child, dict):
+                raise PlanError(f"helmValues key {dotted_key!r} conflicts with another key")
+            current = child
+        if parts[-1] in current and isinstance(current[parts[-1]], dict):
+            raise PlanError(f"helmValues key {dotted_key!r} conflicts with another key")
+        current[parts[-1]] = value
+    return result
 
 
 def validate_plain_root(text: str, root_label: str) -> list[str]:
@@ -653,7 +729,7 @@ def validate_helm_root(tree_root: Path, root: dict[str, Any], generated_content:
     keys.update(_ANY_VALUE_REF.findall(root["serviceName"]))
     values: dict[str, str] = {}
     for key in keys:
-        existing = chart_values.get(key)
+        existing = _value_at(chart_values, key)
         values[key] = str(existing) if isinstance(existing, (str, int, float, bool)) else _pilot_value(key)
     helm_values = root.get("helmValues") or {}
     values.update({str(k): str(v) for k, v in helm_values.items()})
@@ -664,9 +740,12 @@ def validate_helm_root(tree_root: Path, root: dict[str, Any], generated_content:
     if "{{" in release_ns:
         release_ns = "dbaas-migration-pilot"
 
-    cmd = [helm, "template", "dbaas-migration-pilot", str(chart_dir), "--namespace", release_ns]
-    for key, value in sorted(values.items()):
-        cmd += ["--set", f"{key}={value}"]
+    values_file = tree_root / ".dbaas-migration-values.yaml"
+    values_file.write_text(yaml.safe_dump(_values_tree(values), sort_keys=True), encoding="utf-8")
+    cmd = [
+        helm, "template", "dbaas-migration-pilot", str(chart_dir),
+        "--namespace", release_ns, "--values", str(values_file),
+    ]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -690,6 +769,21 @@ def validate_helm_root(tree_root: Path, root: dict[str, Any], generated_content:
 # --------------------------------------------------------------------------- #
 
 
+def classify(repo_root: Path, changes: dict[str, str | None]) -> dict[str, list[str]]:
+    result = {key: [] for key in ("createdFiles", "modifiedFiles", "deletedFiles", "unchangedFiles")}
+    for rel, content in sorted(changes.items()):
+        target = resolve_within(repo_root, rel, "target path")
+        if content is None:
+            result["deletedFiles" if target.is_file() else "unchangedFiles"].append(rel)
+        elif not target.is_file():
+            result["createdFiles"].append(rel)
+        elif target.read_bytes() == content.encode("utf-8"):
+            result["unchangedFiles"].append(rel)
+        else:
+            result["modifiedFiles"].append(rel)
+    return result
+
+
 def materialize_and_validate(repo_root: Path, plan: dict[str, Any], all_changes: dict[str, str | None]) -> None:
     problems: list[str] = []
     for root in plan["roots"]:
@@ -708,7 +802,14 @@ def materialize_and_validate(repo_root: Path, plan: dict[str, Any], all_changes:
                     target.unlink(missing_ok=True)
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(content, encoding="utf-8", newline="")
+                    # write_bytes, not write_text(..., newline=""): the
+                    # newline= keyword on Path.write_text() is Python 3.10+
+                    # only, and TypeErrors on the stock Python 3.9 shipped by
+                    # macOS, RHEL 8/9, and Debian 11. Writing the
+                    # already-encoded bytes directly needs no newline
+                    # parameter at all -- there is no text-mode translation
+                    # to disable.
+                    target.write_bytes(content.encode("utf-8"))
 
             output_content = all_changes.get(root["outputFile"])
             if output_content is None:
@@ -723,7 +824,7 @@ def materialize_and_validate(repo_root: Path, plan: dict[str, Any], all_changes:
 
 def commit(repo_root: Path, changes: dict[str, str | None]) -> dict[str, list[str]]:
     created, modified, deleted, unchanged = [], [], [], []
-    backups: dict[str, bytes | None] = {}
+    backups: dict[str, tuple[bytes, int] | None] = {}
     applied: list[str] = []
     # Writes (creates/modifies) before deletes: if the transaction fails
     # partway through, a legacy source is never gone with its generated
@@ -736,7 +837,9 @@ def commit(repo_root: Path, changes: dict[str, str | None]) -> dict[str, list[st
             target = resolve_within(repo_root, rel, "target path")
             new_content = changes[rel]
             existed = target.is_file()
-            backups[rel] = target.read_bytes() if existed else None
+            backups[rel] = (
+                (target.read_bytes(), target.stat().st_mode & 0o777) if existed else None
+            )
             if new_content is None:
                 if existed:
                     target.unlink()
@@ -750,10 +853,12 @@ def commit(repo_root: Path, changes: dict[str, str | None]) -> dict[str, list[st
                 unchanged.append(rel)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
+            original_mode = target.stat().st_mode & 0o777 if existed else 0o644
             fd, tmp_name = tempfile.mkstemp(dir=str(target.parent), prefix=f".{target.name}.")
             try:
                 with open(fd, "wb") as handle:
                     handle.write(new_bytes)
+                os.chmod(tmp_name, original_mode)
                 Path(tmp_name).replace(target)
             except BaseException:
                 Path(tmp_name).unlink(missing_ok=True)
@@ -763,12 +868,14 @@ def commit(repo_root: Path, changes: dict[str, str | None]) -> dict[str, list[st
     except Exception:
         for rel in reversed(applied):
             target = resolve_within(repo_root, rel, "target path")
-            original = backups.get(rel)
-            if original is None:
+            backup = backups.get(rel)
+            if backup is None:
                 target.unlink(missing_ok=True)
             else:
+                original, mode = backup
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(original)
+                os.chmod(target, mode)
         raise
     return {"createdFiles": created, "modifiedFiles": modified, "deletedFiles": deleted, "unchangedFiles": unchanged}
 
@@ -822,7 +929,7 @@ def main(argv: list[str] | None = None) -> int:
         materialize_and_validate(repo_root, plan, all_changes)
 
         if args.mode == "check":
-            print(json.dumps({"status": "valid", "warnings": warnings}))
+            print(json.dumps({"status": "valid", "warnings": warnings, **classify(repo_root, all_changes)}))
             return EXIT_OK
 
         check_source_hashes(repo_root, plan)

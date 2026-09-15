@@ -303,18 +303,141 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(code, 2, report.get("__stderr"))
             self.assertIn("classifier.scope", report["validation"][0]["details"])
 
-    def test_datasource_identity_collision_across_roots_is_allowed(self) -> None:
+    def test_list_valued_parameters_blocks(self) -> None:
+        # `or {}` would coerce a present-but-falsy value ([]) to {} before the type
+        # check ever saw it, silently accepting a malformed plan.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, datasources=[datasource(parameters=[])])
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("parameters must be an object", report["validation"][0]["details"])
+
+    def test_list_valued_parameters_settings_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, datasources=[datasource(parameters={"settings": []})])
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("parameters.settings must map string keys", report["validation"][0]["details"])
+
+    def test_unknown_parameter_field_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, datasources=[datasource(parameters={"bogus": 1})])
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("parameters has unknown properties: bogus", report["validation"][0]["details"])
+
+    def test_list_valued_name_prefix_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, datasources=[datasource(parameters={"namePrefix": []})])
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("parameters.namePrefix must be a string", report["validation"][0]["details"])
+
+    def test_duplicate_datasource_identity_within_one_root_is_rejected(self) -> None:
+        # Two datasources sharing one (classifier, type) identity is always
+        # ambiguous: build_resources() and verify_superseded() would each
+        # independently have to pick one as authoritative for that identity,
+        # with nothing forcing those picks to agree.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(
+                repo,
+                datasources=[
+                    datasource(id="ds-a"),
+                    datasource(id="ds-b", parameters={"settings": {"maxPoolSize": 10}}),
+                ],
+                claims=[claim(datasourceId="ds-a")],
+            )
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("duplicates an earlier datasource", report["validation"][0]["details"])
+
+    def test_classifier_namespace_pin_differing_from_workload_namespace_is_rejected(self) -> None:
+        # The operator always materializes into the workload namespace; a
+        # classifier pinned to a different, concrete one can never be
+        # honored and must not be silently dropped.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(
+                repo,
+                operatorNamespace="dbaas-system",
+                workloadNamespace="orders-ns",
+                datasources=[
+                    datasource(classifier={"microserviceName": "orders", "scope": "service", "namespace": "other-ns"})
+                ],
+            )
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertIn("differs from", "".join(report.get("blocking", [])))
+
+    def test_classifier_namespace_pin_on_templated_workload_namespace_is_rejected(self) -> None:
+        # cr_classifier() unconditionally drops classifier.namespace, trusting that the
+        # operator's own workload-namespace materialization already covers it. When
+        # workloadNamespace is still a Helm expression, a literal pin can never be proven
+        # to match whatever a deployer eventually supplies -- this must fail closed, not
+        # pass simply because no *proven* mismatch exists.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(
+                repo,
+                datasources=[
+                    datasource(classifier={"microserviceName": "orders", "scope": "service", "namespace": "orders-ns"})
+                ],
+            )
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertIn("cannot be proven", "".join(report.get("blocking", [])))
+
+    def test_classifier_namespace_pin_matching_templated_workload_namespace_is_allowed(self) -> None:
+        # An exact string match with workloadNamespace is provably redundant even while
+        # workloadNamespace is still a Helm expression: the same literal expression
+        # renders to the same value in both places. Rejecting this would reject the
+        # ordinary case of a classifier that (harmlessly, if uselessly) re-states the
+        # workload namespace's own Helm expression verbatim.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(
+                repo,
+                datasources=[
+                    datasource(
+                        classifier={
+                            "microserviceName": "orders",
+                            "scope": "service",
+                            "namespace": "{{ .Values.NAMESPACE }}",
+                        }
+                    )
+                ],
+            )
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+
+    def test_datasource_identity_collision_across_different_namespaces_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = tmp / "repo"
             for name in ("chart-a", "chart-b"):
                 (repo / name / "templates").mkdir(parents=True)
                 (repo / name / "Chart.yaml").write_text(CHART_YAML, encoding="utf-8")
-                (repo / name / "values.yaml").write_text(VALUES, encoding="utf-8")
+                namespace = "orders-ns" if name == "chart-a" else "orders-b"
+                (repo / name / "values.yaml").write_text(
+                    f"NAMESPACE: {namespace}\nSERVICE_NAME: orders\n", encoding="utf-8"
+                )
                 (repo / name / "templates" / "deployment.yaml").write_text(DEPLOYMENT, encoding="utf-8")
             roots = [
                 root_plan(repo, root="chart-a", operatorNamespace="dbaas-system", workloadNamespace="orders-ns"),
-                root_plan(repo, root="chart-b", operatorNamespace="dbaas-system", workloadNamespace="orders-ns"),
+                root_plan(repo, root="chart-b", operatorNamespace="dbaas-system", workloadNamespace="orders-b"),
             ]
             the_plan = {"roots": roots}
             code, report = run_migration(repo, the_plan, "apply", tmp)
@@ -324,6 +447,21 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(
                 {d["metadata"]["name"] for d in doc_a}, {d["metadata"]["name"] for d in doc_b}
             )
+
+    def test_two_roots_cannot_hide_collisions_in_one_namespace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            for name in ("chart-a", "chart-b"):
+                (repo / name / "templates").mkdir(parents=True)
+                (repo / name / "templates/deployment.yaml").write_text(DEPLOYMENT, encoding="utf-8")
+            roots = [
+                root_plan(repo, root="chart-a", operatorNamespace="dbaas-system", workloadNamespace="orders-ns"),
+                root_plan(repo, root="chart-b", operatorNamespace="dbaas-system", workloadNamespace="orders-ns"),
+            ]
+            code, report = run_migration(repo, {"roots": roots}, "check", tmp)
+            self.assertEqual(code, 2, report)
+            self.assertIn("shared by another root", report["validation"][0]["details"])
 
     def test_templated_release_specific_name_renders_and_validates(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -526,6 +664,44 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(code, 0, report.get("__stderr"))
             self.assertNotIn("DBAAS_OPERATOR_NAMESPACE", (repo / "chart" / "values.yaml").read_text(encoding="utf-8"))
 
+    def test_crlf_values_yaml_is_preserved(self) -> None:
+        # Path.read_text() performs universal-newline translation -- every "\r\n" in the
+        # file would silently become "\n" before it is echoed back as the unchanged
+        # prefix, rewriting a CRLF values.yaml's every existing line as LF.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            crlf_values = VALUES.replace("\n", "\r\n")
+            (repo / "chart" / "values.yaml").write_bytes(crlf_values.encode("utf-8"))
+            the_plan = plan(repo)
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            result = (repo / "chart" / "values.yaml").read_bytes()
+            self.assertIn(b"NAMESPACE: orders-ns\r\n", result)
+            self.assertIn(b"SERVICE_NAME: orders\r\n", result)
+            self.assertIn(b'DBAAS_OPERATOR_NAMESPACE: ""\r\n', result)
+            self.assertEqual(result.count(b"\n"), result.count(b"\r\n"))  # no bare LF introduced
+
+    def test_chart_pinned_invalid_operator_namespace_is_caught(self) -> None:
+        # A pilot value must not stand in for DBAAS_OPERATOR_NAMESPACE when
+        # the chart's own values.yaml already pins a real (here, invalid)
+        # one -- rendering with a synthesized clean value regardless would
+        # make the expected-vs-rendered comparison compare a substitution
+        # against itself and never see the real, broken pinned value.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            values_path = repo / "chart" / "values.yaml"
+            values_path.write_text(
+                values_path.read_text(encoding="utf-8") + 'DBAAS_OPERATOR_NAMESPACE: "Not_A_Valid_NS!"\n',
+                encoding="utf-8",
+            )
+            code, report = run_migration(repo, plan(repo), "check", tmp)
+            self.assertEqual(code, 5, report.get("__stderr"))
+            names = {entry["name"]: entry for entry in report["validation"]}
+            self.assertEqual(names["validate-rendered"]["status"], "failed")
+            self.assertIn("not a valid RFC-1123 namespace label", names["validate-rendered"]["details"])
+
     def test_null_pod_spec_is_a_typed_unsupported_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -562,6 +738,21 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(code, 4, report.get("__stderr"))
             self.assertTrue(any("block action" in e for e in report.get("blocking", [])))
 
+    def test_mixed_line_ending_workload_blocks(self) -> None:
+        # "\r\n" appears (so a blanket "uses_crlf" check would say CRLF) but most lines
+        # are bare "\n" -- normalizing to "\n" for editing and then unconditionally
+        # re-adding "\r\n" on the way out would rewrite every one of those never-CRLF
+        # lines too. There is no line-ending-preserving edit path here, so this must
+        # block rather than guess which lines were meant to keep which ending.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            body = DEPLOYMENT.replace("apiVersion: apps/v1\n", "apiVersion: apps/v1\r\n")
+            repo = scaffold(tmp, deployment=body)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertTrue(any("mixed line endings" in e for e in report.get("blocking", [])))
+            self.assertEqual((repo / "chart/templates/deployment.yaml").read_bytes(), body.encode("utf-8"))
+
     def test_crlf_and_missing_final_newline_workload_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -573,6 +764,38 @@ class HelmApplyTest(unittest.TestCase):
             patched = (repo / "chart/templates/deployment.yaml").read_bytes()
             self.assertIn(b"\r\n", patched)
             self.assertNotIn(b"\n\n", patched.replace(b"\r\n", b""))  # no stray bare LF introduced
+
+    def test_replacing_a_workload_file_preserves_its_permission_bits(self) -> None:
+        # commit() replaces an existing file via mkstemp() + os.replace() -- mkstemp()
+        # always creates its temp file mode 0600, and os.replace() carries that mode over
+        # verbatim unless the original mode is explicitly restored first.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            target = repo / "chart" / "templates" / "deployment.yaml"
+            target.chmod(0o755)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+
+    def test_helm_values_with_set_syntax_characters_render(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, helmValues={"SPECIAL_VALUE": "a,b={x}"})
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 0, report)
+
+    def test_values_file_final_newline_style_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            values = repo / "chart/values.yaml"
+            values.write_bytes(VALUES.rstrip("\n").encode("utf-8"))
+            the_plan = plan(repo)
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report)
+            self.assertFalse(values.read_bytes().endswith(b"\n"))
 
     def test_idempotent_mount_already_present_is_a_no_op(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -866,6 +1089,169 @@ class HelmApplyTest(unittest.TestCase):
             self.assertIn(b"\r\n", kept_bytes)
             self.assertNotIn(b"DatabaseDeclaration", kept_bytes)
 
+    def test_workload_file_cannot_also_be_a_superseded_declaration_source(self) -> None:
+        # apply_workload_patches() and verify_superseded() each write a new
+        # version of any file they touch into the same shared Changes
+        # object; if the same path is both a claim's workload file and a
+        # superseded-declaration source, whichever runs second silently
+        # discards the other's edit. Reject the overlap outright.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            the_plan["roots"][0]["supersededDeclarations"] = [
+                {"path": "templates/deployment.yaml", "documentIndex": None}
+            ]
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("also be a superseded declaration source", report["validation"][0]["details"])
+
+    def test_unaddressed_document_that_also_matches_a_datasource_blocks(self) -> None:
+        # A document the plan does not address but that itself fully
+        # matches a migrated datasource is a live legacy declaration left
+        # racing the generated resource -- block instead of leaving it.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            text = (
+                "kind: DatabaseDeclaration\n"
+                "declarations:\n"
+                "  - classifierConfig:\n"
+                "      classifier: {microserviceName: orders, scope: service}\n"
+                "    type: postgresql\n"
+                "---\n"
+                "kind: DatabaseDeclaration\n"
+                "declarations:\n"
+                "  - classifierConfig:\n"
+                "      classifier: {microserviceName: orders, scope: service}\n"
+                "    type: postgresql\n"
+            )
+            (repo / "chart/templates/dbaas-declaration.yaml").write_text(text, encoding="utf-8")
+            the_plan = plan(repo)
+            the_plan["roots"][0]["supersededDeclarations"] = [
+                {"path": "templates/dbaas-declaration.yaml", "documentIndex": 1}
+            ]
+            the_plan["roots"][0]["sourceHashes"]["templates/dbaas-declaration.yaml"] = sha256(
+                repo / "chart/templates/dbaas-declaration.yaml"
+            )
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertIn(
+                "shares a migrated datasource's classifier/type identity", report["validation"][0]["details"]
+            )
+            self.assertTrue((repo / "chart/templates/dbaas-declaration.yaml").exists())
+
+    def test_unaddressed_document_with_same_identity_but_different_settings_blocks(self) -> None:
+        # (classifier, type) identity alone is what a running deployment uses to decide
+        # "is this the same database" -- a settings difference does not make an
+        # unaddressed document unrelated to the migrated datasource, it only decides
+        # which one wins the race. This must block just like a fully-matching document.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            text = (
+                "kind: DatabaseDeclaration\n"
+                "declarations:\n"
+                "  - classifierConfig:\n"
+                "      classifier: {microserviceName: orders, scope: service}\n"
+                "    type: postgresql\n"
+                "---\n"
+                "kind: DatabaseDeclaration\n"
+                "declarations:\n"
+                "  - classifierConfig:\n"
+                "      classifier: {microserviceName: orders, scope: service}\n"
+                "    type: postgresql\n"
+                "    settings: {maxPoolSize: 10}\n"
+            )
+            (repo / "chart/templates/dbaas-declaration.yaml").write_text(text, encoding="utf-8")
+            the_plan = plan(repo)
+            the_plan["roots"][0]["supersededDeclarations"] = [
+                {"path": "templates/dbaas-declaration.yaml", "documentIndex": 1}
+            ]
+            the_plan["roots"][0]["sourceHashes"]["templates/dbaas-declaration.yaml"] = sha256(
+                repo / "chart/templates/dbaas-declaration.yaml"
+            )
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertIn(
+                "shares a migrated datasource's classifier/type identity", report["validation"][0]["details"]
+            )
+            self.assertTrue((repo / "chart/templates/dbaas-declaration.yaml").exists())
+
+    def test_comment_only_document_does_not_alias_the_next_documents_span(self) -> None:
+        # A comment-only document composes to a real (":null"-tagged) node,
+        # not Python None -- left unfiltered, its marks fall inside the
+        # range attributed to the *next* document, making documentIndex 1
+        # and 2 compute the same byte span and removing neither.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            text = (
+                "---\n"
+                "# just a comment, no content\n"
+                "---\n"
+                "kind: DatabaseDeclaration\n"
+                "declarations:\n"
+                "  - classifierConfig:\n"
+                "      classifier: {microserviceName: orders, scope: service}\n"
+                "    type: postgresql\n"
+                "---\n"
+                "kind: ConfigMap\n"
+                "metadata:\n"
+                "  name: keep-me\n"
+            )
+            (repo / "chart/templates/dbaas-declaration.yaml").write_text(text, encoding="utf-8")
+            the_plan = plan(repo)
+            the_plan["roots"][0]["supersededDeclarations"] = [
+                {"path": "templates/dbaas-declaration.yaml", "documentIndex": 1}
+            ]
+            the_plan["roots"][0]["sourceHashes"]["templates/dbaas-declaration.yaml"] = sha256(
+                repo / "chart/templates/dbaas-declaration.yaml"
+            )
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            kept = (repo / "chart/templates/dbaas-declaration.yaml").read_text(encoding="utf-8")
+            self.assertNotIn("DatabaseDeclaration", kept)
+            self.assertIn("kind: ConfigMap", kept)
+
+    def test_explicit_null_document_is_preserved_not_treated_as_phantom(self) -> None:
+        # An explicit `null` document composes to the same ":null"-tagged node kind as a
+        # comment-only/empty one, but it has real content and a real (non-zero-width)
+        # byte span -- filtering on the tag alone would silently drop this document from
+        # the list entirely, shifting every later document's index and letting its own
+        # span (which the phantom-only filter never earns) be misattributed. It must
+        # survive, byte-for-byte, as its own numbered document.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            text = (
+                "kind: DatabaseDeclaration\n"
+                "declarations:\n"
+                "  - classifierConfig:\n"
+                "      classifier: {microserviceName: orders, scope: service}\n"
+                "    type: postgresql\n"
+                "---\n"
+                "null\n"
+                "---\n"
+                "kind: ConfigMap\n"
+                "metadata:\n"
+                "  name: keep-me\n"
+            )
+            (repo / "chart/templates/dbaas-declaration.yaml").write_text(text, encoding="utf-8")
+            the_plan = plan(repo)
+            the_plan["roots"][0]["supersededDeclarations"] = [
+                {"path": "templates/dbaas-declaration.yaml", "documentIndex": 1}
+            ]
+            the_plan["roots"][0]["sourceHashes"]["templates/dbaas-declaration.yaml"] = sha256(
+                repo / "chart/templates/dbaas-declaration.yaml"
+            )
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            kept = (repo / "chart/templates/dbaas-declaration.yaml").read_text(encoding="utf-8")
+            self.assertNotIn("DatabaseDeclaration", kept)
+            self.assertIn("null\n", kept)
+            self.assertIn("kind: ConfigMap", kept)
+
     def test_label_value_with_uppercase_dot_and_underscore_is_accepted(self) -> None:
         # Kubernetes label values allow uppercase letters, "_", and "." -- a
         # DNS-1123-label-shaped check would reject a perfectly valid value.
@@ -905,8 +1291,88 @@ class PlainApplyTest(unittest.TestCase):
             names = {entry["name"]: entry for entry in report["validation"]}
             self.assertEqual(names["no-helm-in-plain-output"]["status"], "failed")
 
+    def test_new_generated_files_use_normal_manifest_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold_plain(tmp)
+            output = repo / "deploy/dbaas-mounted-secret-resources.yaml"
+            code, report = run_migration(repo, plan(repo, root="deploy", kind="plain"), "apply", tmp)
+            self.assertEqual(code, 0, report)
+            self.assertEqual(output.stat().st_mode & 0o777, 0o644)
+
+    def test_non_mapping_yaml_document_before_workload_is_ignored_safely(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold_plain(tmp, deployment="- harmless\n---\n" + PLAIN_DEPLOYMENT)
+            code, report = run_migration(repo, plan(repo, root="deploy", kind="plain"), "check", tmp)
+            self.assertEqual(code, 5, report)
+            self.assertNotIn("internal", json.dumps(report))
+
 
 class LoadPlanTest(unittest.TestCase):
+    def test_falsey_unsupported_and_malformed_plan_values_block(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold_plain(tmp)
+            cases = {
+                "physicalDatabaseId": {
+                    "datasources": [datasource(parameters={"physicalDatabaseId": 0})]
+                },
+                "numeric tenantId": {
+                    "datasources": [datasource(classifier={"microserviceName": "orders", "scope": "service", "tenantId": 1})]
+                },
+                "invalid namespace": {"workloadNamespace": "BAD SPACE"},
+                "non-hex digest": {"sourceHashes": {"deployment.yaml": "g" * 64}},
+            }
+            for label, overrides in cases.items():
+                with self.subTest(label=label):
+                    the_plan = plan(repo, root="deploy", kind="plain", **overrides)
+                    code, report = run_migration(repo, the_plan, "check", tmp)
+                    self.assertIn(code, (2, 4), report)
+                    self.assertNotIn("internal", json.dumps(report))
+
+    def test_boolean_document_index_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold_plain(tmp)
+            declaration = repo / "deploy/declaration.yaml"
+            declaration.write_text("kind: DatabaseDeclaration\ndeclarations: []\n", encoding="utf-8")
+            the_plan = plan(
+                repo,
+                root="deploy",
+                kind="plain",
+                supersededDeclarations=[{"path": "declaration.yaml", "documentIndex": True}],
+                sourceHashes=source_hashes(repo, "deploy", "deployment.yaml", "declaration.yaml"),
+            )
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report)
+
+    def test_dbaas_wrapper_and_commented_separator_are_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold_plain(tmp)
+            declaration = repo / "deploy/declaration.yaml"
+            declaration.write_text(
+                "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: keep}\n"
+                "--- # legacy declaration\nkind: DBaaS\nsubKind: DatabaseDeclaration\nspec:\n"
+                "  declarations:\n"
+                "    - classifierConfig:\n"
+                "        classifier: {microserviceName: orders, scope: service}\n"
+                "      type: postgresql\n",
+                encoding="utf-8",
+            )
+            the_plan = plan(
+                repo,
+                root="deploy",
+                kind="plain",
+                supersededDeclarations=[{"path": "declaration.yaml", "documentIndex": 2}],
+                sourceHashes=source_hashes(repo, "deploy", "deployment.yaml", "declaration.yaml"),
+            )
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report)
+            remaining = declaration.read_text(encoding="utf-8")
+            self.assertIn("ConfigMap", remaining)
+            self.assertNotIn("DatabaseDeclaration", remaining)
     def test_absolute_and_unc_child_paths_are_rejected_not_silently_joined(self) -> None:
         # A child path is validated on its own, before it is joined onto the
         # root -- joining first would let "chart/" hide an absolute path's
