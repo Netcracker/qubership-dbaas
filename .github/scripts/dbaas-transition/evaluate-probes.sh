@@ -15,7 +15,7 @@
 #   OUT_DIR                      - where probe.jsonl and probe-summary.txt are written (uploaded as
 #                                  diagnostics regardless of outcome by the calling workflow step).
 #   MIN_SAMPLES_PER_WINDOW      - minimum recorded samples required per probe kind in each window
-#                                  (default 3; baseline/post windows run 40-65s at a 500ms interval, so
+#                                  (default 3; baseline/post windows run 40-65s at a one-second interval, so
 #                                  this is a low bar that only catches "the probe never actually ran").
 set -euo pipefail
 

@@ -48,7 +48,7 @@ spec:
             - name: DB_TYPE
               value: postgresql
             - name: PROBE_INTERVAL_MS
-              value: "500"
+              value: "1000"
             - name: PROBE_REQUEST_TIMEOUT_MS
               value: "5000"
             - name: DBAAS_USERNAME
