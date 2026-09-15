@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -o dbaas-proxy .
 
-FROM ghcr.io/netcracker/qubership-core-base:2.4.3@sha256:346237ade5d4a91a2ba3099aa9377e744b40241b105bc580fb48ad81f56137a1
+FROM ghcr.io/netcracker/qubership-core-base:2.5.0@sha256:d81cd148d874afea869c540defc632ff0bba36d90c809eaec3db0fcdd82ac7a5
 WORKDIR /app
 COPY --chown=10001:0 --chmod=555 --from=builder /app/dbaas-proxy /app/dbaas-proxy
 USER 10001:10001
