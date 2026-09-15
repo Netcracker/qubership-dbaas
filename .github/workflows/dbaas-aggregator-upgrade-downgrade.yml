@@ -1,0 +1,22 @@
+name: DBaaS Aggregator Upgrade/Downgrade Availability
+
+run-name: DBaaS aggregator upgrade/downgrade availability (placeholder)
+
+# GitHub only lists a workflow_dispatch workflow in the Actions UI once it exists on the default
+# branch. This placeholder registers it there. feat/dbaas_uptime_check has the real dispatcher,
+# reusable worker, scripts, and probe app, and replaces this file's contents in a follow-up PR.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  placeholder:
+    name: Placeholder
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: No-op
+        run: echo "Placeholder for the DBaaS aggregator upgrade/downgrade availability workflow. See feat/dbaas_uptime_check for the real implementation."
