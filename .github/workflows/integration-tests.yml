@@ -336,8 +336,8 @@ jobs:
         id: collect_logs
         if: always()
         run: |
-          chmod +x .github/scripts/get-dbaas-logs.sh && \
-          .github/scripts/get-dbaas-logs.sh
+          chmod +x .github/scripts/collect-dbaas-logs.sh && \
+          .github/scripts/collect-dbaas-logs.sh
 
       - name: Upload DBaaS diagnostics
         if: always() && steps.collect_logs.outcome == 'success'
