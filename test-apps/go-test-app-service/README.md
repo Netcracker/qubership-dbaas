@@ -42,7 +42,7 @@ fixed classifiers used by the app's tenant and administrative datasources.
 | `GET /health` | Reports readiness |
 | `GET /postgres/ping` | Pings the service-scoped database |
 | `GET /postgres/connection-properties` | Returns sanitized connection properties |
-| `GET`, `POST`, or `DELETE /{datasource}/items` | Reads, creates, or deletes test rows for a datasource |
+| `GET`, `POST`, `PUT`, or `DELETE /{datasource}/items` | Reads, creates, updates, or deletes test rows for a datasource |
 | `POST /postgres-admin/rotation-probe` | Executes one transactional credential-rotation probe |
 
 `{datasource}` is one of the four datasource prefixes listed above.

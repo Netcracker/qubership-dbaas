@@ -1,16 +1,101 @@
-name: DBaaS Aggregator Upgrade/Downgrade Availability
+name: DBaaS Upgrade/Downgrade Availability
+
+run-name: >
+  DBaaS aggregator ${{ github.event.inputs.direction }}
+  ${{ github.event.inputs.older-version }} <-> ${{ github.event.inputs.newer-version }}
+
+# Proves the DBaaS aggregator stays available while its Helm release is upgraded or downgraded, with
+# PostgreSQL, the pgskipper adapter, the dbaas-operator, and the sample service all held fixed. The
+# operator is fixed at the newer of the two versions for both directions (fixture-version below) —
+# it already supports both the initial and target aggregator's CR contract, so neither direction needs
+# operator-version-specific setup. Each direction runs in its own fresh Kind cluster via the reusable
+# worker workflow — see re-dbaas-aggregator-transition.yml and .github/scripts/dbaas-transition/*.sh
+# for the implementation. A full operator/CRD upgrade is a separate, future test and is intentionally
+# out of scope here.
 
 on:
   workflow_dispatch:
+    inputs:
+      older-version:
+        description: 'Older dbaas-aggregator version (no leading "v"), e.g. 6.14.1'
+        required: true
+        default: '6.14.1'
+        type: string
+      newer-version:
+        description: 'Newer dbaas-aggregator version (no leading "v"), e.g. 6.15.0'
+        required: true
+        default: '6.15.0'
+        type: string
+      direction:
+        description: Which direction(s) to run
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - upgrade
+          - downgrade
 
 permissions: {}
 
+concurrency:
+  group: dbaas-upgrade-downgrade-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  transition:
-    name: Transition
+  upgrade:
+    name: Upgrade ${{ github.event.inputs.older-version }} -> ${{ github.event.inputs.newer-version }}
+    if: ${{ github.event.inputs.direction == 'both' || github.event.inputs.direction == 'upgrade' }}
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/re-dbaas-aggregator-transition.yml
+    with:
+      direction: upgrade
+      initial-version: ${{ github.event.inputs.older-version }}
+      target-version: ${{ github.event.inputs.newer-version }}
+      fixture-version: ${{ github.event.inputs.newer-version }}
+
+  downgrade:
+    name: Downgrade ${{ github.event.inputs.newer-version }} -> ${{ github.event.inputs.older-version }}
+    if: ${{ github.event.inputs.direction == 'both' || github.event.inputs.direction == 'downgrade' }}
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/re-dbaas-aggregator-transition.yml
+    with:
+      direction: downgrade
+      initial-version: ${{ github.event.inputs.newer-version }}
+      target-version: ${{ github.event.inputs.older-version }}
+      fixture-version: ${{ github.event.inputs.newer-version }}
+
+  # Single stable check name for branch protection, independent of which direction(s) were selected.
+  # Succeeds only when every selected direction succeeded; a direction that was not selected (skipped)
+  # does not count against it.
+  gate:
+    name: DBaaS Upgrade/Downgrade Gate
+    if: always()
+    needs: [upgrade, downgrade]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
     steps:
-      - name: Run
-        run: echo "DBaaS aggregator upgrade/downgrade availability check"
+      - name: Check selected direction(s) succeeded
+        run: |
+          set -euo pipefail
+          upgrade_result="${{ needs.upgrade.result }}"
+          downgrade_result="${{ needs.downgrade.result }}"
+          echo "upgrade: $upgrade_result"
+          echo "downgrade: $downgrade_result"
+          fail=0
+          for result in "$upgrade_result" "$downgrade_result"; do
+            case "$result" in
+              success|skipped) ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::At least one selected transition direction did not succeed"
+            exit 1
+          fi
+          echo "All selected transition directions succeeded"

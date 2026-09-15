@@ -1,0 +1,21 @@
+# patroni-services (pgskipper PostgreSQL adapter) values overlay for the upgrade/downgrade availability
+# test. Identical to bootstrap/patroni-services-values.yaml except registrationPassword is sourced from
+# ${DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD} instead of the hardcoded literal "password" — it MUST match
+# the aggregator's own DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD value (see dbaas-values-transition.yaml)
+# or the adapter's registration with dbaas-aggregator fails Basic Auth. deploy-fixture.sh generates and
+# exports one random value for both.
+postgresPassword: ${POSTGRES_PASSWORD}
+
+backupDaemon:
+  install: false
+  storage:
+    storageClass: ${STORAGE_CLASS}
+    type: pv
+    size: 2Gi
+
+dbaas:
+  install: true
+  aggregator:
+    registrationAddress: http://${DBAAS_SERVICE_NAME}.${DBAAS_NAMESPACE}.svc.cluster.local:8080
+    registrationUsername: cluster-dba
+    registrationPassword: ${DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD}
