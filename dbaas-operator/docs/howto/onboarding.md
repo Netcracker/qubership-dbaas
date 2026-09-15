@@ -18,10 +18,6 @@ The complete custom resource reference, status model, and configuration paramete
 | Ships Core Operator `kind: DBaaS` declarations | [Automated migration](#automated-migration) with `migrate-core-operator-dbaas-declarations`, or the [declaration mapping guide](migrate-declarations-from-core-operator.md) |
 | Has no existing DBaaS integration | [Manual migration](#manual-migration) |
 
-A cluster that still runs `NamespaceBinding` objects requires
-[the NamespaceBinding migration](migrate-from-namespacebinding.md) before it moves to 6.15.0. That
-is a cluster-level prerequisite, not per-service work.
-
 ---
 
 ## Automated migration
@@ -80,15 +76,75 @@ The equivalent work performed by hand, and the starting point for a service with
    Each is a singleton with a fixed name in its scope, so two services in a namespace shipping one will
    contend for the same object.
 
-3. **Set `spec.operatorNamespace` on every resource.** The value is the namespace the dbaas-operator
-   instance that should reconcile the resource runs in. The field is required and immutable, and the
-   ways a chart can supply it are described in
-   [Setting the operator namespace](migrate-from-namespacebinding.md#setting-the-operator-namespace).
+3. **Set `spec.operatorNamespace` on every resource.** The field is required and immutable. A Helm chart
+   derives it from `API_DBAAS_ADDRESS` using the templates below; a plain `kubectl apply` manifest uses
+   the literal namespace.
 
 4. **Ship the resources in the service chart** and mount the Secret produced by `DatabaseSecretClaim`
    instead of provisioning at startup. The
    [`go-test-app-service` chart](../../../test-apps/go-test-app-service/helm-templates/go-test-app-service)
-   demonstrates both.
+   is the worked example; its CR templates use the expression shown below.
+
+### Starter templates
+
+Most services ship two resources in the same workload namespace:
+
+- `InternalDatabase` declares the logical database that dbaas-aggregator should provision and manage.
+- `DatabaseSecretClaim` requests credentials for that database and names the Kubernetes Secret where
+  the operator writes them.
+
+Use the same `spec.operatorNamespace`, `spec.classifier`, and `spec.type` in both resources so they
+refer to the same database. You can deploy them together: if the claim is reconciled before the
+database exists, the operator keeps polling until the database becomes available.
+
+The templates below derive `spec.operatorNamespace` from `API_DBAAS_ADDRESS`. For example,
+`API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080` renders `operatorNamespace: "dbaas"`.
+When applying plain YAML, replace each Helm expression with its literal value.
+
+Declare the database:
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: orders-db
+  namespace: {{ .Values.NAMESPACE | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.SERVICE_NAME | quote }}
+spec:
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  classifier:
+    microserviceName: {{ .Values.SERVICE_NAME | quote }}
+    scope: service
+  type: postgresql
+```
+
+Request its credentials:
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: orders-db-admin
+  namespace: {{ .Values.NAMESPACE | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.SERVICE_NAME | quote }}
+spec:
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  classifier:
+    microserviceName: {{ .Values.SERVICE_NAME | quote }}
+    scope: service
+  type: postgresql
+  userRole: admin
+  secretName: orders-db-admin-secret
+```
+
+The operator creates or updates `orders-db-admin-secret`. Mount that Secret in each application
+container that uses the database, as described in
+[Mounting credentials in the application container](#mounting-credentials-in-the-application-container).
+
+`ExternalDatabase`, `DatabaseAccessPolicy`, and the balancing-rule resources take the same
+`spec.operatorNamespace`; their full schemas are in [DBaaS Operator](../DBaaS%20Operator.md).
 
 ---
 
@@ -100,36 +156,67 @@ Neither delivers credentials or produces a Kubernetes Secret.
 
 Credentials are requested separately, through `DatabaseSecretClaim`, which resolves an
 already-registered database by classifier and writes its connection properties into a Secret in the
-workload namespace:
+workload namespace.
 
-```yaml
-apiVersion: dbaas.netcracker.com/v1
-kind: DatabaseSecretClaim
-metadata:
-  name: orders-db-admin
-  namespace: <workload-namespace>
-spec:
-  operatorNamespace: <operator-namespace>
-  classifier:
-    microserviceName: orders
-    namespace: <workload-namespace>
-    scope: service
-  type: postgresql
-  userRole: admin
-  secretName: orders-db-admin-secret
-```
-
-The `classifier` and `type` must identify the same database the `InternalDatabase` or
-`ExternalDatabase` describes, and `userRole` selects which role's credentials are written — one claim
-per role. The Secret holds `connectionProperties.json` with the adapter-specific connection details,
-and `metadata.json` describing the database, so a client can match the Secret to a request without
-calling the aggregator.
+The `app.kubernetes.io/name` label is required; the operator sends it as `originService`. The
+`classifier` and `type` must identify the same database the `InternalDatabase` or `ExternalDatabase`
+describes, and `userRole` selects which role's credentials are written — one claim per role. The Secret
+holds `connectionProperties.json` with the adapter-specific connection details, and `metadata.json`
+describing the database, so a client can match the Secret to a request without calling the aggregator.
 
 Ordering does not have to be managed: a claim whose database does not exist yet receives
 `DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. After ten minutes
 the `Ready` reason changes to `DatabaseNotFoundTimeout` and one Warning event is emitted, but polling
 continues and the claim still recovers on its own. When credentials rotate, the operator rewrites the
 Secret in place under the same name.
+
+### Mounting credentials in the application container
+
+The operator creates the Kubernetes Secret, but it does not modify the application's workload. The
+service chart must expose that Secret as a volume in every application container that uses the
+database.
+
+Mounted-secret-capable DBaaS clients look in one fixed absolute path **inside the application
+container**:
+
+```text
+/etc/secrets/dbaas-secrets
+```
+
+Each Secret must appear in its own immediate child directory. Mount the complete Secret read-only;
+Kubernetes projects the two data keys written by the operator as files:
+
+```text
+/etc/secrets/dbaas-secrets/<secret-name>/metadata.json
+/etc/secrets/dbaas-secrets/<secret-name>/connectionProperties.json
+```
+
+Set `<secret-name>` to the exact value of `DatabaseSecretClaim.spec.secretName`. For the claim above,
+the complete mount path is `/etc/secrets/dbaas-secrets/orders-db-admin-secret`.
+
+`spec.secretName` has no mandatory business naming pattern: it must be a valid Kubernetes Secret name
+and must be unique among `DatabaseSecretClaim` resources in the namespace.
+
+The Pod volume name is separate from the Secret name. It can be any valid, unique volume name, but the
+same value must be used by `volumes[].name` and `volumeMounts[].name`:
+
+```yaml
+volumes:
+  - name: orders-db-secret
+    secret:
+      secretName: orders-db-admin-secret
+containers:
+  - name: orders
+    volumeMounts:
+      - name: orders-db-secret
+        mountPath: /etc/secrets/dbaas-secrets/orders-db-admin-secret
+        readOnly: true
+```
+
+The DBaaS client requires each generated Secret to appear as an immediate child directory under
+`/etc/secrets/dbaas-secrets` in every application container that uses it. Each child directory must
+contain `metadata.json` and `connectionProperties.json`. Do not place these files directly in the base
+directory, add another directory level, use a different base path, or mount the Secret using `subPath`.
 
 ### Secret permissions in the workload namespace
 
@@ -169,8 +256,9 @@ containers:
 Use a volume, not an environment variable. `envFrom.secretRef.optional` and
 `env.valueFrom.secretKeyRef.optional` also let the pod start, but environment variables are resolved
 once at container start, so neither the first write nor a later rotation reaches a running container.
-A mounted volume is refreshed by the kubelet and covers both. Do not mount it through `subPath`, which
-is resolved once and receives no later updates.
+A mounted volume is refreshed by the kubelet and covers both. Keep the
+[mounting layout described above](#mounting-credentials-in-the-application-container) so the client
+can discover it.
 
 `optional` governs pod startup only. The application still has to tolerate an absent file at startup
 and read it once it appears, rather than resolving its datasource during initialization.
@@ -200,5 +288,3 @@ normally assigned to the wrong operator: check `spec.operatorNamespace`.
   RBAC, authentication, and configuration parameters.
 - [Migrating declarations from Core Operator](migrate-declarations-from-core-operator.md) — the
   field-by-field mapping that underlies the declaration skill.
-- [Migrating from the retired NamespaceBinding model](migrate-from-namespacebinding.md) — the
-  cluster-level change required before 6.15.0.

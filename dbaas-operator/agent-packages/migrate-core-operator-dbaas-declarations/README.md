@@ -28,8 +28,8 @@ Its output remains a draft that must be compared with the source and validated
 against the target CRDs.
 
 The converter requires `--operator-namespace` and writes that value to every
-generated CR. Use the namespace of the dbaas-operator instance, which may differ
-from the workload namespace passed through `--namespace`.
+generated CR. Pass the `API_DBAAS_ADDRESS` expression for a chart-local
+conversion and the literal namespace for a plain-manifest conversion.
 
 ## Install
 

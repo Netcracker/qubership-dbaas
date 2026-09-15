@@ -75,6 +75,7 @@ type DatabaseSecretClaimReconciler struct {
 	triggerMu             sync.Mutex
 	siblingTriggerStamps  map[string]struct{}
 	rotationTriggerValues map[string]string
+	pollBackoff           pollBackoffTracker
 }
 
 func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -86,6 +87,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 			key := req.Namespace + "/" + req.Name
 			r.clearSiblingTrigger(key)
 			r.clearRotationTrigger(key)
+			r.pollBackoff.forget(req.NamespacedName)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -96,6 +98,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		s.Namespace, s.Name, "DatabaseSecretClaim") {
 		r.clearSiblingTrigger(key)
 		r.clearRotationTrigger(key)
+		r.pollBackoff.forget(req.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 	trigger := r.triggerForSecretClaim(key, s)
@@ -147,8 +150,12 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 			EventReasonEmptyConnectionProperties, msg)
 		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonEmptyConnectionProperties,
 			"%s (requestId=%s)", msg, requestID)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(s), nil
 	}
+
+	// Non-empty connectionProperties is a genuine success — clear the backoff so
+	// a future not-found/empty-response streak starts fresh at the initial interval.
+	r.pollBackoff.forgetObject(s)
 
 	secretData, err := buildSecretData(s, dbResp)
 	if err != nil {
@@ -170,6 +177,7 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	s *dbaasv1.DatabaseSecretClaim,
 ) (ctrl.Result, bool, error) {
 	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
+		r.pollBackoff.forgetObject(s)
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
 			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q",
@@ -180,6 +188,7 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	// extraKeys must not shadow the typed classifier fields — a collision is a
 	// spec mistake (the typed field would win and the extraKey be dropped).
 	if reserved := dbaasv1.ReservedExtraKeys(s.Spec.Classifier); len(reserved) > 0 {
+		r.pollBackoff.forgetObject(s)
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
 			fmt.Sprintf("spec.classifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields", reserved))
@@ -187,6 +196,7 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	}
 
 	if s.Labels["app.kubernetes.io/name"] == "" {
+		r.pollBackoff.forgetObject(s)
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
 			"label app.kubernetes.io/name is required — its value is used as originService in the get-by-classifier request")
@@ -432,6 +442,7 @@ func (r *DatabaseSecretClaimReconciler) ownerConflict(s *dbaasv1.DatabaseSecretC
 // markSecretConflict sets InvalidConfiguration/SecretConflict and stops reconciliation.
 func (r *DatabaseSecretClaimReconciler) markSecretConflict(ctx context.Context, s *dbaasv1.DatabaseSecretClaim, msg string) (ctrl.Result, error) {
 	log.InfoC(ctx, "SecretConflict name=%s reason=%s", s.Name, msg)
+	r.pollBackoff.forgetObject(s)
 	markPermanentFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretConflict, msg)
 	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonSecretConflict, "%s", msg)
 	return ctrl.Result{}, nil
@@ -468,7 +479,7 @@ func (r *DatabaseSecretClaimReconciler) handleAggregatorErr(
 				EventReasonDatabaseNotFound, aggErr.UserMessage())
 			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotFound,
 				"database not found in dbaas-aggregator, waiting for provisioning (requestId=%s)", requestID)
-			return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+			return r.pollBackoff.schedule(s), nil
 		}
 
 		// Past the timeout: emit the one-shot DatabaseNotFoundTimeout Warning
@@ -488,12 +499,19 @@ func (r *DatabaseSecretClaimReconciler) handleAggregatorErr(
 			EventReasonDatabaseNotFoundTimeout,
 			fmt.Sprintf("database not found in dbaas-aggregator for %s — operator action may be required",
 				elapsed.Round(time.Second)))
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(s), nil
 	}
 	// Non-NotFound failure path — drop the wait marker so a future 404 starts a fresh streak.
 	s.Status.FirstNotFoundAt = nil
-	return handleAggregatorError(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+	result, callErr := handleAggregatorError(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 		r.Recorder, s, err, requestID)
+	if callErr == nil {
+		// A nil error means handleAggregatorError classified this as a permanent
+		// failure (no requeue) rather than a transient one left for the rate
+		// limiter — clear the backoff so a future retry starts fresh.
+		r.pollBackoff.forgetObject(s)
+	}
+	return result, callErr
 }
 
 // Secret data keys written by the operator and consumed by dbaas-client.
