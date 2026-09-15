@@ -10,111 +10,98 @@ Convert legacy DBaaS declarations into dedicated Kubernetes resources:
 - `DatabaseDeclaration` to `apiVersion: dbaas.netcracker.com/v1`, `kind: InternalDatabase`
 - `DbPolicy` or `dbPolicy` to `apiVersion: dbaas.netcracker.com/v1`, `kind: DatabaseAccessPolicy`
 
-## Inputs and scope
+`scripts/apply_migration.py` is the only process allowed to create, modify, or delete files in the
+consumer repository. It is deterministic: given the same plan and repository state it produces the
+same result every time. Never hand-edit a migrated file afterward -- if the output needs a change,
+change the plan (or the source) and re-run the writer.
 
-Accept one or more source file or directory paths from the user. Treat provided paths as the migration scope unless the
-user requests broader discovery. Use files directly and search provided directories recursively by manifest content.
-Verify that each path exists and report paths that contain no supported legacy resources.
+## Workflow: inventory, plan, check, apply
 
-If the user provides no paths, search the entire repository by content rather than assuming a directory layout. Find
-JSON or YAML with `kind: DatabaseDeclaration`, `kind: DbPolicy` or `dbPolicy`, or `kind: DBaaS` plus
-`subKind: DatabaseDeclaration` or `DbPolicy`. Common locations include `**/dbaas-configuration.json`, `deployments/`,
-`<service-name>-deployments/`, and Helm chart `declarations/` or `templates/` directories.
+1. **Inventory.** Establish the migration scope from user-provided paths, or search the whole
+   repository by content when none are given. Find JSON or YAML with `kind: DatabaseDeclaration`,
+   `kind: DbPolicy`/`dbPolicy`, or `kind: DBaaS` plus `subKind: DatabaseDeclaration`/`DbPolicy`.
+   Common locations include `**/dbaas-configuration.json`, `deployments/`,
+   `<service-name>-deployments/`, and Helm chart `templates/`/`declarations/` directories. Group
+   what you find by the chart or manifest root that will own its generated output file -- a plan
+   may cover more than one root, but each root must target a distinct namespace so duplicate
+   resources cannot be hidden across independently validated roots.
+2. **Plan.** Build one JSON plan outside the consumer repository (see `scripts/apply_migration.py`'s
+   module docstring for the exact shape). For each root, record: the root path (`""`/`"."` for the
+   repository root), `"helm"` or `"plain"` kind, `operatorNamespace`/`serviceName`/`namespace`
+   (concrete values for a plain root; Helm expressions such as `{{ .Values.NAMESPACE }}` for a helm
+   root, plus any `helmValues` the chart needs to render at all), the output file, and every source
+   file with the SHA-256 of the exact bytes you inspected. Read [mapping.md](references/mapping.md)
+   for the field-by-field conversion this plan feeds into; do not restate it here.
+3. **Check.** Run `apply_migration.py --repo-root <repo> --plan <plan.json> --check`. This computes
+   every change, materializes it into an isolated temporary tree per root, and validates it there --
+   including rendering a helm root with `helm template` -- without touching the real repository.
+4. **Apply.** Once `--check` reports `valid`, run the same command with `--apply`. Do nothing else
+   to the affected files; a warning in the result is not permission to proceed around a block.
 
-## Workflow
+Treat the JSON envelope as a draft, not a final answer: `status: "changed"` and exit 0 only mean the
+writer did exactly what the plan said, not that the plan said the right thing. Resolve every
+converter warning before treating the migration as done -- read what each one describes (a filled-in
+or assumed field, a fallback name, a dropped value) against the actual source, and re-run the writer
+against a corrected plan if a warning turns out to describe something wrong.
 
-1. Establish the migration scope from user-provided paths or content-based repository discovery.
-2. Inspect the target repository's current `InternalDatabase` and `DatabaseAccessPolicy` CRD schemas.
-3. Read [references/mapping.md](references/mapping.md) before editing manifests.
-4. Resolve [scripts/convert_dbaas_crs.py](scripts/convert_dbaas_crs.py) relative to this `SKILL.md`.
-   For bulk migration, optionally run it on a copy of the source, review every warning, and adjust the draft manually.
-   Convert one or two resources directly when the script adds no value.
-5. Read [references/examples.md](references/examples.md) when an exact before-and-after shape is useful.
-6. Compare every generated field with the source and complete the required offline checks. Use CRD or cluster checks
-   when available.
+## What the writer accepts and what it blocks
 
-## Required output
+Supported source shapes:
 
-Produce standard Kubernetes manifests. Do not retain:
+- a JSON file holding one legacy object, or a top-level array mixing `DatabaseDeclaration` and
+  `DbPolicy` objects -- removed only when every array element converts; if even one element is
+  unsupported or irrelevant, the array is left untouched and the run blocks (never partially
+  rewritten);
+- a YAML file with one or more `---`-separated documents -- each document is independently either
+  fully migrated (removed, along with its own `---` separator) or left byte-for-byte untouched;
+  documents are never spliced apart below that granularity;
+- a Helm guard is preserved only when it wraps one entire document. Leading comments/blank lines
+  before `{{- if ... }}` and trailing comments/blank lines after `{{- end }}` are preserved; a
+  guard that does not bracket the whole document blocks the run.
 
-- `kind: DBaaS`
-- `subKind: DatabaseDeclaration`
-- `subKind: DbPolicy`
-- `spec.classifierConfig`
-- generic Core labels needed only by the legacy wrapper, unless deployment tooling still consumes them
+Always blocking, before anything is written:
 
-Use normal Kubernetes `metadata.name` and `metadata.namespace`. Preserve Helm templates such as
-`{{ .Values.NAMESPACE }}` and `{{ .Values.SERVICE_NAME }}`.
-
-## Optional converter
-
-Use the converter when deterministic splitting and field relocation reduce repetitive work.
-
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. Do not assume the consumer repository
-contains a top-level `scripts/` directory.
-
-```bash
-python <skill-directory>/scripts/convert_dbaas_crs.py \
-  --input <path-to-legacy-file> \
-  --output migrated-dbaas.yaml \
-  --service-name '{{ .Values.SERVICE_NAME }}' \
-  --namespace '{{ .Values.NAMESPACE }}' \
-  --operator-namespace '<dbaas-operator namespace>'
-```
-
-Use the Helm values above only for chart-local manifests. For plain JSON or non-chart YAML, pass the concrete owning
-service and target namespace through `--service-name` and `--namespace` to avoid emitting Helm expressions.
-Always pass the actual namespace of the dbaas-operator instance through `--operator-namespace`; do not infer it from
-the workload namespace.
-
-The script reads JSON with the Python standard library. YAML input requires PyYAML. If PyYAML is unavailable, continue
-manually from [references/mapping.md](references/mapping.md) or use a YAML parser already provided by the environment;
-the converter is optional.
-
-For Helm-template YAML, the script can quote common template scalar values and comment standalone template actions.
-Treat all script output as a draft: resolve every warning, check resource names, and compare the result field by field
-with the source. Warnings about unsupported fields, dropped metadata, fallback service identity, Helm sanitization, or
-duplicate resources require manual review.
+- a source path used more than once, or equal to a generated output path;
+- an unrecognized field on a `DatabaseDeclaration`/`DbPolicy`, a non-boolean `lazy` or
+  `disableGlobalPermissions`, a missing `classifierConfig.classifier`, or a `DatabaseAccessPolicy`
+  with neither `services` nor `policy`;
+- a legacy classifier that already has a literal `extraKeys` key (ambiguous against the wire-form
+  key this converter introduces);
+- a resource's default name that is templated, or mixes literal text with a Helm expression --
+  `database_name_hint`'s `<scope>-<type>-db` shape becomes exactly this once `scope` is templated.
+  Pin an explicit, release-specific `nameOverrides` entry instead (see the plan shape); it may embed
+  a live expression such as `.Release.Name` mixed with literal text -- only an *automatically
+  derived* name is restricted to a single whole `{{ ... }}` expression, since only that case cannot
+  otherwise be checked at all. The override's rendered value is still checked against every rendered
+  resource once the chart is templated;
+- a plain root's generated output containing any `{{ ... }}` Helm expression, or a rendered
+  Kubernetes name over 63 characters / not a DNS-1123 label;
+- two resources in one root computing the same `(kind, namespace, name)`, or two roots targeting
+  the same namespace. Independent roots may reuse a name only in distinct namespaces;
+- `helm` missing from `PATH` for a helm root (a missing dependency, distinct from a validation
+  failure).
 
 ## Decisions to make explicitly
 
-- Derive required `DatabaseAccessPolicy.spec.microserviceName` from the owning service only when the source context is
-  unambiguous; otherwise ask the user.
-- Set required `spec.operatorNamespace` on every generated resource to the namespace of the operator instance that
-  will manage it. Ask when that assignment is not known; it is not necessarily the workload namespace.
-- Move old classifier keys outside `microserviceName`, `scope`, `namespace`, `tenantId`, and `customKeys` to
-  `spec.classifier.extraKeys`.
-- Omit the target `spec.classifier.namespace` so the operator derives it from `metadata.namespace`. Preserve
-  `initialInstantiation.sourceClassifier.namespace` because a clone source may live in another namespace.
-- Require `initialInstantiation.sourceClassifier.microserviceName` to equal the target classifier owner. Fill it from
-  the target when absent, and require manual correction when an explicit source owner differs.
-- Preserve valid JSON values in `spec.settings` without conversion. The converter rejects non-finite numbers,
-  non-string object keys, and YAML-only values, and identifies each invalid field by its full settings path.
-- Preserve `physicalDatabaseId` verbatim as `spec.physicalDatabaseId`; it is an optional physical-database pin, not a
-  value to transform or validate. It only pins new-creation databases — the aggregator ignores it for
-  `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`, so do not describe it as
-  pinning a clone or a backup restore.
-- Choose stable, DNS-compatible resource names and check for duplicate kind/name pairs across all generated files.
+- Derive required `DatabaseAccessPolicy.spec.microserviceName` from the owning service only when
+  the source context is unambiguous; otherwise ask the user.
+- Set `operatorNamespace` to the namespace of the operator instance that will manage the generated
+  resources -- ask when that is not known; it is not necessarily the workload namespace.
+- Preserve `physicalDatabaseId` verbatim; it pins only new-creation databases and is ignored for
+  `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`.
+- Choose stable, DNS-compatible resource names (or explicit `nameOverrides`) and check for
+  duplicate `(kind, namespace, name)` triples across a root before writing the plan.
 
 ## Validation
 
-Always perform these offline checks; they do not require a Kubernetes cluster:
+`--check` already performs structural, field, and (for a helm root) rendered-name validation. Beyond
+that:
 
-1. Confirm resource counts: each declaration entry becomes one `InternalDatabase`, and each policy becomes one
-   `DatabaseAccessPolicy`.
-2. Compare every migrated field with the source and resolve every converter warning.
-3. Confirm no legacy wrapper or `spec.classifierConfig` fields remain.
-4. Confirm every target-required field is present, including `spec.operatorNamespace`; source and target clone owners
-   match; and kind/name pairs are unique.
-5. Render Helm templates before treating the manifests as deployable YAML.
+- When current CRD files are available, validate the rendered manifests against their OpenAPI
+  schemas.
+- When a suitable isolated cluster is also available, optionally run
+  `kubectl apply --dry-run=server`; apply for real only when the user requests deployment, then
+  verify `status.phase: Succeeded` and `Ready=True`.
 
-When current CRD files are available, validate the rendered manifests against their OpenAPI schemas. When a suitable
-isolated cluster is also available, optionally run `kubectl apply --dry-run=server`. Apply the resources only when the
-user requests deployment, then verify `status.phase: Succeeded` and `Ready=True`.
-
-Cluster access is optional and must not block the migration. If current CRD files are unavailable, deliver the
-structurally checked manifests as drafts and state that schema validation remains pending. If CRD validation passes but
-no cluster is available, state that server-side validation and reconciliation testing remain pending.
-
-A successful reconciliation against an aggregator mock proves CRD and operator contract compatibility. It does not
-prove that a physical database was provisioned by a real aggregator and adapter.
+Cluster access is optional and must not block the migration -- state plainly which of these
+follow-up checks remain pending when they were not run.
