@@ -4,8 +4,8 @@
 # aggregator and operator come from the same checkout — this test deliberately does not:
 #
 #   - PostgreSQL/Patroni and the PostgreSQL adapter come from the pinned pgskipper-operator checkout
-#     (via bootstrap's own patroni-core / patroni-services targets, unaffected by which dbaas version
-#     is under test).
+#     through bootstrap's patroni-core and patroni-services targets. Task-specific values disable the
+#     pgskipper charts' integration tests so they cannot mutate or restart the fixed database fixture.
 #   - The dbaas-aggregator comes from INITIAL_DIR (installed here, with two replicas) and later gets
 #     transitioned to TARGET_DIR by transition-aggregator.sh — the only thing that changes during the
 #     measured transition.
@@ -62,6 +62,7 @@ set -euo pipefail
 
 BASELINE_SECONDS="${BASELINE_SECONDS:-40}"
 DBAAS_VALUES_FILE="$HARNESS_DIR/.github/scripts/dbaas-transition/dbaas-values-transition.yaml"
+PATRONI_CORE_VALUES_FILE="$HARNESS_DIR/.github/scripts/dbaas-transition/patroni-core-values-transition.yaml"
 # Must set registrationPassword to the same DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD the aggregator gets
 # below — bootstrap/patroni-services-values.yaml hardcodes it to the literal "password" instead, which
 # would silently break the adapter's registration once the aggregator's own password is randomized.
@@ -83,6 +84,7 @@ $BOOTSTRAP_MAKE validate REPOS_DIR="$REPOS_DIR" PG_NAMESPACE="$PG_NAMESPACE" DBA
 echo "=== Stage: Patroni core (PostgreSQL), pinned pgskipper checkout ==="
 $BOOTSTRAP_MAKE install-patroni-core \
   REPOS_DIR="$REPOS_DIR" PG_NAMESPACE="$PG_NAMESPACE" DBAAS_NAMESPACE="$DBAAS_NAMESPACE" \
+  PATRONI_CORE_VALUES_FILE="$PATRONI_CORE_VALUES_FILE" \
   POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
 
 echo "=== Stage: waiting for PostgreSQL readiness ==="

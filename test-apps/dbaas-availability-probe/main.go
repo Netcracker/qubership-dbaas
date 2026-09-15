@@ -75,7 +75,7 @@ func loadConfig() config {
 		scope:             getenv("CLASSIFIER_SCOPE", "service"),
 		dbaasUsername:     os.Getenv("DBAAS_USERNAME"),
 		dbaasPassword:     os.Getenv("DBAAS_PASSWORD"),
-		probeInterval:     getenvMillis("PROBE_INTERVAL_MS", 500*time.Millisecond),
+		probeInterval:     getenvMillis("PROBE_INTERVAL_MS", time.Second),
 		requestTimeout:    getenvMillis("PROBE_REQUEST_TIMEOUT_MS", 5000*time.Millisecond),
 		maxDurationSecond: getenvSeconds("PROBE_MAX_DURATION_SECONDS", 0),
 		mode:              getenv("PROBE_MODE", "probe"),

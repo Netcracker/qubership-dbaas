@@ -111,6 +111,36 @@ func TestPostgresReadEndpoints_RejectUnsupportedMethod(t *testing.T) {
 	}
 }
 
+func TestHandlePostgresPing_UsesConfiguredDatabaseClient(t *testing.T) {
+	t.Parallel()
+
+	conn := &stubConn{}
+	database := probeDatabase(conn, nil)
+	database.properties = &pgmodel.PgConnProperties{
+		Url:      "postgresql://pg-patroni:5432/appdb",
+		Username: "database-user",
+		Role:     "admin",
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/postgres/ping", nil)
+	(&App{service: database}).Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body %s)", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response struct {
+		Status string `json:"status"`
+		Result int    `json:"result"`
+	}
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Status != "ok" || response.Result != 1 {
+		t.Fatalf("unexpected ping response: %#v", response)
+	}
+}
+
 func TestHandlePostgresItems_RejectsUnsupportedMethod(t *testing.T) {
 	t.Parallel()
 
@@ -217,15 +247,18 @@ func (c *stubConn) ExecContext(_ context.Context, query string, args []driver.Na
 	return driver.RowsAffected(1), nil
 }
 
-func (c *stubConn) QueryContext(_ context.Context, _ string, _ []driver.NamedValue) (driver.Rows, error) {
+func (c *stubConn) QueryContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
 	if c.queryErr != nil {
 		return nil, c.queryErr
+	}
+	if strings.TrimSpace(query) == "SELECT 1" {
+		return &stubRows{value: int64(1)}, nil
 	}
 	name := c.inserted
 	if c.storedName != nil {
 		name = *c.storedName
 	}
-	return &stubRows{name: name}, nil
+	return &stubRows{value: name}, nil
 }
 
 type stubTx struct{ conn *stubConn }
@@ -234,8 +267,8 @@ func (t *stubTx) Commit() error   { return t.conn.commitErr }
 func (t *stubTx) Rollback() error { return nil }
 
 type stubRows struct {
-	name string
-	done bool
+	value driver.Value
+	done  bool
 }
 
 func (r *stubRows) Columns() []string { return []string{"name"} }
@@ -245,7 +278,7 @@ func (r *stubRows) Next(dest []driver.Value) error {
 		return io.EOF
 	}
 	r.done = true
-	dest[0] = r.name
+	dest[0] = r.value
 	return nil
 }
 
