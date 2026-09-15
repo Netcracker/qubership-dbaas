@@ -67,7 +67,7 @@ class DBBackupsServiceLeakedResourcesTest {
     }
 
     @Test
-    void testUserEnsure_noOrphanedDbResourceRows_whenAdapterReturnsUserOnlyResources() {
+    void testUserEnsure_noOrphanedDbResourceRows() {
         Database database = new DatabaseBuilder()
                 .registry()
                 .build();
@@ -83,12 +83,12 @@ class DBBackupsServiceLeakedResourcesTest {
         when(physicalDatabasesService.getAdapterById(POSTGRES_ADAPTER_ID)).thenReturn(adapter);
         when(adapter.isUsersSupported()).thenReturn(true);
         when(adapter.getSupportedVersion()).thenReturn("v2");
-        EnsuredUser userOnly = new EnsuredUser(
-                DatabaseBuilder.ADMIN_USER_NAME,
+        EnsuredUser ensuredUser = new EnsuredUser(
+                "db_name",
                 new HashMap<>(),
-                List.of(new DbResource("user", DatabaseBuilder.ADMIN_USER_NAME)),
+                List.of(new DbResource("user", DatabaseBuilder.ADMIN_USER_NAME), new DbResource("database", "db_name")),
                 true);
-        when(adapter.ensureUser(any(), any(), anyString(), anyString())).thenReturn(userOnly);
+        when(adapter.ensureUser(any(), any(), anyString(), anyString())).thenReturn(ensuredUser);
 
         NamespaceBackup backup = new NamespaceBackup();
         backup.setId(UUID.randomUUID());
@@ -135,12 +135,12 @@ class DBBackupsServiceLeakedResourcesTest {
         when(physicalDatabasesService.getAdapterById(POSTGRES_ADAPTER_ID)).thenReturn(adapter);
         when(adapter.isUsersSupported()).thenReturn(true);
         when(adapter.getSupportedVersion()).thenReturn("v2");
-        EnsuredUser userOnly = new EnsuredUser(
-                DatabaseBuilder.ADMIN_USER_NAME,
+        EnsuredUser ensuredUser = new EnsuredUser(
+                "db_name",
                 new HashMap<>(),
-                List.of(new DbResource("user", DatabaseBuilder.ADMIN_USER_NAME)),
+                List.of(new DbResource("user", DatabaseBuilder.ADMIN_USER_NAME), new DbResource("database", "db_name")),
                 true);
-        when(adapter.ensureUser(any(), any(), anyString(), anyString())).thenReturn(userOnly);
+        when(adapter.ensureUser(any(), any(), anyString(), anyString())).thenReturn(ensuredUser);
 
         NamespaceBackup backup = new NamespaceBackup();
         backup.setId(UUID.randomUUID());

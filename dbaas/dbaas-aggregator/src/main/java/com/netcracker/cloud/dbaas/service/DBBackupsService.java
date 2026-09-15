@@ -885,7 +885,6 @@ public class DBBackupsService {
                 return Arrays.asList(ADAPTER_DOES_NOT_SUPPORT_ENSURE);
             }
             try {
-                Map<String, String> oldToNewUserName = new HashMap<>();
                 List<EnsuredUser> users = db.getConnectionProperties().stream().map(v -> {
                     String password = null;
                     String username = regenerateCredentials ? null : (String) v.get("username");
@@ -922,28 +921,19 @@ public class DBBackupsService {
                         }
                     }
                     user.getConnectionProperties().putIfAbsent(ROLE, role);
-                    if (v.get("username") != null) {
-                        oldToNewUserName.put((String) v.get("username"), user.getName());
-                    }
                     return user;
                 }).collect(Collectors.toList());
                 encryption.deletePassword(db.getDatabase());
                 db.setConnectionProperties(users.stream().map(EnsuredUser::getConnectionProperties).collect(Collectors.toList()));
-                db.getResources().stream()
-                        .filter(r -> DbResource.USER_KIND.equals(r.getKind()))
-                        .forEach(r -> r.setName(oldToNewUserName.getOrDefault(r.getName(), r.getName())));
+                db.setResources(users.stream().map(EnsuredUser::getResources).filter(Objects::nonNull).flatMap(Collection::stream).collect(Collectors.toList()));
+                db.setResources(db.getResources().stream().distinct().collect(Collectors.toList()));
 
                 encryption.encryptPassword(db.getDatabase());
                 if (regenerateCredentials) {
                     db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
                 }
                 databaseRegistryDbaasRepository.saveInternalDatabase(db);
-                log.info("Users {} ensured access to db {}",
-                        users.stream()
-                                .map(EnsuredUser::getName)
-                                .toList(),
-                        dbName
-                );
+                log.info("{} users ensured access to db {}", users.size(), dbName);
                 return users;
             } catch (Exception e) {
                 log.error("Failed to ensure user for database {}", db, e);
