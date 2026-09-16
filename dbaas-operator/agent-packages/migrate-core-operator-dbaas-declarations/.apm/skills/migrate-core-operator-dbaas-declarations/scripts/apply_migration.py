@@ -21,7 +21,7 @@ Plan shape::
         {
           "root": "chart",
           "kind": "helm",
-          "operatorNamespace": "dbaas-system",
+          "operatorNamespace": "{{ index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" .Values.API_DBAAS_ADDRESS))))) 1 }}",
           "serviceName": "{{ .Values.SERVICE_NAME }}",
           "namespace": "{{ .Values.NAMESPACE }}",
           "namePrefix": "",
@@ -665,6 +665,8 @@ def _check_generated_object(obj: dict[str, Any], problems: list[str]) -> None:
 
 
 def _pilot_value(key: str) -> str:
+    if key == "API_DBAAS_ADDRESS":
+        return "http://dbaas-aggregator.dbaas-operator:8080"
     return f"pilot-{key.lower().replace('_', '-')}"
 
 

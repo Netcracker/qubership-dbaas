@@ -395,7 +395,7 @@ smoke-test:
 	PORT_FOUND=false;\
 	ATTEMPT=1;\
 	while [ $$ATTEMPT -le 10 ] && [ "$$PORT_FOUND" != "true" ]; do \
-		RANDOM_PORT=$$(shuf -i 63000-65900 -n 1); \
+		RANDOM_PORT=$$(shuf -i 63000-65535 -n 1); \
 		echo "$(CYAN)--- Attempt $$ATTEMPT: Trying port $$RANDOM_PORT$(NC)"; \
 		if ! netstat -tuln 2>/dev/null | grep -q ":$$RANDOM_PORT "; then \
 			echo "$(GREEN)--- Port $$RANDOM_PORT is available$(NC)"; \

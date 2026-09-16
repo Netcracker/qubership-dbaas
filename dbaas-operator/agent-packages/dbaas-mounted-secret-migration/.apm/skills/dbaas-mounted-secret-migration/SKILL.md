@@ -106,15 +106,18 @@ Canonicalize classifier maps by keys and values for comparison.
 - Different classifier keys or values require different `InternalDatabase` resources.
 - Different requested roles share the database but require separate claims and mounted Secrets.
 
-The operator assignment is a deploy-time value, not a namespace baked into the repository. Expose it
-as `DBAAS_OPERATOR_NAMESPACE` -- a Helm value the service populates when it deploys (for example
-through Argo CD) -- and record it as the placeholder `{{ .Values.DBAAS_OPERATOR_NAMESPACE }}` in
-the plan's `operatorNamespace`; the writer registers that value, with an empty default, in
-`values.yaml`/`values.schema.json` for you. The operator reads its own namespace from
-`CLOUD_NAMESPACE`, so nothing needs to be hardcoded here. Only for plain manifests, which cannot
-template a value, resolve a concrete namespace instead: prefer an explicit deployment value, verify
-it against the intended `dbaas-operator` Deployment or Pod when a cluster is available, and stop and
-ask if it cannot be proven -- never assume `dbaas-system` or reuse the workload namespace.
+For a Helm root, derive the operator assignment from `API_DBAAS_ADDRESS` and record this
+root-context expression in the plan's `operatorNamespace`:
+
+```text
+{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}
+```
+
+Do not add `| quote`: the writer quotes the generated YAML scalar. Verify that the address points
+to the intended operator namespace. For plain manifests, which cannot template a value, resolve a
+concrete namespace instead: prefer an explicit deployment value, verify it against the intended
+`dbaas-operator` Deployment or Pod when a cluster is available, and stop and ask if it cannot be
+proven -- never assume `dbaas-system` or reuse the workload namespace.
 
 Report all dynamic, blocked, and ambiguous entries; never generate placeholders that could create
 the wrong database.
@@ -157,7 +160,7 @@ those namespaces differ.
       "root": "chart",
       "kind": "helm",
       "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-      "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
+      "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) }}",
       "workloadNamespace": "{{ .Values.NAMESPACE }}",
       "originService": "orders",
       "datasources": [

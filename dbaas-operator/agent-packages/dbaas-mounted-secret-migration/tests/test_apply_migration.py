@@ -177,6 +177,20 @@ def run_migration(repo: Path, the_plan: dict, mode: str, tmp: Path) -> tuple[int
 
 @unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
 class HelmApplyTest(unittest.TestCase):
+    def test_api_address_derived_operator_namespace_renders_without_new_value(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            expression = '{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}'
+            the_plan = plan(repo, operatorNamespace=expression)
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            output = repo / "chart/templates/dbaas-mounted-secret-resources.yaml"
+            docs = [d for d in yaml.safe_load_all(output.read_text(encoding="utf-8")) if d]
+            self.assertTrue(all(d["spec"]["operatorNamespace"] == expression for d in docs))
+            self.assertEqual((repo / "chart/values.yaml").read_text(encoding="utf-8"), VALUES)
+            self.assertEqual((repo / "chart/values.schema.json").read_text(encoding="utf-8"), SCHEMA)
+
     def test_apply_generates_resources_and_mount_then_repeated_apply_is_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)

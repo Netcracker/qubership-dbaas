@@ -28,7 +28,9 @@ including `deployments/`, `<service-name>-deployments/`, and Helm chart folders.
   draft to compare against the source, not something `apply_migration.py` applies.
 
 The writer requires `operatorNamespace` in every plan root and writes that value to every generated
-CR. Use the namespace of the dbaas-operator instance, which may differ from the workload namespace.
+CR. For chart-local output, use the `API_DBAAS_ADDRESS`-derived Helm expression in the skill's
+`references/mapping.md`; for plain output, use the verified literal operator namespace. It may
+differ from the workload namespace.
 
 ## Install
 

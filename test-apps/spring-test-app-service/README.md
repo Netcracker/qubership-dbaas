@@ -69,6 +69,12 @@ The jar depends on the dbaas client snapshot that carries the mounted-secret fea
 | `LOG_LEVEL` | root + dbaas log level | `INFO` |
 | `JAVA_TOOL_OPTIONS` | JVM options (heap sizing) | — |
 
+The `http://dbaas-aggregator:8080` default above is the standalone binary's fallback. The Helm chart
+sets `API_DBAAS_ADDRESS` to a namespaced in-cluster host (`http://dbaas-aggregator.dbaas:8080` by
+default): the `InternalDatabase` and `DatabaseSecretClaim` templates read its second DNS label as
+`spec.operatorNamespace`, so the chart value must keep the `<service>.<namespace>` form and a short
+host without a namespace label fails chart rendering.
+
 ## Notes
 
 - Pins **Spring Boot 4.0** to match the Spring line the dbaas client (`microservice-restclient 7.x`)

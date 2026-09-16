@@ -30,51 +30,44 @@ The chart ships no automated upgrade between the two models, so the path below i
 
 ## Setting the operator namespace
 
-`spec.operatorNamespace` is the namespace the dbaas-operator instance runs in. The operator compares it
-against its own `CLOUD_NAMESPACE`, which the chart injects from the pod's namespace through the downward
-API (`fieldRef: metadata.namespace` in
+`spec.operatorNamespace` must match the operator's `CLOUD_NAMESPACE`, which the chart injects from
+the pod's namespace through the downward API (`fieldRef: metadata.namespace` in
 [`Deployment.yaml`](../../helm-templates/dbaas-operator/templates/Deployment.yaml)) — so the operator
 side needs no configuration, and only the CR has to carry the value.
 
-In this migration the value is the one recorded from each `NamespaceBinding` in step 1. For a service
-adopting the operator later, it is the namespace the dbaas-operator Deployment is installed in.
+In this migration, use the value recorded from each `NamespaceBinding` in step 1.
 
 Nothing fills the field in automatically: the operator defines no defaulting webhook, so whatever
 applies the CR (Helm, a GitOps sync, `kubectl apply`) has to carry the value. The API server rejects a
 managed CR that omits it, and validates it as an RFC-1123 label: `MinLength=1`, `MaxLength=63`,
 lowercase alphanumerics and hyphens.
 
-Do not confuse it with a `CLOUD_NAMESPACE` that another component defines for its own namespace, as
-dbaas-aggregator does; the operator never reads those. A value pointing at a workload namespace leaves
-the resource assigned to no operator.
+Do not use the workload's `NAMESPACE` value.
 
-How a chart supplies the value is the service's own choice — there is no platform-provided variable that
-holds it. Prefer the explicit form below; the derived form is a convenience for charts that already
-carry the aggregator URL.
+`spec.operatorNamespace` is immutable. A wrong value cannot be corrected in place: the resource has to
+be deleted and recreated.
 
-**Explicit chart value.** The most direct form, and the one the sample charts in this repository use,
-where the value is named `DBAAS_OPERATOR_NAMESPACE`. The name carries no special meaning — it is an
-ordinary Helm value the deployment supplies:
+### Helm charts: derive it from the aggregator address
 
-```yaml
-spec:
-  operatorNamespace: '{{ .Values.DBAAS_OPERATOR_NAMESPACE }}'
-```
-
-**Derived from the aggregator address.** A chart that already carries the aggregator URL can take the
-namespace out of it instead of adding a value:
+Derive `spec.operatorNamespace` from the chart's `API_DBAAS_ADDRESS`:
 
 ```yaml
 spec:
   operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
 ```
 
-This reads the second DNS label of the aggregator's service name — the namespace dbaas-aggregator and the operator
-are deployed in. It depends on `API_DBAAS_ADDRESS` holding that in-cluster service name: an ingress or gateway host
-(`https://dbaas.example.com`) renders `example`, while a short in-namespace name (`http://dbaas-aggregator:8080`)
-fails loudly with `error calling index: reflect: slice index out of range`.
+For example, `API_DBAAS_ADDRESS: http://dbaas-aggregator.team-a-operator:8080` renders
+`operatorNamespace: "team-a-operator"`.
 
-A wrong value cannot be corrected in place: the field is immutable, so the resource has to be deleted and recreated.
+### Plain manifests: use the recorded namespace literally
+
+Helm cannot render a plain `kubectl apply` manifest, so set the literal namespace recorded from the
+`NamespaceBinding` in step 1:
+
+```yaml
+spec:
+  operatorNamespace: team-a-operator
+```
 
 ---
 
@@ -103,12 +96,14 @@ recorded. Use a context with cluster-wide read access.
    ```
 
 3. **Set the field in the service charts.** For each chart that ships managed CRs, render
-   `spec.operatorNamespace` on every CR template using the operator namespace recorded in step 1 — see
-   [Setting the operator namespace](#setting-the-operator-namespace) for the two ways to source it. The
+   `spec.operatorNamespace` on every CR template — see
+   [Setting the operator namespace](#setting-the-operator-namespace). A Helm chart that already carries
+   a namespaced `API_DBAAS_ADDRESS` derives the value from it; the
    [`go-test-app-service` chart](../../../test-apps/go-test-app-service/helm-templates/go-test-app-service) is a worked
-   example of the explicit form. Edit the charts now, but deploy them after step 4: the old CRD has no such field in
-   its schema, so an apply before the upgrade prunes the value without reporting anything. Skipping the edit makes the
-   *next* deployment of the service fail at admission, because the re-render applies a CR without a required field.
+   example. A chart without such an address must add one before it can use the expression. Edit the charts now, but
+   deploy them after step 4: the old CRD has no such field in its schema, so an apply before the upgrade prunes the
+   value without reporting anything. Skipping the edit makes the *next* deployment of the service fail at admission,
+   because the re-render applies a CR without a required field.
 
 4. **Upgrade the operator chart.** The new CRDs make `spec.operatorNamespace` required, and the `NamespaceBinding`
    CRD is dropped. CRs already stored without the field survive the upgrade and stay readable, but no operator

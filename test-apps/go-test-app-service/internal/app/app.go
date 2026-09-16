@@ -62,6 +62,10 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/postgres/items", handlePostgresItems(a.service, false))
 	// Q2: service + admin
 	mux.HandleFunc("/postgres-admin/items", handlePostgresItems(a.serviceAdmin, false))
+	// One atomic database round-trip on the Q2 datasource. The credential-rotation test calls it
+	// before and after a rotation to tell client recovery apart from a request that a warm pool
+	// happened to serve.
+	mux.HandleFunc("/postgres-admin/rotation-probe", handlePostgresRotationProbe(a.serviceAdmin))
 	// Q3: tenant + no role
 	mux.HandleFunc("/postgres-tenant/items", handlePostgresItems(a.tenant, true))
 	// Q4: tenant + admin
