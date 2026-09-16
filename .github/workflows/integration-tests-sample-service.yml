@@ -40,8 +40,6 @@ jobs:
       PROXY_IMAGE_REPOSITORY: dbaas-proxy
       PROXY_IMAGE_TAG: it
       TEST_NAMESPACE: dbaas
-      # Ant's junitreport task uses XSLT extension functions, which JDK 24 and later disable by default.
-      MAVEN_OPTS: -Djdk.xml.enableExtensionFunctions=true
 
     steps:
       - name: Checkout repository
