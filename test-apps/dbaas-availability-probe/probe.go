@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -105,13 +107,41 @@ func checkReady(client *http.Client, aggregatorURL string) checkFunc {
 	}
 }
 
-type healthResponse struct {
+// healthComponent is the subset of the aggregator's per-component health entry this probe ever
+// decodes. The real entry also carries a "details" field (arbitrary key/value diagnostic data, which
+// for the adapter-access indicator can include connection-related information) — that field has no
+// matching tag here, so encoding/json drops it during Decode and this process never holds it in any
+// variable that could reach a log line.
+type healthComponent struct {
 	Status string `json:"status"`
+}
+
+// healthResponse mirrors AggregatedHealthResponse's JSON shape: a top-level status plus a
+// "components" map keyed by component name (e.g. "adaptersAccessIndicator"), each with its own status.
+type healthResponse struct {
+	Status     string                     `json:"status"`
+	Components map[string]healthComponent `json:"components"`
+}
+
+// failingComponents returns "name:status" for every component not reporting UP, sorted for a
+// deterministic, testable error message. Never includes a component's details.
+func (h healthResponse) failingComponents() []string {
+	var failing []string
+	for name, c := range h.Components {
+		if c.Status != "UP" {
+			failing = append(failing, name+":"+c.Status)
+		}
+	}
+	sort.Strings(failing)
+	return failing
 }
 
 // checkHealth requires HTTP 200 AND a decoded body with status == "UP" from GET {aggregatorURL}/health.
 // The aggregator also returns HTTP 200 for a "PROBLEM" status, so the status code alone proves nothing
-// — the body must be decoded and checked on every cycle.
+// — the body must be decoded and checked on every cycle. On a non-UP status the returned error names
+// the failing component(s) and their status (e.g. "adaptersAccessIndicator:PROBLEM") so a recorded
+// failure is actionable — but never a component's details or the raw response body, either of which
+// can carry connection information.
 func checkHealth(client *http.Client, aggregatorURL string) checkFunc {
 	url := aggregatorURL + "/health"
 	return func(ctx context.Context) (int, error) {
@@ -132,6 +162,9 @@ func checkHealth(client *http.Client, aggregatorURL string) checkFunc {
 			return resp.StatusCode, fmt.Errorf("decode health response: %w", err)
 		}
 		if h.Status != "UP" {
+			if failing := h.failingComponents(); len(failing) > 0 {
+				return resp.StatusCode, fmt.Errorf("health status=%s components=%s", h.Status, strings.Join(failing, ","))
+			}
 			return resp.StatusCode, fmt.Errorf("health status=%s", h.Status)
 		}
 		return resp.StatusCode, nil

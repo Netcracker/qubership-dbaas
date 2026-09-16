@@ -72,10 +72,12 @@ func TestCheckHealth_UpSucceeds(t *testing.T) {
 
 func TestCheckHealth_ProblemWithHTTP200Fails(t *testing.T) {
 	// The aggregator returns HTTP 200 even when its own reported status is "PROBLEM" — the status code
-	// alone must never be treated as success.
+	// alone must never be treated as success. The error must name the failing component and its status
+	// (v6.15.0's cached adapters-access indicator is exactly this shape) so a recorded failure is
+	// actionable instead of just "health status=PROBLEM".
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"PROBLEM"}`))
+		_, _ = w.Write([]byte(`{"status":"PROBLEM","components":{"adaptersAccessIndicator":{"status":"PROBLEM"},"other":{"status":"UP"}}}`))
 	}))
 	defer srv.Close()
 
@@ -90,8 +92,79 @@ func TestCheckHealth_ProblemWithHTTP200Fails(t *testing.T) {
 	if res.HTTPCode != http.StatusOK {
 		t.Fatalf("expected httpCode 200 recorded even on a failed probe, got %d", res.HTTPCode)
 	}
+	if !strings.Contains(res.Error, "adaptersAccessIndicator:PROBLEM") {
+		t.Fatalf("expected the error to name the failing component and its status, got: %q", res.Error)
+	}
+	if strings.Contains(res.Error, "other:") {
+		t.Fatalf("expected only the failing component to be named, not the healthy one, got: %q", res.Error)
+	}
+}
+
+func TestCheckHealth_MalformedResponseFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{not valid json`))
+	}))
+	defer srv.Close()
+
+	var buf strings.Builder
+	var mu sync.Mutex
+	client := &http.Client{Timeout: time.Second}
+	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+
+	if res.Success {
+		t.Fatalf("expected failure for a malformed health response")
+	}
 	if res.Error == "" {
 		t.Fatalf("expected a non-empty error message")
+	}
+}
+
+func TestCheckHealth_Non200Fails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	var buf strings.Builder
+	var mu sync.Mutex
+	client := &http.Client{Timeout: time.Second}
+	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+
+	if res.Success {
+		t.Fatalf("expected failure for HTTP 503")
+	}
+	if res.HTTPCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected httpCode 503, got %d", res.HTTPCode)
+	}
+}
+
+func TestCheckHealth_NeverLogsComponentDetailsOrBody(t *testing.T) {
+	const leakedSecret = "s3cr3t-connection-detail"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"PROBLEM","components":{"adaptersAccessIndicator":{"status":"PROBLEM","details":{"url":"jdbc:postgresql://host/db","password":"` +
+			leakedSecret + `"}}}}`))
+	}))
+	defer srv.Close()
+
+	var buf strings.Builder
+	var mu sync.Mutex
+	client := &http.Client{Timeout: time.Second}
+	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+
+	if res.Success {
+		t.Fatalf("expected failure for status=PROBLEM")
+	}
+	output := buf.String()
+	if strings.Contains(output, leakedSecret) {
+		t.Fatalf("probe output must never contain a component's details, got: %s", output)
+	}
+	if strings.Contains(output, "jdbc:postgresql") {
+		t.Fatalf("probe output must never contain the raw health response body, got: %s", output)
+	}
+	if !strings.Contains(res.Error, "adaptersAccessIndicator:PROBLEM") {
+		t.Fatalf("expected the error to still name the failing component, got: %q", res.Error)
 	}
 }
 
@@ -395,5 +468,122 @@ func TestWaitReadyRetry_ErrorNeverContainsCredentialsOrResponseBody(t *testing.T
 	}
 	if strings.Contains(err.Error(), leakedPassword) {
 		t.Fatalf("error must never contain the sample service's response body, got: %v", err)
+	}
+}
+
+// --- waitStableHealth (pre-transition pod-direct health prerequisite) ---
+
+func healthyPodServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"UP"}`))
+	}))
+}
+
+func TestWaitStableHealth_BothPodsHealthyPasses(t *testing.T) {
+	pod1 := healthyPodServer(t)
+	defer pod1.Close()
+	pod2 := healthyPodServer(t)
+	defer pod2.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	pods := []podTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2", url: pod2.URL}}
+	checks := []checkFunc{checkHealth(client, pod1.URL), checkHealth(client, pod2.URL)}
+
+	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 3, time.Second)
+	if err != nil {
+		t.Fatalf("expected both healthy pods to pass, got: %v", err)
+	}
+}
+
+func TestWaitStableHealth_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
+	pod1 := healthyPodServer(t)
+	defer pod1.Close()
+	pod2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"PROBLEM","components":{"adaptersAccessIndicator":{"status":"PROBLEM"}}}`))
+	}))
+	defer pod2.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	pods := []podTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2-bad", url: pod2.URL}}
+	checks := []checkFunc{checkHealth(client, pod1.URL), checkHealth(client, pod2.URL)}
+
+	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 3, 20*time.Millisecond)
+	if err == nil {
+		t.Fatalf("expected a timeout error when one pod never becomes healthy")
+	}
+	if !strings.Contains(err.Error(), "pod-2-bad") || !strings.Contains(err.Error(), "adaptersAccessIndicator:PROBLEM") {
+		t.Fatalf("expected the error to name the failing pod and component, got: %v", err)
+	}
+}
+
+func TestWaitStableHealth_ResetsConsecutiveCountOnFailure(t *testing.T) {
+	// Fails on the 3rd call, then recovers — with stableConsecutive=3, this must never pass on the
+	// strength of the first two calls alone; it needs 3 in a row after the failure.
+	var calls int
+	pod := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"UP"}`))
+	}))
+	defer pod.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	pods := []podTarget{{name: "pod-1", url: pod.URL}}
+	checks := []checkFunc{checkHealth(client, pod.URL)}
+
+	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 3, 2*time.Second)
+	if err != nil {
+		t.Fatalf("expected eventual success once the pod recovers, got: %v", err)
+	}
+	if calls < 6 {
+		t.Fatalf("expected at least 6 calls (2 ok + 1 fail + 3 ok to reach 3 consecutive), got %d", calls)
+	}
+}
+
+func TestWaitStableHealth_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
+	// A pod pinned by IP that stops answering — because it was replaced — must fail the same way any
+	// other unreachable pod does; there is no separate "pod changed" code path to test independently.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve a local port: %v", err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close()
+
+	client := &http.Client{Timeout: 50 * time.Millisecond}
+	pods := []podTarget{{name: "pod-gone", url: "http://" + addr}}
+	checks := []checkFunc{checkHealth(client, "http://"+addr)}
+
+	waitErr := waitStableHealth(pods, checks, 50*time.Millisecond, time.Millisecond, 3, 20*time.Millisecond)
+	if waitErr == nil {
+		t.Fatalf("expected an error when the pinned pod is unreachable")
+	}
+	if !strings.Contains(waitErr.Error(), "pod-gone") {
+		t.Fatalf("expected the error to name the unreachable pod, got: %v", waitErr)
+	}
+}
+
+func TestWaitStableHealth_DoesNotPassAfterOverallTimeout(t *testing.T) {
+	pod := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(30 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"UP"}`))
+	}))
+	defer pod.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	pods := []podTarget{{name: "slow-pod", url: pod.URL}}
+	checks := []checkFunc{checkHealth(client, pod.URL)}
+
+	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 1, 10*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected the overall timeout to reject a late healthy response")
 	}
 }
