@@ -1,0 +1,204 @@
+name: DBaaS Transition (reusable)
+
+# Runs one direction (upgrade or downgrade) of the dbaas-aggregator availability test in a fresh Kind
+# cluster. The initial and target checkouts supply only their own dbaas-aggregator chart — nothing
+# else is taken from them. The fixture checkout (always the newer of the two versions, regardless of
+# direction) supplies the dbaas-operator chart and resource profile, so the operator never has to
+# match whichever aggregator version happens to be "initial" for a given direction and stays fixed
+# throughout. pgskipper supplies PostgreSQL/Patroni and the PostgreSQL adapter, pinned to a commit
+# that works with both aggregator versions. The harness (this branch) supplies the sample-service
+# chart and image, the probe app, and every script — see docs in .github/scripts/dbaas-transition/*.sh
+# for the per-stage detail; this file only wires the stages together.
+#
+# Called twice per run by dbaas-upgrade-downgrade.yml — once per direction — each getting its
+# own Kind cluster, so an upgrade-direction failure can never be caused by downgrade-direction state.
+
+on:
+  workflow_call:
+    inputs:
+      direction:
+        description: Which transition this run performs (upgrade or downgrade) — used only for labeling.
+        required: true
+        type: string
+      initial-version:
+        description: dbaas-aggregator version the environment starts on (e.g. 6.14.1, no leading "v").
+        required: true
+        type: string
+      target-version:
+        description: dbaas-aggregator version the Helm release is transitioned to (e.g. 6.15.0).
+        required: true
+        type: string
+      fixture-version:
+        description: >-
+          dbaas-operator version held fixed for the whole run, both directions (e.g. 6.15.0, no
+          leading "v") — always the newer of the two versions under test.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  transition:
+    name: ${{ inputs.direction }} ${{ inputs.initial-version }} -> ${{ inputs.target-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    permissions:
+      contents: read
+    concurrency:
+      group: dbaas-transition-${{ inputs.direction }}-${{ github.ref }}
+      cancel-in-progress: false
+
+    env:
+      PG_NAMESPACE: postgres
+      DBAAS_NAMESPACE: dbaas
+      KIND_CLUSTER: kind
+      GO_IMAGE_REPOSITORY: go-test-app-service
+      GO_IMAGE_TAG: it
+      PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
+      PROBE_IMAGE_TAG: it
+      CREDENTIALS_SECRET: dbaas-probe-credentials
+      # Every published dbaas-aggregator / dbaas-operator release tag and image tag in this repo's GHCR
+      # packages carries a leading "v" (verified against ghcr.io/v2/netcracker/qubership-dbaas and
+      # ghcr.io/v2/netcracker/qubership-dbaas-operator's tag lists) even though the workflow_dispatch
+      # inputs are given without one, matching the release page's display title.
+      INITIAL_TAG: v${{ inputs.initial-version }}
+      TARGET_TAG: v${{ inputs.target-version }}
+      FIXTURE_TAG: v${{ inputs.fixture-version }}
+      REPOS_DIR: ${{ github.workspace }}/repos
+      HARNESS_DIR: ${{ github.workspace }}/harness
+      INITIAL_DIR: ${{ github.workspace }}/repos/qubership-dbaas-initial
+      TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
+      FIXTURE_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
+      TRANSITION_TIMESTAMPS_FILE: ${{ github.workspace }}/transition-timestamps.txt
+      FIXTURE_FINGERPRINT_FILE: ${{ github.workspace }}/fixture-fingerprint.json
+      FIXED_COMPONENT_IMAGES_FILE: ${{ github.workspace }}/fixed-component-images.txt
+      ITEM_MARKER: dbaas-uptime-${{ github.run_id }}-${{ github.run_attempt }}
+      OUT_DIR: ${{ github.workspace }}/diagnostics
+
+    steps:
+      - name: Checkout harness (current branch — scripts, sample-service chart/image, probe app)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+
+      - name: Checkout initial-version dbaas (aggregator chart only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Netcracker/qubership-dbaas
+          ref: ${{ env.INITIAL_TAG }}
+          path: repos/qubership-dbaas-initial
+          persist-credentials: false
+
+      - name: Checkout target-version dbaas (aggregator chart only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Netcracker/qubership-dbaas
+          ref: ${{ env.TARGET_TAG }}
+          path: repos/qubership-dbaas-target
+          persist-credentials: false
+
+      - name: Checkout fixture-version dbaas (fixed operator chart and resource profile)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Netcracker/qubership-dbaas
+          ref: ${{ env.FIXTURE_TAG }}
+          path: repos/qubership-dbaas-fixture
+          persist-credentials: false
+
+      - name: Checkout pgskipper-operator (pinned commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Netcracker/pgskipper-operator
+          # Tag 1.55.0 (Sep 1, 2026) — the first pgskipper-operator release after dbaas v6.15.0
+          # (Aug 31, 2026) and close after v6.14.1 (Aug 19, 2026); includes the patroni leader-label
+          # fix from pgskipper PR #583 (see test-docs/patroni-leader-label-ci-failure.md). Pinned to
+          # the commit, not the mutable tag, per this workflow's own SHA-pinning rule; update this
+          # comment together with the SHA if the pin is ever deliberately moved.
+          ref: e05bed81afa7e81a59d4724a2d7f228fd7a72232 # tag: 1.55.0
+          path: repos/pgskipper-operator
+          persist-credentials: false
+
+      - name: Validate checkouts
+        run: |
+          set -euo pipefail
+          for dir in harness repos/qubership-dbaas-initial repos/qubership-dbaas-target \
+                     repos/qubership-dbaas-fixture repos/pgskipper-operator; do
+            echo "$dir -> $(git -C "$dir" rev-parse HEAD)"
+          done
+
+      - name: Create kind config
+        run: |
+          cat <<EOF_KIND > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          kubeadmConfigPatches:
+            - |
+              kind: ClusterConfiguration
+              apiServer:
+                extraArgs:
+                  - name: enable-admission-plugins
+                    value: NodeRestriction,OwnerReferencesPermissionEnforcement
+          nodes:
+            - role: control-plane
+            - role: worker
+              labels:
+                region: database
+            - role: worker
+          EOF_KIND
+
+      - name: Set up Kind
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        with:
+          version: v0.32.0
+          cluster_name: kind
+          config: kind-config.yaml
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Build go-test-app-service image from harness source and load into kind
+        run: |
+          docker build -t "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" \
+            harness/test-apps/go-test-app-service
+          kind load docker-image "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" --name "$KIND_CLUSTER"
+
+      - name: Test and build dbaas-availability-probe image, then load into kind
+        run: |
+          docker build -t "$PROBE_IMAGE_REPOSITORY:$PROBE_IMAGE_TAG" \
+            harness/test-apps/dbaas-availability-probe
+          kind load docker-image "$PROBE_IMAGE_REPOSITORY:$PROBE_IMAGE_TAG" --name "$KIND_CLUSTER"
+
+      - name: Generate and mask test passwords
+        run: |
+          set -euo pipefail
+          for var in POSTGRES_PASSWORD DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD DBAAS_TENANT_PASSWORD \
+                     DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD DISCR_TOOL_USER_PASSWORD BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD; do
+            value="$(openssl rand -hex 20)"
+            echo "::add-mask::$value"
+            echo "$var=$value" >> "$GITHUB_ENV"
+          done
+
+      - name: Deploy fixture (patroni, adapter, initial aggregator, fixed operator, sample service, probe, initial verification)
+        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/deploy-fixture.sh"
+
+      - name: Transition the aggregator release and run post-transition verification
+        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/transition-aggregator.sh"
+
+      - name: Evaluate probe results (strict zero-failure gate)
+        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/evaluate-probes.sh"
+
+      - name: Collect diagnostics
+        if: always()
+        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/collect-diagnostics.sh"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dbaas-transition-${{ inputs.direction }}-diagnostics
+          path: ${{ env.OUT_DIR }}/**
+          if-no-files-found: warn
