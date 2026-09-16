@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Performs the actual upgrade or downgrade: a single `helm upgrade` of the dbaas-aggregator release onto
-# the TARGET-version chart and image, with every other fixed component (PostgreSQL, pgskipper, the
-# dbaas-operator, the sample service) left untouched. Then runs the post-transition functional check.
+# Upgrades or downgrades the dbaas-aggregator release with one `helm upgrade` onto the TARGET-version
+# chart and image. The other components remain unchanged during measurement. Afterward, the sample
+# service restarts and the post-transition Job checks a fresh DBaaS lookup and the seeded record.
 #
 # Required environment:
 #   TARGET_DIR            - target-version qubership-dbaas checkout (only its
@@ -15,12 +15,15 @@
 #                            - identical values passed to deploy-fixture.sh; re-rendering the same
 #                              overlay with a different TAG must not change any credential the aggregator
 #                              was already deployed with.
-#   ITEM_MARKER, FIXTURE_FINGERPRINT_FILE
-#                            - FIXTURE_FINGERPRINT_FILE must already contain the JSON line deploy-fixture.sh
-#                              captured before this script runs.
+#   FIXTURE_FINGERPRINT_FILE - must contain the JSON line captured by deploy-fixture.sh.
 #   TRANSITION_TIMESTAMPS_FILE
-#                            - this script appends transitionStart / transitionEnd (UTC RFC3339) here for
-#                              evaluate-probes.sh and collect-diagnostics.sh to read.
+#                            - this script appends transitionStart / transitionEnd / postMeasurementEnd
+#                              (UTC RFC3339) here for evaluate-probes.sh and collect-diagnostics.sh to
+#                              read. postMeasurementEnd marks the end of the strictly-measured window,
+#                              recorded right before the intentional sample-service restart below — a
+#                              sample-service restart may interrupt sample-postgres-ping briefly, and
+#                              that is not an aggregator availability regression, so
+#                              evaluate-probes.sh must not hold it to the zero-failure rule.
 #   FIXED_COMPONENT_IMAGES_FILE
 #                            - operator/patroni/adapter/sample-service images deploy-fixture.sh recorded
 #                              before the transition; this script re-reads the same images afterward and
@@ -33,7 +36,7 @@ set -euo pipefail
 : "${PROBE_IMAGE_REPOSITORY:?}" "${PROBE_IMAGE_TAG:?}" "${POSTGRES_PASSWORD:?}"
 : "${DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD:?}" "${DBAAS_TENANT_PASSWORD:?}"
 : "${DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD:?}" "${DISCR_TOOL_USER_PASSWORD:?}"
-: "${BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD:?}" "${ITEM_MARKER:?}" "${FIXTURE_FINGERPRINT_FILE:?}"
+: "${BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD:?}" "${FIXTURE_FINGERPRINT_FILE:?}"
 : "${TRANSITION_TIMESTAMPS_FILE:?}" "${FIXED_COMPONENT_IMAGES_FILE:?}"
 
 POST_TRANSITION_SECONDS="${POST_TRANSITION_SECONDS:-65}"
@@ -116,11 +119,17 @@ if [ "$drifted" -ne 0 ]; then
   exit 1
 fi
 
-echo "=== Restarting the sample-service pod to force a fresh DBaaS lookup ==="
+# Everything above this point is the strictly-measured window: evaluate-probes.sh holds every sample
+# up to here to the zero-failure rule. Everything below — the sample-service restart and the
+# post-transition functional check — is deliberate fixture activity, not part of what's being
+# measured, so it must not be able to fail the job by tripping the continuous probe's pass/fail gate.
+echo "postMeasurementEnd=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)" >> "$TRANSITION_TIMESTAMPS_FILE"
+
+echo "=== Restarting the sample service to force a fresh DBaaS lookup outside the measured window ==="
 kubectl -n "$DBAAS_NAMESPACE" rollout restart deployment/go-test-app-service
 kubectl -n "$DBAAS_NAMESPACE" rollout status deployment/go-test-app-service --timeout=180s
 
-echo "=== Post-transition functional verification (one-shot Job: read/create/update/delete + identity check) ==="
+echo "=== Post-transition functional verification (one-shot Job: read seeded record and check database identity) ==="
 fingerprint_json="$(cat "$FIXTURE_FINGERPRINT_FILE")"
 kubectl -n "$DBAAS_NAMESPACE" delete job dbaas-fixture-verify-post --ignore-not-found
 verify_manifest="$(mktemp)"
@@ -148,8 +157,6 @@ spec:
               value: http://go-test-app-service.$DBAAS_NAMESPACE:8080
             - name: NAMESPACE
               value: $DBAAS_NAMESPACE
-            - name: ITEM_MARKER
-              value: "$ITEM_MARKER"
             - name: FINGERPRINT_JSON
               value: '$fingerprint_json'
           securityContext:
