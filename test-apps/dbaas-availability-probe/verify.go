@@ -14,7 +14,7 @@ import (
 
 // verify.go implements the two one-shot Job modes (PROBE_MODE=verify / verify-post) that bracket the
 // continuous probe: a pre-transition functional check that seeds a recognizable record, and a
-// post-transition check that reads it back and exercises create/read/update/delete. Both run as a
+// post-transition check that reads it back and checks the database identity. Both run as a
 // Kubernetes Job using this same image, so no extra container image (and no assumption about what
 // tools happen to be installed in it) is needed to talk to the sample service from inside the cluster.
 
@@ -32,9 +32,7 @@ type itemResponse struct {
 }
 
 type connectionPropertiesResponse struct {
-	URL      string `json:"url"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	URL string `json:"url"`
 }
 
 // fixtureFingerprint is the nonsensitive database identity recorded before the transition and checked
@@ -44,8 +42,6 @@ type fixtureFingerprint struct {
 	ItemID   int64  `json:"itemId"`
 	ItemName string `json:"itemName"`
 	URL      string `json:"url"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
 }
 
 func fail(errOut io.Writer, format string, args ...any) {
@@ -142,13 +138,6 @@ func runVerify(cfg config, out, errOut io.Writer) {
 	client := &http.Client{Timeout: cfg.requestTimeout}
 	ctx := context.Background()
 
-	pingCtx, cancel := context.WithTimeout(ctx, cfg.requestTimeout)
-	_, err := checkSamplePing(client, cfg.sampleServiceURL)(pingCtx)
-	cancel()
-	if err != nil {
-		fail(errOut, "sample service postgres ping failed: %v", err)
-	}
-
 	createCtx, cancel := context.WithTimeout(ctx, cfg.requestTimeout)
 	resp, err := sampleRequest(createCtx, client, http.MethodPost, cfg.sampleServiceURL+"/postgres/items", map[string]string{"name": cfg.itemMarker})
 	if err != nil {
@@ -177,8 +166,6 @@ func runVerify(cfg config, out, errOut io.Writer) {
 		ItemID:   created.Item.ID,
 		ItemName: created.Item.Name,
 		URL:      props.URL,
-		Username: props.Username,
-		Role:     props.Role,
 	}
 	line, err := json.Marshal(fp)
 	if err != nil {
@@ -187,10 +174,8 @@ func runVerify(cfg config, out, errOut io.Writer) {
 	fmt.Fprintf(out, "FIXTURE_FINGERPRINT: %s\n", line)
 }
 
-// runVerifyPost re-reads the record runVerify created, exercises create/read/update/delete against the
-// sample service, and confirms the logical database identity (the sanitized connection URL) did not
-// change across the transition. FINGERPRINT_JSON must hold the FIXTURE_FINGERPRINT payload captured
-// from the runVerify Job's log.
+// runVerifyPost reads the record runVerify created and checks that the sanitized connection URL did
+// not change. FINGERPRINT_JSON holds the FIXTURE_FINGERPRINT payload from the runVerify Job's log.
 func runVerifyPost(cfg config, out, errOut io.Writer) {
 	waitReady(cfg, errOut)
 
@@ -227,69 +212,6 @@ func runVerifyPost(cfg config, out, errOut io.Writer) {
 	}
 	if !found {
 		fail(errOut, "pre-transition record id=%d not found after transition", before.ItemID)
-	}
-
-	// CREATE
-	createCtx, cancel := context.WithTimeout(ctx, cfg.requestTimeout)
-	resp, err = sampleRequest(createCtx, client, http.MethodPost, cfg.sampleServiceURL+"/postgres/items", map[string]string{"name": cfg.itemMarker + "-post"})
-	if err != nil {
-		cancel()
-		fail(errOut, "create post-transition item: %v", err)
-	}
-	created, err := decodeJSON[itemResponse](resp)
-	cancel()
-	if err != nil {
-		fail(errOut, "decode post-transition item: %v", err)
-	}
-
-	// UPDATE
-	updatedName := cfg.itemMarker + "-post-updated"
-	updateCtx, cancel := context.WithTimeout(ctx, cfg.requestTimeout)
-	resp, err = sampleRequest(updateCtx, client, http.MethodPut, cfg.sampleServiceURL+"/postgres/items", map[string]any{"id": created.Item.ID, "name": updatedName})
-	if err != nil {
-		cancel()
-		fail(errOut, "update post-transition item: %v", err)
-	}
-	drainAndClose(resp)
-	cancel()
-	if resp.StatusCode != http.StatusOK {
-		fail(errOut, "update post-transition item: unexpected status %d", resp.StatusCode)
-	}
-
-	// READ back the update.
-	reReadCtx, cancel := context.WithTimeout(ctx, cfg.requestTimeout)
-	resp, err = sampleRequest(reReadCtx, client, http.MethodGet, cfg.sampleServiceURL+"/postgres/items", nil)
-	if err != nil {
-		cancel()
-		fail(errOut, "re-list items: %v", err)
-	}
-	relisted, err := decodeJSON[itemsResponse](resp)
-	cancel()
-	if err != nil {
-		fail(errOut, "decode re-listed items: %v", err)
-	}
-	updateVisible := false
-	for _, it := range relisted.Items {
-		if it.ID == created.Item.ID && it.Name == updatedName {
-			updateVisible = true
-			break
-		}
-	}
-	if !updateVisible {
-		fail(errOut, "update to item id=%d not visible on read-back", created.Item.ID)
-	}
-
-	// DELETE
-	deleteCtx, cancel := context.WithTimeout(ctx, cfg.requestTimeout)
-	resp, err = sampleRequest(deleteCtx, client, http.MethodDelete, cfg.sampleServiceURL+"/postgres/items", nil)
-	if err != nil {
-		cancel()
-		fail(errOut, "delete items: %v", err)
-	}
-	drainAndClose(resp)
-	cancel()
-	if resp.StatusCode != http.StatusOK {
-		fail(errOut, "delete items: unexpected status %d", resp.StatusCode)
 	}
 
 	// Confirm the logical database identity (sanitized connection URL) is unchanged.

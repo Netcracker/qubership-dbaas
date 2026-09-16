@@ -9,9 +9,14 @@ run-name: >
 # operator is fixed at the newer of the two versions for both directions (fixture-version below) —
 # it already supports both the initial and target aggregator's CR contract, so neither direction needs
 # operator-version-specific setup. Each direction runs in its own fresh Kind cluster via the reusable
-# worker workflow — see re-dbaas-aggregator-transition.yml and .github/scripts/dbaas-transition/*.sh
-# for the implementation. A full operator/CRD upgrade is a separate, future test and is intentionally
-# out of scope here.
+# worker workflow — see re-dbaas-transition.yml and .github/scripts/dbaas-transition/*.sh for the
+# implementation. A full operator/CRD upgrade is a separate, future test and is intentionally out of
+# scope here.
+#
+# No concurrency block here deliberately: re-dbaas-transition.yml's own job-level concurrency group is
+# keyed by direction, so upgrade and downgrade run in parallel within one dispatch while repeated
+# dispatches of the same direction still serialize. A workflow-level group here, keyed only by ref,
+# would serialize the two directions against each other too and make that inner grouping pointless.
 
 on:
   workflow_dispatch:
@@ -38,18 +43,13 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: dbaas-upgrade-downgrade-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   upgrade:
     name: Upgrade ${{ github.event.inputs.older-version }} -> ${{ github.event.inputs.newer-version }}
     if: ${{ github.event.inputs.direction == 'both' || github.event.inputs.direction == 'upgrade' }}
     permissions:
       contents: read
-      packages: read
-    uses: ./.github/workflows/re-dbaas-aggregator-transition.yml
+    uses: ./.github/workflows/re-dbaas-transition.yml
     with:
       direction: upgrade
       initial-version: ${{ github.event.inputs.older-version }}
@@ -61,8 +61,7 @@ jobs:
     if: ${{ github.event.inputs.direction == 'both' || github.event.inputs.direction == 'downgrade' }}
     permissions:
       contents: read
-      packages: read
-    uses: ./.github/workflows/re-dbaas-aggregator-transition.yml
+    uses: ./.github/workflows/re-dbaas-transition.yml
     with:
       direction: downgrade
       initial-version: ${{ github.event.inputs.newer-version }}

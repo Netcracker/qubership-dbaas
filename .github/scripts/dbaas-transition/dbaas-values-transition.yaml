@@ -29,9 +29,8 @@ REPLICA_ROLLING_TIMEOUT_SECONDS: 600
 LIVENESS_PROBE_INITIAL_DELAY_SECONDS: 120
 REGION_DBAAS: ${REGION_DBAAS}
 NODE_SELECTOR_DBAAS_KEY: ${NODE_SELECTOR_DBAAS_KEY}
-# Explicit — never Recreate. The plan requires the test to fail early if the live Deployment ever uses
-# a recreate strategy; evaluate-probes.sh / transition-aggregator.sh independently check the rendered
-# Deployment's strategy type as a second line of defense against this value being lost on `helm upgrade`.
+# Keep RollingUpdate for the initial and target charts. deploy-fixture.sh rejects a Recreate strategy
+# before measurement; the continuous probes check availability during the Helm upgrade.
 DBAAS_RECREATE_DEPLOYMENT_STRATEGY: false
 
 LOG_LEVEL: "INFO"

@@ -1,4 +1,4 @@
-name: DBaaS Aggregator Transition (reusable)
+name: DBaaS Transition (reusable)
 
 # Runs one direction (upgrade or downgrade) of the dbaas-aggregator availability test in a fresh Kind
 # cluster. The initial and target checkouts supply only their own dbaas-aggregator chart — nothing
@@ -44,7 +44,6 @@ jobs:
     timeout-minutes: 70
     permissions:
       contents: read
-      packages: read
     concurrency:
       group: dbaas-transition-${{ inputs.direction }}-${{ github.ref }}
       cancel-in-progress: false
@@ -161,13 +160,13 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
-      - name: Build go-test-app-service image (harness source, so it has the CRUD-update endpoint the post-transition check needs) and load into kind
+      - name: Build go-test-app-service image from harness source and load into kind
         run: |
           docker build -t "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" \
             harness/test-apps/go-test-app-service
           kind load docker-image "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" --name "$KIND_CLUSTER"
 
-      - name: Build dbaas-availability-probe image (harness source) and load into kind
+      - name: Test and build dbaas-availability-probe image, then load into kind
         run: |
           docker build -t "$PROBE_IMAGE_REPOSITORY:$PROBE_IMAGE_TAG" \
             harness/test-apps/dbaas-availability-probe

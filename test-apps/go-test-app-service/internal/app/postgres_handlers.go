@@ -30,11 +30,6 @@ type createPostgresItemRequest struct {
 	Name string `json:"name"`
 }
 
-type updatePostgresItemRequest struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-}
-
 // withTenant pins the fixed tenant into the context for the tenant-scoped quadrants (Q3/Q4), so the
 // tenant classifier resolves to a static {scope=tenant, tenantId=acme} that matches the mounted
 // secret. It is a no-op for the service-scoped quadrants.
@@ -112,8 +107,6 @@ func handlePostgresItems(db pgdbaas.Database, pinTenant bool) http.HandlerFunc {
 			listPostgresItems(w, r, db, pinTenant)
 		case http.MethodPost:
 			createPostgresItem(w, r, db, pinTenant)
-		case http.MethodPut:
-			updatePostgresItem(w, r, db, pinTenant)
 		case http.MethodDelete:
 			deletePostgresItems(w, r, db, pinTenant)
 		default:
@@ -199,59 +192,6 @@ func createPostgresItem(w http.ResponseWriter, r *http.Request, db pgdbaas.Datab
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"item": item})
-}
-
-func updatePostgresItem(w http.ResponseWriter, r *http.Request, db pgdbaas.Database, pinTenant bool) {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
-	var request updatePostgresItemRequest
-	if err := decoder.Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		writeError(w, http.StatusBadRequest, errors.New("request body must contain a single JSON object"))
-		return
-	}
-
-	name := strings.TrimSpace(request.Name)
-	if name == "" {
-		writeError(w, http.StatusBadRequest, errors.New("name is required"))
-		return
-	}
-	if len(name) > 200 {
-		writeError(w, http.StatusBadRequest, errors.New("name is too long"))
-		return
-	}
-	if request.ID <= 0 {
-		writeError(w, http.StatusBadRequest, errors.New("id is required"))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(withTenant(r.Context(), pinTenant), dbOperationTimeout)
-	defer cancel()
-
-	sqlDB, err := postgresSQLDB(ctx, db)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	var item postgresItem
-	err = sqlDB.QueryRowContext(
-		ctx,
-		fmt.Sprintf("UPDATE %s SET name = $1 WHERE id = $2 RETURNING id, name, created_at", postgresmigrations.ItemsTable),
-		name, request.ID,
-	).Scan(&item.ID, &item.Name, &item.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, fmt.Errorf("item %d not found", request.ID))
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("update postgres item: %w", err))
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{"item": item})
 }
 
 func deletePostgresItems(w http.ResponseWriter, r *http.Request, db pgdbaas.Database, pinTenant bool) {
