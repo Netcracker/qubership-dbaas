@@ -2,7 +2,11 @@
 # Best-effort diagnostics for the dbaas-aggregator transition test. Intended to run under `if: always()`,
 # so it must never fail the job itself — every kubectl/helm call is guarded with `|| true` and there is
 # no `set -e`. Never dumps a rendered Kubernetes Secret or a raw classifier/connection-properties
-# response body; only describe/log/event/status output, which does not carry credentials.
+# response body.
+#
+# Raw dbaas-aggregator logs include encrypted password fields, so this script uploads only known
+# health warnings. It also copies the initial pods' evidence that deploy-fixture.sh captured before
+# the rolling update replaced them.
 set -uo pipefail
 
 : "${PG_NAMESPACE:?}" "${DBAAS_NAMESPACE:?}"
@@ -50,9 +54,8 @@ kubectl -n "$DBAAS_NAMESPACE" describe deployment dbaas-aggregator > "$OUT_DIR/d
 kubectl -n "$DBAAS_NAMESPACE" describe deployment dbaas-operator > "$OUT_DIR/dbaas-operator.describe.txt" 2>&1 || true
 kubectl -n "$DBAAS_NAMESPACE" describe deployment go-test-app-service > "$OUT_DIR/go-test-app-service.describe.txt" 2>&1 || true
 
-echo "=== Pod describe + logs (current and previous) ==="
+echo "=== Pod describe + logs (current and previous) — dbaas-aggregator excluded, see below ==="
 DEPLOY_NS_PAIRS=(
-  "dbaas-aggregator:$DBAAS_NAMESPACE"
   "dbaas-operator:$DBAAS_NAMESPACE"
   "go-test-app-service:$DBAAS_NAMESPACE"
   "dbaas-availability-probe:$DBAAS_NAMESPACE"
@@ -77,9 +80,40 @@ for pair in "${DEPLOY_NS_PAIRS[@]}"; do
   done
 done
 
-echo "=== Fixture Job logs (verify / verify-post) ==="
+echo "=== dbaas-aggregator: describe + sanitized health evidence only (raw logs contain encrypted password fields) ==="
+agg_selector=$(
+  kubectl get deploy dbaas-aggregator -n "$DBAAS_NAMESPACE" -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{printf "%s=%s\n" $k $v}}{{end}}' 2>/dev/null \
+    | paste -sd, -
+)
+if [ -z "$agg_selector" ]; then
+  echo "No deployment dbaas-aggregator in $DBAAS_NAMESPACE" >> "$OUT_DIR/missing-deployments.txt"
+else
+  kubectl -n "$DBAAS_NAMESPACE" describe pod -l "$agg_selector" > "$OUT_DIR/dbaas-aggregator.pods-describe.txt" 2>&1 || true
+  {
+    for pod in $(kubectl get pods -n "$DBAAS_NAMESPACE" -l "$agg_selector" -o name 2>/dev/null); do
+      pod_name=${pod#pod/}
+      for suffix in "" "--previous"; do
+        echo "--- $pod_name ${suffix:-current} ---"
+        # shellcheck disable=SC2086 # $suffix is a fixed, script-controlled flag, not user input
+        kubectl logs "$pod" -n "$DBAAS_NAMESPACE" --all-containers=true --tail=2000 $suffix 2>/dev/null \
+          | grep -E \
+              -e '\[class=AdapterHealthCheck\] [A-Za-z0-9_-]+ [A-Za-z0-9_.:-]+ has problem\. Status: (PROBLEM|UNKNOWN|DOWN)$' \
+              -e '\[class=AbstractDbaasAdapterRESTClient\] Failed to get health of adapter of type [A-Za-z0-9_-]+$' \
+              -e '\[class=DbaasPostgresConnectHealthCheck\] Postgres connection is lost$' \
+          || true
+      done
+    done
+  } > "$OUT_DIR/dbaas-aggregator.health-evidence.txt"
+fi
+
+echo "=== Initial aggregator pods' health evidence (captured before the rollout replaced them) ==="
+[ -n "${INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE:-}" ] && [ -f "$INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE" ] && \
+  cp "$INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE" "$OUT_DIR/dbaas-aggregator.initial-health-evidence.txt" || true
+
+echo "=== Fixture Job logs (verify / verify-post / verify-health) ==="
 kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-verify --all-containers=true > "$OUT_DIR/job-dbaas-fixture-verify.log" 2>&1 || true
 kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-verify-post --all-containers=true > "$OUT_DIR/job-dbaas-fixture-verify-post.log" 2>&1 || true
+kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-verify-health --all-containers=true > "$OUT_DIR/job-dbaas-fixture-verify-health.log" 2>&1 || true
 
 echo "=== Transition timestamps ==="
 [ -n "${TRANSITION_TIMESTAMPS_FILE:-}" ] && [ -f "$TRANSITION_TIMESTAMPS_FILE" ] && \

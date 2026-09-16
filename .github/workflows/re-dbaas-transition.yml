@@ -72,6 +72,7 @@ jobs:
       TRANSITION_TIMESTAMPS_FILE: ${{ github.workspace }}/transition-timestamps.txt
       FIXTURE_FINGERPRINT_FILE: ${{ github.workspace }}/fixture-fingerprint.json
       FIXED_COMPONENT_IMAGES_FILE: ${{ github.workspace }}/fixed-component-images.txt
+      INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE: ${{ github.workspace }}/initial-aggregator-health-evidence.txt
       ITEM_MARKER: dbaas-uptime-${{ github.run_id }}-${{ github.run_attempt }}
       OUT_DIR: ${{ github.workspace }}/diagnostics
 

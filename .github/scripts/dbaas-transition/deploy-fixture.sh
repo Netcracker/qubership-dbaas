@@ -17,9 +17,10 @@
 #     InternalDatabase template, and its image uses the configured DBaaS client for /postgres/ping.
 #     API_DBAAS_ADDRESS is the only DBaaS routing value passed to the chart.
 #
-# Then deploys the continuous availability probe and runs the one-shot pre-transition functional
-# check. The fixed components remain unchanged during measurement. The sample service restarts only
-# after the measured window to check a fresh DBaaS lookup.
+# Then deploys the continuous availability probe, requires both aggregator pods to report stable
+# health directly (a bounded pre-transition prerequisite — see below), and runs the one-shot
+# pre-transition functional check. The fixed components remain unchanged during measurement. The
+# sample service restarts only after the measured window to check a fresh DBaaS lookup.
 #
 # Required environment (all set by the calling workflow step):
 #   REPOS_DIR                   - contains pgskipper-operator/ (pinned commit checkout), matching the
@@ -47,7 +48,12 @@
 #   FIXED_COMPONENT_IMAGES_FILE - path this script writes the initial operator/patroni/adapter/sample
 #                                  image references to, for transition-aggregator.sh to confirm none of
 #                                  them drifted across the transition.
-#   TRANSITION_TIMESTAMPS_FILE  - path this script writes probeStart to after the probe rollout.
+#   INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE
+#                                - path this script writes the initial aggregator pods' identities and
+#                                  sanitized health-related log lines to, before the transition's
+#                                  rolling update replaces those pods and their logs become unreachable.
+#   TRANSITION_TIMESTAMPS_FILE  - path this script writes probeStart to, once the pre-transition health
+#                                  prerequisite (below) has passed.
 #   BASELINE_SECONDS            - how long to let the continuous probe run before returning (default 40).
 set -euo pipefail
 
@@ -58,6 +64,7 @@ set -euo pipefail
 : "${DBAAS_TENANT_PASSWORD:?}" "${DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD:?}" "${DISCR_TOOL_USER_PASSWORD:?}"
 : "${BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD:?}" "${ITEM_MARKER:?}" "${FIXTURE_FINGERPRINT_FILE:?}"
 : "${FIXED_COMPONENT_IMAGES_FILE:?}" "${TRANSITION_TIMESTAMPS_FILE:?}"
+: "${INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE:?}"
 
 BASELINE_SECONDS="${BASELINE_SECONDS:-40}"
 DBAAS_VALUES_FILE="$HARNESS_DIR/.github/scripts/dbaas-transition/dbaas-values-transition.yaml"
@@ -218,6 +225,100 @@ sed \
 kubectl apply -f "$probe_manifest"
 rm -f "$probe_manifest"
 kubectl -n "$DBAAS_NAMESPACE" rollout status deployment/dbaas-availability-probe --timeout=120s
+
+echo "=== Resolving the two ready dbaas-aggregator pods for the pre-transition health prerequisite ==="
+readypods="$(kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
+  | jq -r '.items[] | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' | sort)"
+readypod_count="$(printf '%s\n' "$readypods" | grep -c . || true)"
+if [ "$readypod_count" -ne 2 ]; then
+  echo "Expected exactly 2 ready dbaas-aggregator pods before the health prerequisite, found $readypod_count:" >&2
+  printf '%s\n' "$readypods" >&2
+  exit 1
+fi
+pod1_name="$(printf '%s\n' "$readypods" | sed -n '1p' | cut -d' ' -f1)"
+pod1_ip="$(printf '%s\n' "$readypods" | sed -n '1p' | cut -d' ' -f2)"
+pod2_name="$(printf '%s\n' "$readypods" | sed -n '2p' | cut -d' ' -f1)"
+pod2_ip="$(printf '%s\n' "$readypods" | sed -n '2p' | cut -d' ' -f2)"
+echo "pod 1: $pod1_name ($pod1_ip)"
+echo "pod 2: $pod2_name ($pod2_ip)"
+
+echo "=== Pre-transition health prerequisite: both aggregator pods report status=UP directly, not via the Service ==="
+# The initial release can report status=PROBLEM from a cached adapter-health indicator before the
+# transition starts. Checking each pod before probeStart classifies this as a setup failure instead
+# of transition downtime. PROBE_MODE=verify-health uses the same checkHealth function as the
+# continuous probe.
+kubectl -n "$DBAAS_NAMESPACE" delete job dbaas-fixture-verify-health --ignore-not-found
+verify_health_manifest="$(mktemp)"
+cat > "$verify_health_manifest" <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dbaas-fixture-verify-health
+  namespace: $DBAAS_NAMESPACE
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify-health
+          image: $PROBE_IMAGE_REPOSITORY:$PROBE_IMAGE_TAG
+          imagePullPolicy: Never
+          env:
+            - name: PROBE_MODE
+              value: verify-health
+            - name: AGGREGATOR_POD_1_NAME
+              value: "$pod1_name"
+            - name: AGGREGATOR_POD_1_URL
+              value: "http://$pod1_ip:8080"
+            - name: AGGREGATOR_POD_2_NAME
+              value: "$pod2_name"
+            - name: AGGREGATOR_POD_2_URL
+              value: "http://$pod2_ip:8080"
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: [ALL]
+EOF
+kubectl apply -f "$verify_health_manifest"
+rm -f "$verify_health_manifest"
+
+if ! kubectl -n "$DBAAS_NAMESPACE" wait --for=condition=complete job/dbaas-fixture-verify-health --timeout=240s; then
+  echo "Pre-transition health prerequisite failed or timed out; its log (stderr only shows FIXTURE_ERROR, never credentials):" >&2
+  kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-verify-health --all-containers=true >&2 || true
+  exit 1
+fi
+echo "Both aggregator pods reported stable health — proceeding"
+
+current_readypods="$(kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
+  | jq -r '.items[] | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' | sort)"
+if [ "$current_readypods" != "$readypods" ]; then
+  echo "Aggregator pods changed or restarted during the health prerequisite" >&2
+  exit 1
+fi
+
+echo "=== Preserving health warnings from the initial aggregator pods before the rollout replaces them ==="
+# Only known health warnings are uploaded. Raw aggregator logs include encrypted password fields.
+{
+  echo "pod1=$pod1_name"
+  echo "pod2=$pod2_name"
+  for pod in "$pod1_name" "$pod2_name"; do
+    echo "--- $pod ---"
+    kubectl -n "$DBAAS_NAMESPACE" logs "$pod" --all-containers=true --tail=5000 2>/dev/null \
+      | grep -E \
+          -e '\[class=AdapterHealthCheck\] [A-Za-z0-9_-]+ [A-Za-z0-9_.:-]+ has problem\. Status: (PROBLEM|UNKNOWN|DOWN)$' \
+          -e '\[class=AbstractDbaasAdapterRESTClient\] Failed to get health of adapter of type [A-Za-z0-9_-]+$' \
+          -e '\[class=DbaasPostgresConnectHealthCheck\] Postgres connection is lost$' \
+      || true
+  done
+} > "$INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE"
+
 printf 'probeStart=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)" > "$TRANSITION_TIMESTAMPS_FILE"
 
 echo "=== Initial functional verification (one-shot Job: ping, seed a recognizable record, fingerprint) ==="

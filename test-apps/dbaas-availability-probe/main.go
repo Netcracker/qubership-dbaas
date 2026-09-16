@@ -91,6 +91,8 @@ func main() {
 		runVerify(cfg, os.Stdout, os.Stderr)
 	case "verify-post":
 		runVerifyPost(cfg, os.Stdout, os.Stderr)
+	case "verify-health":
+		runVerifyHealth(cfg, os.Stdout, os.Stderr)
 	default:
 		runContinuousProbe(cfg, os.Stdout)
 	}

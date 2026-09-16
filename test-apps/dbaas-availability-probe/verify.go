@@ -232,3 +232,102 @@ func runVerifyPost(cfg config, out, errOut io.Writer) {
 
 	fmt.Fprintln(out, "FIXTURE_POST_OK")
 }
+
+// podTarget names one aggregator pod and the direct URL (pod IP, not the Service) this check polls.
+type podTarget struct {
+	name string
+	url  string
+}
+
+// checkAllPodsOnce runs every pod's checkFunc once and reports whether all of them succeeded. It
+// always checks every pod, even after an earlier one fails, so a genuine double failure is reported
+// as such rather than only naming the first pod. The returned message identifies the failing pod(s) by
+// name; the per-pod error text comes from checkFunc's own contract (checkHealth in particular), which
+// never includes a component's details or the raw response body.
+func checkAllPodsOnce(ctx context.Context, pods []podTarget, checks []checkFunc, requestTimeout time.Duration) (bool, string) {
+	var failures []string
+	for i, check := range checks {
+		callCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+		_, err := check(callCtx)
+		cancel()
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", pods[i].name, err))
+		}
+	}
+	if len(failures) == 0 {
+		return true, ""
+	}
+	return false, strings.Join(failures, "; ")
+}
+
+// waitStableHealth polls every pod's checkFunc once per pollInterval and requires all of them to
+// succeed for stableConsecutive consecutive polls before returning nil. Any single failed poll —
+// including one caused by a pod being replaced mid-check, since a pinned pod IP that no longer has a
+// listener behind it fails the same way any other unreachable pod would — resets the consecutive count
+// to zero, so a check cannot pass on the strength of samples from before a pod changed. Returns the
+// last observed failure if the overall timeout elapses before stableConsecutive is reached.
+func waitStableHealth(pods []podTarget, checks []checkFunc, requestTimeout, pollInterval time.Duration, stableConsecutive int, overallTimeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), overallTimeout)
+	defer cancel()
+	consecutive := 0
+	lastFailure := "no successful check yet"
+	for {
+		ok, failure := checkAllPodsOnce(ctx, pods, checks, requestTimeout)
+		if ctx.Err() != nil {
+			if lastFailure == "no successful check yet" && !ok {
+				lastFailure = failure
+			}
+			return fmt.Errorf("did not reach %d consecutive healthy checks within %s: %s", stableConsecutive, overallTimeout, lastFailure)
+		}
+		if ok {
+			consecutive++
+		} else {
+			consecutive = 0
+			lastFailure = failure
+		}
+		if consecutive >= stableConsecutive {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("did not reach %d consecutive healthy checks within %s: %s", stableConsecutive, overallTimeout, lastFailure)
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
+// runVerifyHealth is the PROBE_MODE=verify-health one-shot Job: a bounded pre-transition prerequisite
+// that requires GET /health on each of the two initial aggregator pods — targeted directly by pod IP
+// (AGGREGATOR_POD_1_URL / AGGREGATOR_POD_2_URL), not through the Service, so the Service's own load
+// balancing cannot hide which specific pod actually answered — to report HTTP 200 and a decoded status
+// of "UP" for 10 consecutive one-second polls, within a 180-second overall timeout.
+//
+// This classifies a pre-existing health failure as a setup failure. The strict zero-failure gate
+// continues to evaluate the baseline and transition after this prerequisite passes. This mode uses
+// the same checkHealth function as continuous probing and requires sustained health from both pods.
+func runVerifyHealth(cfg config, out, errOut io.Writer) {
+	pods := []podTarget{
+		{name: os.Getenv("AGGREGATOR_POD_1_NAME"), url: os.Getenv("AGGREGATOR_POD_1_URL")},
+		{name: os.Getenv("AGGREGATOR_POD_2_NAME"), url: os.Getenv("AGGREGATOR_POD_2_URL")},
+	}
+	for _, p := range pods {
+		if p.name == "" || p.url == "" {
+			fail(errOut, "AGGREGATOR_POD_1_NAME/URL and AGGREGATOR_POD_2_NAME/URL must all be set")
+		}
+	}
+
+	client := &http.Client{Timeout: cfg.requestTimeout}
+	checks := make([]checkFunc, len(pods))
+	for i, p := range pods {
+		checks[i] = checkHealth(client, p.url)
+	}
+
+	const pollInterval = time.Second
+	const stableConsecutiveSeconds = 10
+	const overallTimeout = 180 * time.Second
+
+	if err := waitStableHealth(pods, checks, cfg.requestTimeout, pollInterval, stableConsecutiveSeconds, overallTimeout); err != nil {
+		fail(errOut, "aggregator pods did not reach stable health: %v", err)
+	}
+	fmt.Fprintln(out, "AGGREGATOR_HEALTH_STABLE")
+}
