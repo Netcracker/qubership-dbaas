@@ -13,15 +13,13 @@
 #     regardless of direction — and stays untouched for the rest of the run. Because it is always the
 #     newer release, it already supports both the initial and target aggregator's CR contract, so
 #     there is nothing version-specific to set up for either direction.
-#   - The go-test-app-service sample comes entirely from the HARNESS checkout: its chart (so the
-#     InternalDatabase template matches the fixed operator's contract) and its image (so the
-#     post-transition check's PUT /postgres/items call reaches a binary that actually has that handler
-#     — neither v6.14.1 nor v6.15.0 contains it). API_DBAAS_ADDRESS is the only DBaaS routing value
-#     passed to that chart.
+#   - The go-test-app-service sample comes from the HARNESS checkout: its chart provides the
+#     InternalDatabase template, and its image uses the configured DBaaS client for /postgres/ping.
+#     API_DBAAS_ADDRESS is the only DBaaS routing value passed to the chart.
 #
 # Then deploys the continuous availability probe and runs the one-shot pre-transition functional
-# check. None of the fixed components are touched again after this script returns — only
-# transition-aggregator.sh's `helm upgrade` on the aggregator release runs after this point.
+# check. The fixed components remain unchanged during measurement. The sample service restarts only
+# after the measured window to check a fresh DBaaS lookup.
 #
 # Required environment (all set by the calling workflow step):
 #   REPOS_DIR                   - contains pgskipper-operator/ (pinned commit checkout), matching the
@@ -45,10 +43,11 @@
 #                                  never echoes them.
 #   ITEM_MARKER                 - unique name for the pre-transition fixture record.
 #   FIXTURE_FINGERPRINT_FILE    - path this script writes the captured FIXTURE_FINGERPRINT JSON to, for
-#                                  transition-aggregator.sh / evaluate-probes.sh to read back.
+#                                  transition-aggregator.sh to read back.
 #   FIXED_COMPONENT_IMAGES_FILE - path this script writes the initial operator/patroni/adapter/sample
 #                                  image references to, for transition-aggregator.sh to confirm none of
 #                                  them drifted across the transition.
+#   TRANSITION_TIMESTAMPS_FILE  - path this script writes probeStart to after the probe rollout.
 #   BASELINE_SECONDS            - how long to let the continuous probe run before returning (default 40).
 set -euo pipefail
 
@@ -58,7 +57,7 @@ set -euo pipefail
 : "${CREDENTIALS_SECRET:?}" "${POSTGRES_PASSWORD:?}" "${DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD:?}"
 : "${DBAAS_TENANT_PASSWORD:?}" "${DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD:?}" "${DISCR_TOOL_USER_PASSWORD:?}"
 : "${BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD:?}" "${ITEM_MARKER:?}" "${FIXTURE_FINGERPRINT_FILE:?}"
-: "${FIXED_COMPONENT_IMAGES_FILE:?}"
+: "${FIXED_COMPONENT_IMAGES_FILE:?}" "${TRANSITION_TIMESTAMPS_FILE:?}"
 
 BASELINE_SECONDS="${BASELINE_SECONDS:-40}"
 DBAAS_VALUES_FILE="$HARNESS_DIR/.github/scripts/dbaas-transition/dbaas-values-transition.yaml"
@@ -219,6 +218,7 @@ sed \
 kubectl apply -f "$probe_manifest"
 rm -f "$probe_manifest"
 kubectl -n "$DBAAS_NAMESPACE" rollout status deployment/dbaas-availability-probe --timeout=120s
+printf 'probeStart=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)" > "$TRANSITION_TIMESTAMPS_FILE"
 
 echo "=== Initial functional verification (one-shot Job: ping, seed a recognizable record, fingerprint) ==="
 kubectl -n "$DBAAS_NAMESPACE" delete job dbaas-fixture-verify --ignore-not-found
