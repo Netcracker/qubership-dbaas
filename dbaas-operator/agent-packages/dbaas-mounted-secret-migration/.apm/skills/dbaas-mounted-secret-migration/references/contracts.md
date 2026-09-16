@@ -55,15 +55,8 @@ Never repeat reserved keys (`microserviceName`, `scope`, `namespace`, `tenantId`
 
 ## InternalDatabase template
 
-In the unquoted illustrative Helm templates below, replace `<operator-namespace>` with:
-
-```text
-{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) | quote }}
-```
-
-In an `apply_migration.py` plan, omit `| quote` because the writer quotes the YAML scalar itself.
-
-For a plain manifest, replace it with the verified literal namespace.
+Replace `<operator-namespace>` with the verified namespace of the operator instance that must manage
+the generated CRs. It is not necessarily the workload namespace.
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1

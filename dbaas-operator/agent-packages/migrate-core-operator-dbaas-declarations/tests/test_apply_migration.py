@@ -934,7 +934,6 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = root_plan(
                 repo, "chart", "chart/templates/dbaas.json", "templates/dbaas-operator-resources.yaml",
                 kind="helm", namespace="{{ .Values.NAMESPACE }}",
-                operatorNamespace='{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}',
             )
             code, report = run(repo, plan, "check", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))

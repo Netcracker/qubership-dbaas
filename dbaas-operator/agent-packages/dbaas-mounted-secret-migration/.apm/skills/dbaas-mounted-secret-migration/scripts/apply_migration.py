@@ -27,7 +27,7 @@ reuse the same generated name when their workload namespaces differ)::
           "root": "chart",                 // repo-relative; "" or "." is the repo root
           "kind": "helm",                  // "helm" | "plain"
           "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-          "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) }}",
+          "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
           "workloadNamespace": "{{ .Values.NAMESPACE }}",
           "originService": "orders",
           "helmValues": {"API_DBAAS_ADDRESS": "http://dbaas-aggregator.dbaas-operator:8080"},
@@ -99,7 +99,6 @@ DNS_MAX = 63
 RESERVED_CLASSIFIER_KEYS = {"microserviceName", "scope", "namespace", "tenantId", "customKeys"}
 MOUNT_ROOT = "/etc/secrets/dbaas-secrets"
 DBAAS_OPERATOR_NAMESPACE_VALUE = "DBAAS_OPERATOR_NAMESPACE"
-API_OPERATOR_NAMESPACE_EXPRESSION = '{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}'
 _TAIL_BUDGET = 20
 _PILOT_RELEASE = "dbaas-migration-pilot"
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -1870,11 +1869,6 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
     expected_operator_ns = None
     if "{{" not in root_plan["operatorNamespace"]:
         expected_operator_ns = root_plan["operatorNamespace"]
-    elif root_plan["operatorNamespace"] == API_OPERATOR_NAMESPACE_EXPRESSION:
-        address = resolved["API_DBAAS_ADDRESS"]
-        host = address.rsplit("://", 1)[-1].split(":", 1)[0]
-        parts = host.split(".")
-        expected_operator_ns = parts[1] if len(parts) > 1 else None
     else:
         substituted = _resolve_templates(root_plan["operatorNamespace"], resolved)
         expected_operator_ns = substituted if "{{" not in substituted else None

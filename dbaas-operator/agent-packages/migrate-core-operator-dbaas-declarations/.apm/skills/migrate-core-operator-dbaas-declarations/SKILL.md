@@ -85,10 +85,8 @@ Always blocking, before anything is written:
 
 - Derive required `DatabaseAccessPolicy.spec.microserviceName` from the owning service only when
   the source context is unambiguous; otherwise ask the user.
-- For a chart-local root, set `operatorNamespace` to the `API_DBAAS_ADDRESS`-derived expression in
-  [mapping.md](references/mapping.md), without `| quote` because the writer quotes the YAML scalar.
-  For a plain root, use the verified literal operator namespace. Do not use the workload namespace
-  as a substitute; ask when the operator assignment cannot be established.
+- Set `operatorNamespace` to the namespace of the operator instance that will manage the generated
+  resources -- ask when that is not known; it is not necessarily the workload namespace.
 - Preserve `physicalDatabaseId` verbatim; it pins only new-creation databases and is ignored for
   `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`.
 - Choose stable, DNS-compatible resource names (or explicit `nameOverrides`) and check for
