@@ -330,15 +330,27 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .when().post("/{phydbid}/instruction/{instructionid}/additional-roles", PHYDBID, INSTRUCTION_ID)
                 .then()
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode());
+    }
 
+    @Test
+    void testInstruction_shouldReturnNotFoundForUnknownInstructionId() throws JsonProcessingException {
+        InstructionRequestV3 successfulInstructionRequest = getSuccessfulInstructionRequestV3Sample();
         when(instructionService.findInstructionById(INSTRUCTION_ID)).thenReturn(null);
+
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(objectMapper.writeValueAsString(successfulInstructionRequest))
                 .when().post("/{phydbid}/instruction/{instructionid}/additional-roles", PHYDBID, INSTRUCTION_ID)
                 .then()
-                .statusCode(NOT_FOUND.getStatusCode());
+                .statusCode(NOT_FOUND.getStatusCode())
+                .body(is(String.format("Instruction with Id = %s not found", INSTRUCTION_ID)));
+
+        verify(instructionService, never()).saveConnectionPropertiesAfterRolesRegistration(any());
+        verify(instructionService, never()).updateInstructionWithContext(any(), any());
+        verify(instructionService, never()).deleteInstruction(any());
+        verify(instructionService, never()).findNextAdditionalRoles(any());
+        verify(instructionService, never()).completeMigrationProcedure(any(), any(), any());
     }
 
 
