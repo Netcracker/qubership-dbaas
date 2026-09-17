@@ -19,14 +19,19 @@ jobs:
 
     steps:
       - name: Wait for other workflows on the current PR
-        if: github.event_name == 'pull_request'
+        if: >-
+          github.event_name == 'pull_request' &&
+          !(github.event.pull_request.user.login == 'renovate[bot]' &&
+            github.event.pull_request.head.repo.full_name == github.repository)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         run: |
-          SHA="${{ github.event.pull_request.head.sha }}"
           for i in $(seq 1 60); do
-            RUNS=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$SHA" \
-              --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }})]")
+            RUNS=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA" \
+              --jq "[.workflow_runs[] | select(.id != $RUN_ID)]")
             TOTAL=$(echo "$RUNS" | jq 'length')
             IN_PROGRESS=$(echo "$RUNS" | jq '[.[] | select(.status != "completed")] | length')
             FAILED=$(echo "$RUNS" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")] | length')
@@ -192,19 +197,34 @@ jobs:
               registrationPassword: password
           EOF
 
-      - name: Resolve image tags
+      - name: Compute DBaaS image tag
+        id: image_tag
         env:
           SOURCE_REF: ${{ github.head_ref || github.ref_name }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          STRICT_PR_IMAGE: >-
+            ${{ github.event_name == 'pull_request' &&
+                github.event.pull_request.user.login == 'renovate[bot]' &&
+                github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           SAFE_REF="${SOURCE_REF//\//-}"
-          if [ "$SAFE_REF" = "main" ]; then
+          if [ "$STRICT_PR_IMAGE" = "true" ]; then
+            IMAGE_TAG="${SAFE_REF}-${COMMIT_SHA:0:7}"
+          elif [ "$SAFE_REF" = "main" ]; then
             IMAGE_TAG=latest
           else
             IMAGE_TAG="${SAFE_REF}-snapshot"
           fi
-          echo "Calculated image tag: $IMAGE_TAG"
+          echo "Using DBaaS image tag: $IMAGE_TAG"
+          echo "strict=$STRICT_PR_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
+      - name: Resolve image tags for existing runs
+        if: steps.image_tag.outputs.strict != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           image_tag_exists() {
             local package="$1" tag="$2"
             local token
@@ -218,22 +238,31 @@ jobs:
               "https://ghcr.io/v2/netcracker/$package/manifests/$tag"
           }
 
-          if image_tag_exists qubership-dbaas "$IMAGE_TAG"; then
-            TAG="$IMAGE_TAG"
-          else
-            echo "::warning::Aggregator image tag $IMAGE_TAG not found; falling back to latest"
-            TAG=latest
+          if ! image_tag_exists qubership-dbaas "$TAG"; then
+            echo "::warning::Aggregator image tag $TAG not found; falling back to latest"
+            echo "TAG=latest" >> "$GITHUB_ENV"
           fi
 
-          if image_tag_exists qubership-dbaas-operator "$IMAGE_TAG"; then
-            DBAAS_OPERATOR_TAG="$IMAGE_TAG"
-          else
-            echo "::warning::Operator image tag $IMAGE_TAG not found; falling back to latest"
-            DBAAS_OPERATOR_TAG=latest
+          if ! image_tag_exists qubership-dbaas-operator "$DBAAS_OPERATOR_TAG"; then
+            echo "::warning::Operator image tag $DBAAS_OPERATOR_TAG not found; falling back to latest"
+            echo "DBAAS_OPERATOR_TAG=latest" >> "$GITHUB_ENV"
           fi
 
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-          echo "DBAAS_OPERATOR_TAG=$DBAAS_OPERATOR_TAG" >> "$GITHUB_ENV"
+      - name: Wait for aggregator image
+        if: steps.image_tag.outputs.strict == 'true'
+        uses: ./.github/actions/wait-for-image-tag
+        with:
+          package: qubership-dbaas
+          tag: ${{ env.TAG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for operator image
+        if: steps.image_tag.outputs.strict == 'true'
+        uses: ./.github/actions/wait-for-image-tag
+        with:
+          package: qubership-dbaas-operator
+          tag: ${{ env.DBAAS_OPERATOR_TAG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy DBaaS
         working-directory: bootstrap

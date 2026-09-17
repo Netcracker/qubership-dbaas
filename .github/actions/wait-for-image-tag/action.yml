@@ -1,0 +1,58 @@
+name: Wait for GHCR image tag
+description: >
+  Polls a netcracker GHCR package for one manifest tag until it is published, failing after the
+  timeout. Use this ahead of a step that deploys/pulls the image, so it never runs against a tag an
+  upstream build workflow hasn't pushed yet.
+
+inputs:
+  package:
+    description: GHCR package name under the netcracker org (e.g. "qubership-dbaas").
+    required: true
+  tag:
+    description: Image tag to wait for.
+    required: true
+  github-token:
+    description: Token used to query the GHCR registry.
+    required: true
+  timeout-seconds:
+    description: Give up and fail after this many seconds.
+    required: false
+    default: "900"
+  poll-interval-seconds:
+    description: Delay between polls.
+    required: false
+    default: "30"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PACKAGE: ${{ inputs.package }}
+        TAG: ${{ inputs.tag }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
+      run: |
+        image_tag_exists() {
+          local token
+          token=$(curl -fsSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://ghcr.io/token?scope=repository:netcracker/$PACKAGE:pull" \
+            | jq -r .token)
+          curl -fsL -o /dev/null \
+            -H "Authorization: Bearer $token" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/netcracker/$PACKAGE/manifests/$TAG"
+        }
+
+        DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
+        echo "Waiting for netcracker/$PACKAGE:$TAG"
+        until image_tag_exists; do
+          if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+            echo "::error::Timed out waiting for netcracker/$PACKAGE:$TAG"
+            exit 1
+          fi
+          sleep "$POLL_INTERVAL_SECONDS"
+        done
+        echo "Found netcracker/$PACKAGE:$TAG"

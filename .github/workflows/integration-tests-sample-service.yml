@@ -127,10 +127,15 @@ jobs:
             install: false
           EOF_PATRONI
 
-      - name: Resolve DBaaS image tag
+      - name: Compute DBaaS image tag
+        env:
+          SOURCE_REF: ${{ github.head_ref || github.ref_name }}
+          COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
         run: |
-          SAFE_REF="${GITHUB_REF_NAME//\//-}"
-          if [ "$SAFE_REF" = "main" ]; then
+          SAFE_REF="${SOURCE_REF//\//-}"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            IMAGE_TAG="${SAFE_REF}-${COMMIT_SHA:0:7}"
+          elif [ "$SAFE_REF" = "main" ]; then
             IMAGE_TAG=latest
           else
             IMAGE_TAG="${SAFE_REF}-snapshot"
@@ -138,6 +143,22 @@ jobs:
           echo "Using DBaaS image tag: $IMAGE_TAG"
           echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Wait for aggregator image
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/wait-for-image-tag
+        with:
+          package: qubership-dbaas
+          tag: ${{ env.TAG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for operator image
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/wait-for-image-tag
+        with:
+          package: qubership-dbaas-operator
+          tag: ${{ env.DBAAS_OPERATOR_TAG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build go test app image and load into kind
         run: |
