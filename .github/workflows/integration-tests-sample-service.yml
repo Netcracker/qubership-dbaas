@@ -13,9 +13,14 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 2 * * *"  # Daily at 02:00 UTC
+  pull_request:
+    types: [opened, synchronize]
 
 jobs:
   sample-services-integration-tests:
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.user.login == 'renovate[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
