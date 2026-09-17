@@ -243,6 +243,58 @@ class PhysicalDatabaseRegistrationControllerV3Test {
     }
 
     @Test
+    void testRegister_featuresWithoutMultiusersKeyFailsWithNullPointerException() throws JsonProcessingException {
+        PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
+        // The OpenAPI contract requires `features` but does not declare a `multiusers` key, so this request is valid.
+        physicalDatabaseRegistryRequest.getMetadata().setFeatures(new HashMap<>(Map.of("tls", true)));
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        when(physicalDatabasesService.foundPhysicalDatabase(eq(PHYDBID.toString()), eq(TEST_TYPE), any()))
+                .thenReturn(Optional.of(physicalDatabase));
+        when(instructionService.isRolesDifferent(any(), any())).thenReturn(true);
+        when(physicalDatabasesService.isDbActual(any(), any())).thenReturn(true);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", TEST_TYPE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .when().put("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
+                .body("code", is("CORE-DBAAS-2000"));
+        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
+        verify(physicalDatabasesService, never()).isDbActual(any(), any());
+
+        // An explicit `multiusers: false` skips the migration branch, so only the missing key causes the failure.
+        physicalDatabaseRegistryRequest.getMetadata().getFeatures().put("multiusers", false);
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", TEST_TYPE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .when().put("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(OK.getStatusCode());
+        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
+        verify(physicalDatabasesService).isDbActual(any(), any());
+    }
+
+    @Test
+    void testRegister_missingAdapterAddressFailsWithInternalServerError() throws Exception {
+        PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
+        physicalDatabaseRegistryRequest.setAdapterAddress(null);
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", TEST_TYPE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .when().put("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
+                .body("code", is("CORE-DBAAS-2000"));
+        verify(physicalDatabasesService, never()).foundPhysicalDatabase(any(), any(), any());
+        verify(physicalDatabasesService, never()).physicalDatabaseRegistration(any(), any(), any());
+    }
+
+    @Test
     void testSuccessfulInstruction() throws JsonProcessingException {
         InstructionRequestV3 successfulInstructionRequest = getSuccessfulInstructionRequestV3Sample();
         Instruction instruction = getInstructionSample();
