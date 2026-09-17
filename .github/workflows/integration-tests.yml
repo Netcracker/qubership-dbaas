@@ -192,10 +192,9 @@ jobs:
               registrationPassword: password
           EOF
 
-      - name: Resolve image tags
+      - name: Compute DBaaS image tag
         env:
           SOURCE_REF: ${{ github.head_ref || github.ref_name }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SAFE_REF="${SOURCE_REF//\//-}"
           if [ "$SAFE_REF" = "main" ]; then
@@ -204,36 +203,35 @@ jobs:
             IMAGE_TAG="${SAFE_REF}-snapshot"
           fi
           echo "Calculated image tag: $IMAGE_TAG"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
-          image_tag_exists() {
-            local package="$1" tag="$2"
-            local token
-            token=$(curl -fsSL \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              "https://ghcr.io/token?scope=repository:netcracker/$package:pull" \
-              | jq -r .token)
-            curl -fsL -o /dev/null \
-              -H "Authorization: Bearer $token" \
-              -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
-              "https://ghcr.io/v2/netcracker/$package/manifests/$tag"
-          }
+      - name: Resolve aggregator image
+        id: aggregator_image
+        uses: ./.github/actions/wait-for-image-tag
+        with:
+          package: qubership-dbaas
+          tag: ${{ env.IMAGE_TAG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          timeout-seconds: "0"
+          fallback-tag: latest
 
-          if image_tag_exists qubership-dbaas "$IMAGE_TAG"; then
-            TAG="$IMAGE_TAG"
-          else
-            echo "::warning::Aggregator image tag $IMAGE_TAG not found; falling back to latest"
-            TAG=latest
-          fi
+      - name: Resolve operator image
+        id: operator_image
+        uses: ./.github/actions/wait-for-image-tag
+        with:
+          package: qubership-dbaas-operator
+          tag: ${{ env.IMAGE_TAG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          timeout-seconds: "0"
+          fallback-tag: latest
 
-          if image_tag_exists qubership-dbaas-operator "$IMAGE_TAG"; then
-            DBAAS_OPERATOR_TAG="$IMAGE_TAG"
-          else
-            echo "::warning::Operator image tag $IMAGE_TAG not found; falling back to latest"
-            DBAAS_OPERATOR_TAG=latest
-          fi
-
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-          echo "DBAAS_OPERATOR_TAG=$DBAAS_OPERATOR_TAG" >> "$GITHUB_ENV"
+      - name: Set DBaaS image tags
+        env:
+          AGGREGATOR_TAG: ${{ steps.aggregator_image.outputs['resolved-tag'] }}
+          OPERATOR_TAG: ${{ steps.operator_image.outputs['resolved-tag'] }}
+        run: |
+          echo "TAG=$AGGREGATOR_TAG" >> "$GITHUB_ENV"
+          echo "DBAAS_OPERATOR_TAG=$OPERATOR_TAG" >> "$GITHUB_ENV"
 
       - name: Deploy DBaaS
         working-directory: bootstrap

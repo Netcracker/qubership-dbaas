@@ -1,8 +1,7 @@
-name: Wait for GHCR image tag
+name: Resolve GHCR image tag
 description: >
-  Polls a netcracker GHCR package for one manifest tag until it is published, failing after the
-  timeout. Use this ahead of a step that deploys/pulls the image, so it never runs against a tag an
-  upstream build workflow hasn't pushed yet.
+  Checks a netcracker GHCR package for an image tag. Waits for the tag or returns a fallback tag
+  after the timeout.
 
 inputs:
   package:
@@ -15,23 +14,34 @@ inputs:
     description: Token used to query the GHCR registry.
     required: true
   timeout-seconds:
-    description: Give up and fail after this many seconds.
+    description: Give up after this many seconds. Use 0 for one check.
     required: false
     default: "900"
+  fallback-tag:
+    description: Tag to use when the requested tag is unavailable. An empty value fails the action.
+    required: false
+    default: ""
   poll-interval-seconds:
     description: Delay between polls.
     required: false
     default: "30"
 
+outputs:
+  resolved-tag:
+    description: The requested tag if found, or the fallback tag.
+    value: ${{ steps.resolve.outputs.resolved-tag }}
+
 runs:
   using: composite
   steps:
-    - shell: bash
+    - id: resolve
+      shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         PACKAGE: ${{ inputs.package }}
         TAG: ${{ inputs.tag }}
         TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        FALLBACK_TAG: ${{ inputs.fallback-tag }}
         POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
       run: |
         image_tag_exists() {
@@ -50,9 +60,15 @@ runs:
         echo "Waiting for netcracker/$PACKAGE:$TAG"
         until image_tag_exists; do
           if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+            if [ -n "$FALLBACK_TAG" ]; then
+              echo "::warning::Image tag $TAG not found for netcracker/$PACKAGE; falling back to $FALLBACK_TAG"
+              echo "resolved-tag=$FALLBACK_TAG" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::error::Timed out waiting for netcracker/$PACKAGE:$TAG"
             exit 1
           fi
           sleep "$POLL_INTERVAL_SECONDS"
         done
         echo "Found netcracker/$PACKAGE:$TAG"
+        echo "resolved-tag=$TAG" >> "$GITHUB_OUTPUT"
