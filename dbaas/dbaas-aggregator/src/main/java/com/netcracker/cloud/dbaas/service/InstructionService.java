@@ -124,14 +124,14 @@ public class InstructionService {
     }
 
     public Instruction findInstructionById(String id) throws JsonProcessingException {
-        Instruction instruction = new Instruction();
         Optional<PhysicalDatabaseInstruction> physicalDatabaseInstruction = physicalDatabaseInstructionRepository.findByIdOptional(UUID.fromString(id));
-        if (physicalDatabaseInstruction.isPresent()) {
-            instruction.setId(String.valueOf(physicalDatabaseInstruction.get().getId()));
-            instruction.setAdditionalRoles(convertStringToList(physicalDatabaseInstruction.get().getContext()));
-        } else {
-            log.info("No instruction found from  PhysicalDatabaseInstruction with id = {}", instruction.getId());
+        if (physicalDatabaseInstruction.isEmpty()) {
+            log.info("No instruction found from PhysicalDatabaseInstruction with id = {}", id);
+            return null;
         }
+        Instruction instruction = new Instruction();
+        instruction.setId(String.valueOf(physicalDatabaseInstruction.get().getId()));
+        instruction.setAdditionalRoles(convertStringToList(physicalDatabaseInstruction.get().getContext()));
         return instruction;
     }
 
