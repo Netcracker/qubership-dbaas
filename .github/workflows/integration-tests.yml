@@ -63,7 +63,7 @@ jobs:
         with:
           # kind v0.32.0 is the first release that generates kubeadm v1beta4
           # config; the admission-plugin patch in kind-config.yaml uses its list-form extraArgs.
-          version: v0.32.0
+          version: v0.33.0
           cluster_name: kind
           config: kind-config.yaml
 
@@ -73,7 +73,7 @@ jobs:
       - name: Set up JDK 25
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
-          java-version: '25'
+          java-version: '26.0.2+101'
           distribution: 'temurin'
           cache: maven
 

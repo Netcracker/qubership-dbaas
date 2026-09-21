@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: '{{ .Values.SERVICE_NAME }}'
+  name: '{{ cat .Values.NAMESPACE "-" .Values.SERVICE_NAME | nospace | trunc 63 | trimSuffix "-" }}'
   labels:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
     app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'

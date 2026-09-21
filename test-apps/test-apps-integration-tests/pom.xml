@@ -79,34 +79,25 @@
                 <version>${maven-compiler-plugin.version}</version>
             </plugin>
             <plugin>
-                <artifactId>maven-antrun-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-report-plugin</artifactId>
+                <version>3.6.0</version>
                 <executions>
                     <execution>
                         <id>test-reports</id>
                         <phase>test</phase>
-                        <configuration>
-                            <target>
-                                <junitreport todir="target/surefire-reports">
-                                    <fileset dir="target/surefire-reports">
-                                        <include name="**/*.xml"/>
-                                    </fileset>
-                                    <report format="noframes" todir="target/surefire-reports"/>
-                                </junitreport>
-                            </target>
-                            <skip>${skipIT}</skip>
-                        </configuration>
                         <goals>
-                            <goal>run</goal>
+                            <goal>report-only</goal>
                         </goals>
                     </execution>
                 </executions>
-                <dependencies>
-                    <dependency>
-                        <groupId>ant</groupId>
-                        <artifactId>ant-junit</artifactId>
-                        <version>1.6.5</version>
-                    </dependency>
-                </dependencies>
+                <configuration>
+                    <skipSurefireReport>${skipIT}</skipSurefireReport>
+                    <reportsDirectories>
+                        <reportsDirectory>${surefire.reportsDirectory}</reportsDirectory>
+                    </reportsDirectories>
+                    <outputDirectory>${surefire.reportsDirectory}</outputDirectory>
+                </configuration>
             </plugin>
         </plugins>
     </build>
