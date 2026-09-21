@@ -200,7 +200,7 @@ kubectl -n "$DBAAS_NAMESPACE" rollout status deployment/dbaas-availability-probe
 
 echo "=== Resolving the two ready dbaas-aggregator pods for the pre-transition checks ==="
 readypods="$(kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
-  | jq -r '.items[] | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' | sort)"
+  | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' | sort)"
 readypod_count="$(printf '%s\n' "$readypods" | grep -c . || true)"
 if [ "$readypod_count" -ne 2 ]; then
   echo "Expected exactly 2 ready dbaas-aggregator pods before the pre-transition checks, found $readypod_count:" >&2
@@ -271,7 +271,7 @@ fi
 echo "Aggregator health and sample-service access are stable"
 
 current_readypods="$(kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
-  | jq -r '.items[] | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' | sort)"
+  | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' | sort)"
 if [ "$current_readypods" != "$readypods" ]; then
   echo "Aggregator pods changed or restarted during the pre-transition checks" >&2
   exit 1
