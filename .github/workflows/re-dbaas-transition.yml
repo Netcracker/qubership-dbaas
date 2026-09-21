@@ -7,7 +7,7 @@ name: DBaaS Transition (reusable)
 # match whichever aggregator version happens to be "initial" for a given direction and stays fixed
 # throughout. pgskipper supplies PostgreSQL/Patroni and the PostgreSQL adapter, pinned to a commit
 # that works with both aggregator versions. The harness (this branch) supplies the sample-service
-# chart and image, the probe app, and every script — see docs in .github/scripts/dbaas-transition/*.sh
+# chart and image, the probe app, and every script. See .github/scripts/dbaas-transition/*.sh
 # for the per-stage detail; this file only wires the stages together.
 #
 # Called twice per run by dbaas-upgrade-downgrade.yml — once per direction — each getting its
@@ -56,7 +56,6 @@ jobs:
       GO_IMAGE_TAG: it
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
-      CREDENTIALS_SECRET: dbaas-probe-credentials
       # Every published dbaas-aggregator / dbaas-operator release tag and image tag in this repo's GHCR
       # packages carries a leading "v" (verified against ghcr.io/v2/netcracker/qubership-dbaas and
       # ghcr.io/v2/netcracker/qubership-dbaas-operator's tag lists) even though the workflow_dispatch
@@ -70,10 +69,7 @@ jobs:
       TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
       FIXTURE_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
       TRANSITION_TIMESTAMPS_FILE: ${{ github.workspace }}/transition-timestamps.txt
-      FIXTURE_FINGERPRINT_FILE: ${{ github.workspace }}/fixture-fingerprint.json
-      FIXED_COMPONENT_IMAGES_FILE: ${{ github.workspace }}/fixed-component-images.txt
       INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE: ${{ github.workspace }}/initial-aggregator-health-evidence.txt
-      ITEM_MARKER: dbaas-uptime-${{ github.run_id }}-${{ github.run_attempt }}
       OUT_DIR: ${{ github.workspace }}/diagnostics
 
     steps:
@@ -183,10 +179,10 @@ jobs:
             echo "$var=$value" >> "$GITHUB_ENV"
           done
 
-      - name: Deploy fixture (patroni, adapter, initial aggregator, fixed operator, sample service, probe, initial verification)
+      - name: Deploy fixture and start availability probes
         run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/deploy-fixture.sh"
 
-      - name: Transition the aggregator release and run post-transition verification
+      - name: Transition the aggregator release
         run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/transition-aggregator.sh"
 
       - name: Evaluate probe results (strict zero-failure gate)

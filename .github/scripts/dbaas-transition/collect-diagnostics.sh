@@ -31,10 +31,6 @@ echo "=== Images and digests actually running ==="
   kubectl -n "$DBAAS_NAMESPACE" get deployment go-test-app-service -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 } > "$OUT_DIR/images.txt" 2>&1 || true
 
-echo "=== Fixed-component image comparison (initial vs. what transition-aggregator.sh saw post-transition) ==="
-[ -n "${FIXED_COMPONENT_IMAGES_FILE:-}" ] && [ -f "$FIXED_COMPONENT_IMAGES_FILE" ] && \
-  cp "$FIXED_COMPONENT_IMAGES_FILE" "$OUT_DIR/fixed-component-images-initial.txt" || true
-
 echo "=== Kubernetes events ==="
 for ns in "$DBAAS_NAMESPACE" "$PG_NAMESPACE"; do
   kubectl -n "$ns" get events --sort-by=.lastTimestamp > "$OUT_DIR/events-${ns}.txt" 2>&1 || true
@@ -110,10 +106,8 @@ echo "=== Initial aggregator pods' health evidence (captured before the rollout 
 [ -n "${INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE:-}" ] && [ -f "$INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE" ] && \
   cp "$INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE" "$OUT_DIR/dbaas-aggregator.initial-health-evidence.txt" || true
 
-echo "=== Fixture Job logs (verify / verify-post / verify-health) ==="
-kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-verify --all-containers=true > "$OUT_DIR/job-dbaas-fixture-verify.log" 2>&1 || true
-kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-verify-post --all-containers=true > "$OUT_DIR/job-dbaas-fixture-verify-post.log" 2>&1 || true
-kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-verify-health --all-containers=true > "$OUT_DIR/job-dbaas-fixture-verify-health.log" 2>&1 || true
+echo "=== Pre-transition Job log ==="
+kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-preflight --all-containers=true > "$OUT_DIR/job-dbaas-fixture-preflight.log" 2>&1 || true
 
 echo "=== Transition timestamps ==="
 [ -n "${TRANSITION_TIMESTAMPS_FILE:-}" ] && [ -f "$TRANSITION_TIMESTAMPS_FILE" ] && \

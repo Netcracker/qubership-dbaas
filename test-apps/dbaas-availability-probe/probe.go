@@ -6,7 +6,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -43,8 +42,7 @@ type probeResult struct {
 // checkFunc performs one probe attempt and reports the HTTP status observed (0 if no response was
 // received at all, e.g. a timeout or connection refusal) and a non-nil error on any failure. It must
 // never panic and must never include a raw response body in the returned error — only status codes,
-// decoded scalar fields, and Go's own network-error text, none of which can carry a credential or a
-// classifier's connectionProperties.
+// decoded scalar fields, and Go's own network-error text, none of which can carry credentials.
 type checkFunc func(ctx context.Context) (httpCode int, err error)
 
 // runProbe times fn, builds the result line, and writes it to out under mu. Any error from fn (network
@@ -175,63 +173,6 @@ func checkHealth(client *http.Client, aggregatorURL string) checkFunc {
 // payloads dbaas-aggregator and the sample service return, and exists only to stop a misbehaving
 // endpoint from making the probe buffer an unbounded body.
 const maxDecodeBytes = 1 << 20 // 1 MiB
-
-// classifierIdentity is the subset of the aggregator's Database entity this probe ever decodes. The
-// real response also carries connectionProperties (host, credentials) and resources; those fields have
-// no matching tag here, so encoding/json drops them during Decode and this process never holds them in
-// any variable that could reach a log line.
-type classifierIdentity struct {
-	ID         string         `json:"id"`
-	Name       string         `json:"name"`
-	Namespace  string         `json:"namespace"`
-	Type       string         `json:"type"`
-	Classifier map[string]any `json:"classifier"`
-}
-
-// checkClassifier requires HTTP 200 from POST
-// {aggregatorURL}/api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}, authenticated with HTTP Basic as
-// a DB_CLIENT-role user. It decodes only the nonsensitive identity fields above; the raw response body
-// is parsed in memory and discarded — it is never written to a log, an error string, or stdout.
-func checkClassifier(client *http.Client, aggregatorURL, namespace, dbType, microserviceName, scope, username, password string) checkFunc {
-	url := aggregatorURL + "/api/v3/dbaas/" + namespace + "/databases/get-by-classifier/" + dbType
-	body, _ := json.Marshal(map[string]any{
-		"classifier": map[string]any{
-			"microserviceName": microserviceName,
-			"scope":            scope,
-			"namespace":        namespace,
-		},
-		"originService": microserviceName,
-		"userRole":      "admin",
-	})
-	return func(ctx context.Context) (int, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-		if err != nil {
-			return 0, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.SetBasicAuth(username, password)
-		resp, err := client.Do(req)
-		if err != nil {
-			return 0, err
-		}
-		defer drainAndClose(resp)
-		if resp.StatusCode != http.StatusOK {
-			return resp.StatusCode, fmt.Errorf("unexpected status %d", resp.StatusCode)
-		}
-		raw, err := io.ReadAll(io.LimitReader(resp.Body, maxDecodeBytes))
-		if err != nil {
-			return resp.StatusCode, fmt.Errorf("read classifier response: %w", err)
-		}
-		var identity classifierIdentity
-		if err := json.Unmarshal(raw, &identity); err != nil {
-			return resp.StatusCode, fmt.Errorf("decode classifier response: %w", err)
-		}
-		if identity.Namespace != namespace {
-			return resp.StatusCode, fmt.Errorf("unexpected namespace in classifier response")
-		}
-		return resp.StatusCode, nil
-	}
-}
 
 type pingResponse struct {
 	Status string `json:"status"`

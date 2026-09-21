@@ -3,11 +3,10 @@
 # line per probe cycle to stdout — evaluate-probes.sh reads it back via `kubectl logs`. Deliberately not
 # reached over kubectl port-forward: a port-forward drop would be indistinguishable from a real outage.
 #
-# The one-shot pre-/post-transition functional checks (PROBE_MODE=verify / verify-post) run as separate
-# Kubernetes Jobs built inline by deploy-fixture.sh / transition-aggregator.sh from this same image —
-# they need no separate Deployment manifest.
+# The pre-transition checks run as a separate Job built inline by deploy-fixture.sh from this image
+# with PROBE_MODE=verify-preflight.
 #
-# __NAMESPACE__, __IMAGE__, and __CREDENTIALS_SECRET__ are substituted by the deploying script before
+# __NAMESPACE__ and __IMAGE__ are substituted by the deploying script before
 # kubectl apply, matching the convention in test-apps/dbaas-agent-stub/deploy.yaml.
 apiVersion: apps/v1
 kind: Deployment
@@ -27,7 +26,7 @@ spec:
       labels:
         app.kubernetes.io/name: dbaas-availability-probe
     spec:
-      serviceAccountName: dbaas-availability-probe
+      automountServiceAccountToken: false
       containers:
         - name: dbaas-availability-probe
           image: __IMAGE__
@@ -39,28 +38,10 @@ spec:
               value: http://dbaas-aggregator.__NAMESPACE__:8080
             - name: SAMPLE_SERVICE_URL
               value: http://go-test-app-service.__NAMESPACE__:8080
-            - name: NAMESPACE
-              value: __NAMESPACE__
-            - name: MICROSERVICE_NAME
-              value: go-test-app-service
-            - name: CLASSIFIER_SCOPE
-              value: service
-            - name: DB_TYPE
-              value: postgresql
             - name: PROBE_INTERVAL_MS
               value: "1000"
             - name: PROBE_REQUEST_TIMEOUT_MS
               value: "5000"
-            - name: DBAAS_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: __CREDENTIALS_SECRET__
-                  key: username
-            - name: DBAAS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: __CREDENTIALS_SECRET__
-                  key: password
           securityContext:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
@@ -79,11 +60,3 @@ spec:
             limits:
               cpu: 200m
               memory: 96Mi
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: dbaas-availability-probe
-  namespace: __NAMESPACE__
-  labels:
-    app.kubernetes.io/name: dbaas-availability-probe
