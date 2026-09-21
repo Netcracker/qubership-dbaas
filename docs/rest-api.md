@@ -2254,11 +2254,12 @@ Creates new physical database and returns path to it with physical database iden
 
 * **Error Response:**
 
-| HTTP Code | Description                                                                                                                                                                 | Schema     |
-|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| **400**   | Adapter already running                                                                                                                                                     | No Content |
-| **409**   | Database could not be registered as physical database already exists with another adapter id or the same adapter already exists and it is used with other physical database | No Content |
-| **502**   | Adapter is not available during handshake process                                                                                                                           | No Content |
+| HTTP Code | Description                                                                                                                                                                                                                                  | Schema     |
+|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| **400**   | Adapter already running                                                                                                                                                                                                                      | No Content |
+| **409**   | Database could not be registered as physical database already exists with another adapter id or the same adapter already exists and it is used with other physical database                                                                  | No Content |
+| **500**   | Unexpected server error. The `500` response is returned when the request body omits `adapterAddress`, `httpBasicCredentials` or `metadata` and when `metadata.features` carries no `multiusers` key; the physical database is left unchanged | No Content |
+| **502**   | Adapter is not available during handshake process                                                                                                                                                                                            | No Content |
 
 * **Sample call**
 

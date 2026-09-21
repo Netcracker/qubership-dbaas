@@ -1902,12 +1902,15 @@ public class OperatorIT extends AbstractIT {
             Assertions.assertEquals(200, initResponse.code());
         }
 
-        var databaseSecretCR = buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE);
-        var failedDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
-        waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, failedDatabaseSecretClaimCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_AGGREGATOR_ERROR, STATUS_FALSE);
-        assertNull(getSecret(secretName));
-        try (Response response = bgHelper.destroyDomain(new BgNamespaceRequest(NAMESPACE, TEST_NAMESPACE_CANDIDATE))) {
-            assertEquals(200, response.code());
+        try {
+            var databaseSecretCR = buildDatabaseSecretClaimCR(crName, microserviceName, microserviceName, NAMESPACE, secretName, "admin", POSTGRES_TYPE);
+            var failedDatabaseSecretClaimCR = createCR(CRD_DATABASE_SECRET_CLAIM, databaseSecretCR);
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, failedDatabaseSecretClaimCR, PHASE_BACKING_OFF, STATUS_FALSE, REASON_AGGREGATOR_ERROR, STATUS_FALSE);
+            assertNull(getSecret(secretName));
+        } finally {
+            try (Response response = bgHelper.destroyDomain(new BgNamespaceRequest(NAMESPACE, TEST_NAMESPACE_CANDIDATE))) {
+                assertEquals(200, response.code());
+            }
         }
     }
 

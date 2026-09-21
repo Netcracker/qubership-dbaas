@@ -33,7 +33,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
-          java-version: '21'
+          java-version: '26.0.2+101'
           distribution: 'temurin'
           cache: maven
           # Configures ~/.m2/settings.xml with a `github` server so Maven can pull the

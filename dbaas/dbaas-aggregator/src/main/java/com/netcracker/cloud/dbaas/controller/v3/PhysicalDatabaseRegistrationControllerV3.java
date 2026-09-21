@@ -58,6 +58,10 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                     "exists with another adapter id or the same adapter already exists and it is used with other physical database"),
             @APIResponse(responseCode = "502", description = "Adapter is not available during handshake process"),
             @APIResponse(responseCode = "400", description = "Adapter already running or request validation failed"),
+            @APIResponse(responseCode = "500", description = "Unexpected server error. " +
+                    "A known cause is a request without a required field: `adapterAddress`, `httpBasicCredentials`, `metadata`, " +
+                    "or `metadata.features.multiusers` when an already registered adapter reports a different set of roles. " +
+                    "The physical database is left unchanged. Add the missing field and send the request again."),
     })
     @Path("/{phydbid}")
     @PUT
