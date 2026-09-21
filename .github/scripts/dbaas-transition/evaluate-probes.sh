@@ -95,7 +95,7 @@ fi
 # goroutine never started) must fail the run rather than silently being skipped because a dynamic
 # `jq -r '.probe' | sort -u` never saw it. Must match the "checks" map keys in
 # test-apps/dbaas-availability-probe/main.go exactly.
-expected_probe_kinds="aggregator-ready aggregator-health dbaas-classifier sample-postgres-ping"
+expected_probe_kinds="aggregator-ready aggregator-health sample-postgres-ping"
 
 # Converts a fixed-width "...T..:..:...NNNNNNNNNZ" timestamp (see probe.go's timestampLayout) to a
 # fractional Unix epoch. jq's builtin fromdateiso8601 cannot parse the fractional-second part, so the

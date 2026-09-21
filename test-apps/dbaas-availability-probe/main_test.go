@@ -280,52 +280,6 @@ func TestLoopContinuesAfterFailure(t *testing.T) {
 	}
 }
 
-func TestCheckClassifier_NeverLogsCredentialsOrBody(t *testing.T) {
-	const username = "cluster-dba"
-	const password = "s3cr3t-test-password"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, p, ok := r.BasicAuth()
-		if !ok || u != username || p != password {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		var request struct {
-			UserRole string `json:"userRole"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.UserRole != "admin" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
-			"id": "11111111-1111-1111-1111-111111111111",
-			"name": "some-db",
-			"namespace": "dbaas",
-			"type": "postgresql",
-			"classifier": {"microserviceName": "go-test-app-service", "scope": "service", "namespace": "dbaas"},
-			"connectionProperties": [{"username": "` + username + `", "password": "` + password + `", "url": "jdbc:postgresql://pg-patroni:5432/some-db"}]
-		}`))
-	}))
-	defer srv.Close()
-
-	var buf strings.Builder
-	var mu sync.Mutex
-	client := &http.Client{Timeout: time.Second}
-	fn := checkClassifier(client, srv.URL, "dbaas", "postgresql", "go-test-app-service", "service", username, password)
-	res := runProbe(context.Background(), &buf, &mu, "dbaas-classifier", fn)
-
-	if !res.Success {
-		t.Fatalf("expected success, got error=%q", res.Error)
-	}
-	output := buf.String()
-	if strings.Contains(output, password) {
-		t.Fatalf("probe output must never contain the DBaaS password, got: %s", output)
-	}
-	if strings.Contains(output, "connectionProperties") || strings.Contains(output, "jdbc:postgresql") {
-		t.Fatalf("probe output must never contain the raw classifier response body, got: %s", output)
-	}
-}
-
 func TestCheckSamplePing_UnexpectedPayloadFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -348,130 +302,7 @@ func TestCheckSamplePing_UnexpectedPayloadFails(t *testing.T) {
 	}
 }
 
-// --- waitReadyRetry (fixture readiness: aggregator + sample ping) ---
-
-func testWaitReadyConfig() config {
-	return config{requestTimeout: time.Second}
-}
-
-func TestWaitReadyRetry_SamplePingFailsThenSucceeds(t *testing.T) {
-	aggSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer aggSrv.Close()
-
-	var sampleCalls int
-	sampleSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sampleCalls++
-		if sampleCalls < 3 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","result":1}`))
-	}))
-	defer sampleSrv.Close()
-
-	client := &http.Client{Timeout: time.Second}
-	ready := checkReady(client, aggSrv.URL)
-	ping := checkSamplePing(client, sampleSrv.URL)
-
-	err := waitReadyRetry(testWaitReadyConfig(), ready, ping, 5, time.Millisecond)
-	if err != nil {
-		t.Fatalf("expected eventual success once the sample ping recovers, got: %v", err)
-	}
-	if sampleCalls < 3 {
-		t.Fatalf("expected at least 3 sample-service calls (2 failures + 1 success), got %d", sampleCalls)
-	}
-}
-
-func TestWaitReadyRetry_ExhaustsRetriesOnPersistentFailure(t *testing.T) {
-	aggSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer aggSrv.Close()
-
-	var sampleCalls int
-	sampleSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sampleCalls++
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer sampleSrv.Close()
-
-	client := &http.Client{Timeout: time.Second}
-	ready := checkReady(client, aggSrv.URL)
-	ping := checkSamplePing(client, sampleSrv.URL)
-
-	const maxAttempts = 3
-	err := waitReadyRetry(testWaitReadyConfig(), ready, ping, maxAttempts, time.Millisecond)
-	if err == nil {
-		t.Fatalf("expected retry exhaustion to return an error")
-	}
-	if sampleCalls != maxAttempts {
-		t.Fatalf("expected exactly %d sample-service calls (one per attempt), got %d", maxAttempts, sampleCalls)
-	}
-}
-
-func TestWaitReadyRetry_AggregatorNotReadyNeverCallsSample(t *testing.T) {
-	aggSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer aggSrv.Close()
-
-	var sampleCalls int
-	sampleSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sampleCalls++
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","result":1}`))
-	}))
-	defer sampleSrv.Close()
-
-	client := &http.Client{Timeout: time.Second}
-	ready := checkReady(client, aggSrv.URL)
-	ping := checkSamplePing(client, sampleSrv.URL)
-
-	err := waitReadyRetry(testWaitReadyConfig(), ready, ping, 3, time.Millisecond)
-	if err == nil {
-		t.Fatalf("expected an error while the aggregator is not ready")
-	}
-	if !strings.Contains(err.Error(), "aggregator not ready") {
-		t.Fatalf("expected the error to identify the aggregator as the cause, got: %v", err)
-	}
-	if sampleCalls != 0 {
-		t.Fatalf("expected the sample-service ping to never be called while the aggregator is down, got %d calls", sampleCalls)
-	}
-}
-
-func TestWaitReadyRetry_ErrorNeverContainsCredentialsOrResponseBody(t *testing.T) {
-	aggSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer aggSrv.Close()
-
-	const leakedPassword = "s3cr3t-test-password"
-	sampleSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		// status/result are the only fields checkSamplePing decodes; password/connectionUrl must never
-		// reach the returned error even though the body contains them.
-		_, _ = w.Write([]byte(`{"status":"error","result":0,"password":"` + leakedPassword +
-			`","connectionUrl":"jdbc:postgresql://host/db?password=` + leakedPassword + `"}`))
-	}))
-	defer sampleSrv.Close()
-
-	client := &http.Client{Timeout: time.Second}
-	ready := checkReady(client, aggSrv.URL)
-	ping := checkSamplePing(client, sampleSrv.URL)
-
-	err := waitReadyRetry(testWaitReadyConfig(), ready, ping, 1, time.Millisecond)
-	if err == nil {
-		t.Fatalf("expected an error for the malformed ping payload")
-	}
-	if strings.Contains(err.Error(), leakedPassword) {
-		t.Fatalf("error must never contain the sample service's response body, got: %v", err)
-	}
-}
-
-// --- waitStableHealth (pre-transition pod-direct health prerequisite) ---
+// --- waitStableChecks (pre-transition prerequisite) ---
 
 func healthyPodServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -481,23 +312,23 @@ func healthyPodServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func TestWaitStableHealth_BothPodsHealthyPasses(t *testing.T) {
+func TestWaitStableChecks_BothPodsHealthyPasses(t *testing.T) {
 	pod1 := healthyPodServer(t)
 	defer pod1.Close()
 	pod2 := healthyPodServer(t)
 	defer pod2.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []podTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2", url: pod2.URL}}
+	pods := []probeTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2", url: pod2.URL}}
 	checks := []checkFunc{checkHealth(client, pod1.URL), checkHealth(client, pod2.URL)}
 
-	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 3, time.Second)
+	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 3, time.Second)
 	if err != nil {
 		t.Fatalf("expected both healthy pods to pass, got: %v", err)
 	}
 }
 
-func TestWaitStableHealth_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
+func TestWaitStableChecks_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
 	pod1 := healthyPodServer(t)
 	defer pod1.Close()
 	pod2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -507,10 +338,10 @@ func TestWaitStableHealth_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
 	defer pod2.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []podTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2-bad", url: pod2.URL}}
+	pods := []probeTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2-bad", url: pod2.URL}}
 	checks := []checkFunc{checkHealth(client, pod1.URL), checkHealth(client, pod2.URL)}
 
-	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 3, 20*time.Millisecond)
+	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 3, 20*time.Millisecond)
 	if err == nil {
 		t.Fatalf("expected a timeout error when one pod never becomes healthy")
 	}
@@ -519,7 +350,7 @@ func TestWaitStableHealth_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
 	}
 }
 
-func TestWaitStableHealth_ResetsConsecutiveCountOnFailure(t *testing.T) {
+func TestWaitStableChecks_ResetsConsecutiveCountOnFailure(t *testing.T) {
 	// Fails on the 3rd call, then recovers — with stableConsecutive=3, this must never pass on the
 	// strength of the first two calls alone; it needs 3 in a row after the failure.
 	var calls int
@@ -535,10 +366,10 @@ func TestWaitStableHealth_ResetsConsecutiveCountOnFailure(t *testing.T) {
 	defer pod.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []podTarget{{name: "pod-1", url: pod.URL}}
+	pods := []probeTarget{{name: "pod-1", url: pod.URL}}
 	checks := []checkFunc{checkHealth(client, pod.URL)}
 
-	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 3, 2*time.Second)
+	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 3, 2*time.Second)
 	if err != nil {
 		t.Fatalf("expected eventual success once the pod recovers, got: %v", err)
 	}
@@ -547,7 +378,7 @@ func TestWaitStableHealth_ResetsConsecutiveCountOnFailure(t *testing.T) {
 	}
 }
 
-func TestWaitStableHealth_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
+func TestWaitStableChecks_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
 	// A pod pinned by IP that stops answering — because it was replaced — must fail the same way any
 	// other unreachable pod does; there is no separate "pod changed" code path to test independently.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -558,10 +389,10 @@ func TestWaitStableHealth_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
 	_ = l.Close()
 
 	client := &http.Client{Timeout: 50 * time.Millisecond}
-	pods := []podTarget{{name: "pod-gone", url: "http://" + addr}}
+	pods := []probeTarget{{name: "pod-gone", url: "http://" + addr}}
 	checks := []checkFunc{checkHealth(client, "http://"+addr)}
 
-	waitErr := waitStableHealth(pods, checks, 50*time.Millisecond, time.Millisecond, 3, 20*time.Millisecond)
+	waitErr := waitStableChecks(pods, checks, 50*time.Millisecond, time.Millisecond, 3, 20*time.Millisecond)
 	if waitErr == nil {
 		t.Fatalf("expected an error when the pinned pod is unreachable")
 	}
@@ -570,7 +401,7 @@ func TestWaitStableHealth_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
 	}
 }
 
-func TestWaitStableHealth_DoesNotPassAfterOverallTimeout(t *testing.T) {
+func TestWaitStableChecks_DoesNotPassAfterOverallTimeout(t *testing.T) {
 	pod := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(30 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
@@ -579,10 +410,10 @@ func TestWaitStableHealth_DoesNotPassAfterOverallTimeout(t *testing.T) {
 	defer pod.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []podTarget{{name: "slow-pod", url: pod.URL}}
+	pods := []probeTarget{{name: "slow-pod", url: pod.URL}}
 	checks := []checkFunc{checkHealth(client, pod.URL)}
 
-	err := waitStableHealth(pods, checks, time.Second, time.Millisecond, 1, 10*time.Millisecond)
+	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 1, 10*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected the overall timeout to reject a late healthy response")
 	}

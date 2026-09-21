@@ -46,40 +46,24 @@ func getenvSeconds(key string, def time.Duration) time.Duration {
 	return time.Duration(s) * time.Second
 }
 
-// config is read once from the environment at startup — the probe never mutates it. Credentials are
-// held only here and in the Authorization header built per request; they are never written to log
-// output (see checkClassifier).
+// config is read once from the environment at startup and is never mutated.
 type config struct {
 	aggregatorURL     string
 	sampleServiceURL  string
-	namespace         string
-	dbType            string
-	microserviceName  string
-	scope             string
-	dbaasUsername     string
-	dbaasPassword     string
 	probeInterval     time.Duration
 	requestTimeout    time.Duration
 	maxDurationSecond time.Duration // 0 = run until signaled
 	mode              string
-	itemMarker        string
 }
 
 func loadConfig() config {
 	return config{
 		aggregatorURL:     getenv("AGGREGATOR_URL", "http://dbaas-aggregator:8080"),
 		sampleServiceURL:  getenv("SAMPLE_SERVICE_URL", "http://go-test-app-service:8080"),
-		namespace:         getenv("NAMESPACE", "dbaas"),
-		dbType:            getenv("DB_TYPE", "postgresql"),
-		microserviceName:  getenv("MICROSERVICE_NAME", "go-test-app-service"),
-		scope:             getenv("CLASSIFIER_SCOPE", "service"),
-		dbaasUsername:     os.Getenv("DBAAS_USERNAME"),
-		dbaasPassword:     os.Getenv("DBAAS_PASSWORD"),
 		probeInterval:     getenvMillis("PROBE_INTERVAL_MS", time.Second),
 		requestTimeout:    getenvMillis("PROBE_REQUEST_TIMEOUT_MS", 5000*time.Millisecond),
 		maxDurationSecond: getenvSeconds("PROBE_MAX_DURATION_SECONDS", 0),
 		mode:              getenv("PROBE_MODE", "probe"),
-		itemMarker:        getenv("ITEM_MARKER", "dbaas-uptime-fixture"),
 	}
 }
 
@@ -87,18 +71,14 @@ func main() {
 	cfg := loadConfig()
 
 	switch cfg.mode {
-	case "verify":
-		runVerify(cfg, os.Stdout, os.Stderr)
-	case "verify-post":
-		runVerifyPost(cfg, os.Stdout, os.Stderr)
-	case "verify-health":
-		runVerifyHealth(cfg, os.Stdout, os.Stderr)
+	case "verify-preflight":
+		runVerifyPreflight(cfg, os.Stdout, os.Stderr)
 	default:
 		runContinuousProbe(cfg, os.Stdout)
 	}
 }
 
-// runContinuousProbe schedules the four probe kinds on independent tickers and never returns except on
+// runContinuousProbe schedules the three probe kinds on independent tickers and never returns except on
 // SIGINT/SIGTERM or (if set) PROBE_MAX_DURATION_SECONDS elapsing. A failed sample is recorded and
 // probing continues — see probe.go's runProbe — so the final log captures the complete outage window
 // instead of stopping at the first failure.
@@ -117,7 +97,6 @@ func runContinuousProbe(cfg config, out io.Writer) {
 	checks := map[string]checkFunc{
 		"aggregator-ready":     checkReady(client, cfg.aggregatorURL),
 		"aggregator-health":    checkHealth(client, cfg.aggregatorURL),
-		"dbaas-classifier":     checkClassifier(client, cfg.aggregatorURL, cfg.namespace, cfg.dbType, cfg.microserviceName, cfg.scope, cfg.dbaasUsername, cfg.dbaasPassword),
 		"sample-postgres-ping": checkSamplePing(client, cfg.sampleServiceURL),
 	}
 
