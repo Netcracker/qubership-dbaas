@@ -112,7 +112,8 @@ Do not copy status blocks. Do not copy old generic CR labels unless the target d
 - Ensure no `InternalDatabase` has `spec.classifierConfig`.
 - Omit target `spec.classifier.namespace`; the operator derives it from `metadata.namespace`.
 - Ensure every `InternalDatabase` has `spec.classifier.microserviceName`, `spec.classifier.scope`, and `spec.type`.
-- Ensure every `DatabaseAccessPolicy` has `spec.microserviceName` and at least one of `spec.services` or `spec.policy`.
+- Ensure every `DatabaseAccessPolicy` has `spec.microserviceName` and at least one of `spec.services`, `spec.policy`,
+  or `spec.disableGlobalPermissions: true`.
 - Flag a `lazy` value that is not boolean after coercing string `"true"`/`"false"`.
 - Flag `lazy: true` combined with `initialInstantiation.approach: clone`.
 - Flag `initialInstantiation.approach: clone` without `sourceClassifier`.

@@ -73,13 +73,6 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	dp.Status.Phase = dbaasv1.PhaseProcessing
 
-	// Field-level constraints (microserviceName, services[].name/roles, policy[].type/defaultRole)
-	// are enforced by CRD admission. Only the cross-field constraint below cannot be expressed in schema.
-
-	if len(dp.Spec.Services) == 0 && len(dp.Spec.Policy) == 0 {
-		return invalidSpec(ctx, &dp.Status.Phase, &dp.Status.Conditions, dp.Generation, r.Recorder, dp, "spec: at least one of 'services' or 'policy' must be set")
-	}
-
 	payload := r.buildPayload(dp)
 	dp.Status.LastRequestID = requestID
 	aggStart := time.Now()

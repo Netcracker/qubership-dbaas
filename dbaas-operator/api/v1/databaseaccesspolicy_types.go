@@ -65,7 +65,8 @@ type PolicyRole struct {
 //	{ "subKind": "DbPolicy", "metadata": { "microserviceName": <microserviceName> }, "spec": <roles>, ... }
 //
 // Field names and semantics match the RolesRegistration Java class in the aggregator.
-// At least one of services or policy must be provided.
+// At least one of services, policy, or disableGlobalPermissions must be set.
+// +kubebuilder:validation:XValidation:rule="(has(self.services) && size(self.services) > 0) || (has(self.policy) && size(self.policy) > 0) || (has(self.disableGlobalPermissions) && self.disableGlobalPermissions)",message="at least one of spec.services, spec.policy, or spec.disableGlobalPermissions must be set"
 type DatabaseAccessPolicySpec struct {
 	// operatorNamespace is the namespace where the dbaas-operator instance
 	// responsible for this resource is deployed. It must match that operator's

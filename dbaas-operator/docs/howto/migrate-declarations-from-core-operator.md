@@ -233,9 +233,9 @@ spec:
   Omit `tenantId` to declare a template only.
 - **`clone` requires a source.** When `initialInstantiation.approach: clone`,
   `sourceClassifier` is required and `spec.lazy: true` is prohibited.
-- **DatabaseAccessPolicy needs `services` or `policy`.** At least one must be set; otherwise the
-  controller reports phase `InvalidConfiguration` with reason `InvalidSpec`. The CRD itself does not
-  enforce this, so the API server accepts the CR first.
+- **DatabaseAccessPolicy needs `services`, `policy`, or `disableGlobalPermissions`.** At least one
+  must be set; the CRD enforces this with a CEL cross-field rule, so the API server rejects a CR that
+  omits all three with HTTP 422.
 - **Status & lifecycle.** Each CR now carries its own `status.phase`, conditions, and
   `observedGeneration`; provisioning may be synchronous or asynchronous, and the controller polls the
   aggregator while an async operation is in flight. See
