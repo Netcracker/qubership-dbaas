@@ -4,13 +4,16 @@ on:
   workflow_call:
   workflow_dispatch:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   integration-tests:
+    # PR runs are limited to Renovate PRs from this repository. The check matches the immutable
+    # account ID of renovate[bot] (29139614), not the login or the editable PR title.
     if: |
       github.event_name != 'pull_request' ||
-      startsWith(github.event.pull_request.title, 'chore(deps)')
+      (github.event.pull_request.user.id == 29139614 &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -199,15 +202,19 @@ jobs:
           echo "Calculated image tag: $IMAGE_TAG"
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
+      # PR runs test the images built from the PR revision and fail when an image is missing, so a
+      # dependency update is never validated against `latest`. Other events keep the `latest` fallback.
+      # The operator uses `latest` only when Go Build skipped itself because the PR changes nothing
+      # that goes into the operator image.
       - name: Resolve aggregator image
         id: aggregator_image
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas
-          tag: ${{ steps.image_builds.outputs['aggregator-build'] == 'skipped' && 'latest' || env.IMAGE_TAG }}
+          tag: ${{ env.IMAGE_TAG }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          timeout-seconds: "0"
-          fallback-tag: latest
+          timeout-seconds: ${{ github.event_name == 'pull_request' && '120' || '0' }}
+          fallback-tag: ${{ github.event_name != 'pull_request' && 'latest' || '' }}
 
       - name: Resolve operator image
         id: operator_image
@@ -216,8 +223,8 @@ jobs:
           package: qubership-dbaas-operator
           tag: ${{ steps.image_builds.outputs['operator-build'] == 'skipped' && 'latest' || env.IMAGE_TAG }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          timeout-seconds: "0"
-          fallback-tag: latest
+          timeout-seconds: ${{ github.event_name == 'pull_request' && '120' || '0' }}
+          fallback-tag: ${{ github.event_name != 'pull_request' && 'latest' || '' }}
 
       - name: Set DBaaS image tags
         env:

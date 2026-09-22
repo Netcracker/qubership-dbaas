@@ -14,13 +14,14 @@ on:
   schedule:
     - cron: "0 2 * * *"  # Daily at 02:00 UTC
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   sample-services-integration-tests:
     if: |
       github.event_name != 'pull_request' ||
-      github.event.pull_request.user.login == 'renovate[bot]'
+      (github.event.pull_request.user.id == 29139614 &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -154,16 +155,18 @@ jobs:
           echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
+      # A missing PR image fails the job instead of falling back to `latest`. The operator uses
+      # `latest` only when Go Build skipped itself because the PR changes nothing that goes into
+      # the operator image.
       - name: Resolve aggregator image
         id: aggregator_image
         if: github.event_name == 'pull_request'
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas
-          tag: ${{ steps.image_builds.outputs['aggregator-build'] == 'skipped' && 'latest' || env.IMAGE_TAG }}
+          tag: ${{ env.IMAGE_TAG }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          timeout-seconds: "0"
-          fallback-tag: latest
+          timeout-seconds: "120"
 
       - name: Resolve operator image
         id: operator_image
@@ -173,8 +176,7 @@ jobs:
           package: qubership-dbaas-operator
           tag: ${{ steps.image_builds.outputs['operator-build'] == 'skipped' && 'latest' || env.IMAGE_TAG }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          timeout-seconds: "0"
-          fallback-tag: latest
+          timeout-seconds: "120"
 
       - name: Set PR image tags
         if: github.event_name == 'pull_request'
