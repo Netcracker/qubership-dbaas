@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.dto.backup.Status;
 import com.netcracker.cloud.dbaas.dto.bluegreen.BgStateRequest;
 import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -377,6 +379,22 @@ class BlueGreenServiceTest {
         Response response = blueGreenService.createOrUpdateDatabaseWarmup(databaseDeclarativeConfig, null);
         assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
         Assertions.assertFalse(response.hasEntity());
+    }
+
+    @Test
+    void testCreateOrUpdateDatabaseNotLazy_physicalDatabaseIdReachesCreateRequest() {
+        DatabaseDeclarativeConfig databaseDeclarativeConfig = new DatabaseDeclarativeConfig();
+        databaseDeclarativeConfig.setLazy(false);
+        databaseDeclarativeConfig.setType("postgresql");
+        databaseDeclarativeConfig.setClassifier(createClassifier("test", NAMESPACE));
+        databaseDeclarativeConfig.setPhysicalDatabaseId("postgresql-prod-a");
+        Mockito.when(aggregatedDatabaseAdministrationService.createDatabaseFromRequest(any(), any(), any(), any(), any())).thenReturn(Response.status(201).build());
+
+        blueGreenService.createOrUpdateDatabaseWarmup(databaseDeclarativeConfig, null);
+
+        ArgumentCaptor<DatabaseCreateRequestV3> requestCaptor = ArgumentCaptor.forClass(DatabaseCreateRequestV3.class);
+        verify(aggregatedDatabaseAdministrationService).createDatabaseFromRequest(requestCaptor.capture(), any(), any(), any(), any());
+        assertEquals("postgresql-prod-a", requestCaptor.getValue().getPhysicalDatabaseId());
     }
 
     @Test

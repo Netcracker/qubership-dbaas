@@ -166,6 +166,7 @@ type DatabaseDeclarationSpecWire struct {
 	Lazy                 bool                            `json:"lazy,omitempty"`
 	Settings             map[string]apiextensionsv1.JSON `json:"settings,omitempty"`
 	NamePrefix           string                          `json:"namePrefix,omitempty"`
+	PhysicalDatabaseID   string                          `json:"physicalDatabaseId,omitempty"`
 	VersioningConfig     *VersioningConfigWire           `json:"versioningConfig,omitempty"`
 	InitialInstantiation *InitialInstantiationWire       `json:"initialInstantiation,omitempty"`
 }

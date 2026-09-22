@@ -136,6 +136,7 @@ own `InternalDatabase` CR.**
 | `declarations[].initialInstantiation.approach` | `spec.initialInstantiation.approach` |
 | `initialInstantiation.sourceClassifier{...}` | `spec.initialInstantiation.sourceClassifier{...}` — now a full `Classifier` (add `microserviceName`) |
 | `declarations[].lazy` / `.settings` / `.namePrefix` | `spec.lazy` / `spec.settings` / `spec.namePrefix` |
+| `declarations[].physicalDatabaseId` | `spec.physicalDatabaseId` — unchanged; omit to keep balancing-rule selection. Pins only new-creation databases; ignored for `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`, which follow the source/backup adapter instead |
 
 ### DatabaseDeclaration before (Core Operator)
 
