@@ -18,7 +18,9 @@ Old generic YAML CR:
 - `subKind: DatabaseDeclaration` or `subKind: DbPolicy`
 - declaration body under `spec`
 - Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions or include lines under
-  labels. Quote template scalar values or use the converter's Helm fallback, then review the output.
+  labels. `apply_migration.py` blanks out a whole-document `{{- if ... }}` / `{{- end }}` guard automatically
+  before parsing and re-wraps it around the generated output; any other unparseable Helm construct blocks the run
+  (exit 4) instead of falling back to a converter pass that needs manual review.
 
 Target CRDs:
 
@@ -34,7 +36,7 @@ Each old database declaration becomes one `InternalDatabase`.
 | --- | --- | --- |
 | `declarations[]` | one CR per item | split the list; append the item index when a multi-item wrapper has one parent name |
 | `kind: DatabaseDeclaration` | `kind: InternalDatabase` | remove old `kind` and `subKind` |
-| operator assignment | `spec.operatorNamespace` | required; chart-local layout uses the `API_DBAAS_ADDRESS`-derived Helm expression, a plain manifest uses the concrete dbaas-operator namespace |
+| operator assignment | `spec.operatorNamespace` | required; supply the namespace of the dbaas-operator instance explicitly |
 | `spec.classifierConfig.classifier` or `classifierConfig.classifier` | `spec.classifier` | unwrap `classifierConfig` |
 | `classifier.microserviceName` | `spec.classifier.microserviceName` | preserve Helm templates |
 | `classifier.scope` | `spec.classifier.scope` | required |
@@ -46,6 +48,7 @@ Each old database declaration becomes one `InternalDatabase`.
 | `lazy` | `spec.lazy` | coerce string `"true"`/`"false"`; flag other non-booleans; do not combine `true` with clone |
 | `settings` | `spec.settings` | preserve entries verbatim; each value may be any valid JSON type |
 | `namePrefix` | `spec.namePrefix` | optional |
+| `physicalDatabaseId` | `spec.physicalDatabaseId` | optional; preserve verbatim, no transformation. Pins only new-creation databases — ignored for `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`, which follow the source/backup adapter instead |
 | `versioningConfig` | `spec.versioningConfig` | marks configuration/versioned database |
 | `initialInstantiation` | `spec.initialInstantiation` | optional |
 | `initialInstantiation.sourceClassifier` | `spec.initialInstantiation.sourceClassifier` | convert classifier keys; its `microserviceName` must equal the target classifier owner |
@@ -60,7 +63,7 @@ Each old DB policy becomes one `DatabaseAccessPolicy`.
 | Old field | New field | Notes |
 | --- | --- | --- |
 | `kind: DbPolicy` or `kind: dbPolicy` | `kind: DatabaseAccessPolicy` | remove old `kind` and `subKind` |
-| operator assignment | `spec.operatorNamespace` | required; chart-local layout uses the `API_DBAAS_ADDRESS`-derived Helm expression, a plain manifest uses the concrete dbaas-operator namespace |
+| operator assignment | `spec.operatorNamespace` | required; supply the namespace of the dbaas-operator instance explicitly |
 | `services` | `spec.services` | preserve list order |
 | `policy` | `spec.policy` | preserve roles and database types |
 | `disableGlobalPermissions` | `spec.disableGlobalPermissions` | coerce string `"false"`/`"true"` to boolean when safe |
@@ -89,25 +92,14 @@ Use `metadata.namespace` from the old generic CR if present. For Helm charts, pr
 namespace: "{{ .Values.NAMESPACE }}"
 ```
 
-Do not copy status blocks. Do not copy old generic CR labels unless the target deployment tooling still requires them.
-
-## Operator assignment
-
-`spec.operatorNamespace` is required and immutable. Its value depends on the output layout:
-
-- **Chart-local manifests** use this expression:
-
-  ```yaml
-  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
-  ```
-
-- **Plain manifests** carry the literal namespace.
+Do not copy status blocks. `apply_migration.py` carries `metadata.labels` and `metadata.annotations` forward from
+the source verbatim -- they are ordinary Kubernetes metadata with no converter-owned mapping, and deployment
+tooling may depend on them surviving onto the generated CR.
 
 ## Validation checklist
 
 - Ensure no output manifest has `kind: DBaaS`.
-- Ensure every output manifest has the correct `spec.operatorNamespace`: the `API_DBAAS_ADDRESS`-derived expression
-  for a chart-local layout, or the concrete operator namespace for a plain manifest. Do not assume it equals the
+- Ensure every output manifest has the explicit, correct `spec.operatorNamespace`; do not assume it equals the
   workload namespace.
 - Ensure no `InternalDatabase` has `spec.classifierConfig`.
 - Omit target `spec.classifier.namespace`; the operator derives it from `metadata.namespace`.

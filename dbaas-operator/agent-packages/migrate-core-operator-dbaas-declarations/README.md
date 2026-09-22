@@ -18,18 +18,17 @@ including `deployments/`, `<service-name>-deployments/`, and Helm chart folders.
   mappings and validation rules.
 - `.apm/skills/migrate-core-operator-dbaas-declarations/references/examples.md` - representative
   before-and-after manifests.
-- `.apm/skills/migrate-core-operator-dbaas-declarations/scripts/convert_dbaas_crs.py` - an optional
-  bundled bulk converter for repetitive JSON and YAML inputs.
+- `.apm/skills/migrate-core-operator-dbaas-declarations/scripts/apply_migration.py` - the
+  deterministic writer: the only process allowed to create, modify, or delete files in the consumer
+  repository, given a plan built from discovery. See its module docstring for the plan shape and the
+  `--check`/`--apply` contract.
+- `.apm/skills/migrate-core-operator-dbaas-declarations/scripts/convert_dbaas_crs.py` - the
+  conversion implementation `apply_migration.py` calls. Also usable directly as a small standalone
+  CLI for a single legacy file when the full plan/writer flow is not needed; its output is then a
+  draft to compare against the source, not something `apply_migration.py` applies.
 
-The converter is deliberately optional. Agents can migrate small inputs from
-the mapping alone; the script is useful when a declaration list expands into
-many Kubernetes resources and deterministic splitting reduces manual errors.
-Its output remains a draft that must be compared with the source and validated
-against the target CRDs.
-
-The converter requires `--operator-namespace` and writes that value to every
-generated CR. Pass the `API_DBAAS_ADDRESS` expression for a chart-local
-conversion and the literal namespace for a plain-manifest conversion.
+The writer requires `operatorNamespace` in every plan root and writes that value to every generated
+CR. Use the namespace of the dbaas-operator instance, which may differ from the workload namespace.
 
 ## Install
 

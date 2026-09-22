@@ -247,9 +247,9 @@ public class DbaasHelperV3 {
     /**
      * Regex to search for service name and namespace in the database connection string.
      * <p>Explanation:
-     * <p>Example string: 'http://elasticsearch.dbaas.svc.cluster.local:9200/dbaas_autotests-69c0c8ab-0a87-4fbc-ac3b-5b57b2d97bc3'
+     * <p>Example string: 'http://opensearch.dbaas.svc.cluster.local:9200/dbaas_autotests-69c0c8ab-0a87-4fbc-ac3b-5b57b2d97bc3'
      * <p><b>group 1</b>: line beginning and protocol, if exists, e.g. 'http://'
-     * <p><b>group 2</b>: service name we are looking for, e.g. 'elasticsearch'
+     * <p><b>group 2</b>: service name we are looking for, e.g. 'opensearch'
      * <p><b>group 3</b>: namespace we are looking for, e.g. 'dbaas'
      * <p><b>group 4</b>: some cluster info, if exists, e.g. '.svc.cluster.local',
      * <p><b>group 5</b>: port, without semicolon, if exists, e.g. '9200',
