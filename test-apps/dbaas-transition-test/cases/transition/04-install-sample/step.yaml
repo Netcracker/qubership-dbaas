@@ -1,0 +1,18 @@
+# The sample service, from the harness checkout, routed to DBaaS through API_DBAAS_ADDRESS only —
+# the test only exercises /postgres/ping, which resolves through the service-scoped datasource, so
+# INTERNAL_DATABASES is restricted to that one entry and SECRET_CLAIMS stays empty.
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: >
+      helm upgrade --install go-test-app-service
+      "$HARNESS_DIR/test-apps/go-test-app-service/helm-templates/go-test-app-service"
+      --namespace "$DBAAS_NAMESPACE"
+      --set-json 'INTERNAL_DATABASES=[{"name":"go-test-app-service-postgres","scope":"service"}]'
+      --set-json 'SECRET_CLAIMS=[]'
+      --set IMAGE_REPOSITORY="$GO_IMAGE_REPOSITORY" --set TAG="$GO_IMAGE_TAG"
+      --set IMAGE_PULL_POLICY=Never --set MOUNT_SECRETS=false --set M2M_ENABLED=true
+      --set API_DBAAS_ADDRESS="http://$DBAAS_SERVICE_NAME.$DBAAS_NAMESPACE:8080"
+      --wait --timeout 5m
+    timeout: 360
+# KUTTL loads assert.yaml automatically from this numbered step directory.

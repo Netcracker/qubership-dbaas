@@ -1,0 +1,24 @@
+# Availability prerequisite: the aggregator must have 2 ready replicas on a RollingUpdate strategy
+# before anything else proceeds — the continuous probes check availability during the Helm upgrade
+# later, which only means something if the Deployment can never legitimately drop below two ready
+# replicas.
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 30
+resourceRefs:
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: dbaas
+    name: dbaas-aggregator
+    ref: aggregator
+collectors:
+  - type: pod
+    selector: name=dbaas-aggregator
+    namespace: dbaas
+    tail: 200
+  - type: command
+    command: kubectl -n dbaas describe deployment dbaas-aggregator
+assertAll:
+  - celExpr: "aggregator.spec.replicas == 2"
+  - celExpr: "aggregator.status.readyReplicas == 2"
+  - celExpr: "aggregator.spec.strategy.type != 'Recreate'"

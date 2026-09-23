@@ -1,0 +1,15 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 120
+resourceRefs:
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: dbaas
+    name: dbaas-availability-probe
+    ref: probe
+collectors:
+  - type: pod
+    selector: app.kubernetes.io/name=dbaas-availability-probe
+    namespace: dbaas
+assertAll:
+  - celExpr: "probe.status.readyReplicas == 1"

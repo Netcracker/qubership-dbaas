@@ -1,0 +1,47 @@
+# Pre-transition prerequisite: both selected aggregator pods and the sample-service path must
+# report healthy for ten consecutive one-second checks before the measured baseline starts. The
+# initial release can briefly report a cached PROBLEM status right after startup — running this as
+# a Job before probeStart classifies that as a setup failure instead of transition downtime.
+#
+# ${AGGREGATOR_POD_1_NAME}, ${AGGREGATOR_POD_1_IP}, ${AGGREGATOR_POD_2_NAME},
+# ${AGGREGATOR_POD_2_IP} are the only per-run values (the two pods the preflight step's `jq`
+# selection just picked) — rendered by `envsubst` before this file is applied. Namespace and image
+# are fixed constants, same as probe-deployment.yaml.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dbaas-fixture-preflight
+  namespace: dbaas
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: verify-preflight
+          image: dbaas-availability-probe:it
+          imagePullPolicy: Never
+          env:
+            - name: PROBE_MODE
+              value: verify-preflight
+            - name: SAMPLE_SERVICE_URL
+              value: "http://go-test-app-service.dbaas:8080"
+            - name: AGGREGATOR_POD_1_NAME
+              value: "${AGGREGATOR_POD_1_NAME}"
+            - name: AGGREGATOR_POD_1_URL
+              value: "http://${AGGREGATOR_POD_1_IP}:8080"
+            - name: AGGREGATOR_POD_2_NAME
+              value: "${AGGREGATOR_POD_2_NAME}"
+            - name: AGGREGATOR_POD_2_URL
+              value: "http://${AGGREGATOR_POD_2_IP}:8080"
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: [ALL]

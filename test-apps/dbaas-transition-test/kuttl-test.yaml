@@ -1,0 +1,17 @@
+# DBaaS aggregator upgrade/downgrade availability test suite. Runs against the Kind cluster the
+# calling workflow already created and loaded images into — no startKIND/kindConfig here, so KUTTL
+# uses the preconfigured cluster in $KUBECONFIG as-is (see docs/cli.md: "When running with no
+# defined test environment, the default is a preconfigured cluster defined in $KUBECONFIG").
+#
+# delete: none is deliberate, not an oversight — TestSuite.delete defaults to "all", which deletes
+# every resource KUTTL applied (the probe Deployment, the preflight Job) even after a failing test
+# case. A failure's evidence must survive for the workflow's diagnostics step, which runs after this
+# suite exits, so nothing gets cleaned up here; the whole Kind cluster is itself ephemeral and torn
+# down by the workflow regardless.
+apiVersion: kuttl.dev/v1beta1
+kind: TestSuite
+testDirs:
+  - cases
+parallel: 1
+timeout: 60
+delete: none

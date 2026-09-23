@@ -1,22 +1,16 @@
 # dbaas-aggregator Helm values overlay for the upgrade/downgrade availability test.
 #
-# This restates the chart's own default values (helm-templates/dbaas-aggregator/values.yaml) explicitly
-# rather than relying on Helm's implicit merge, plus bootstrap/dbaas-values.yaml's addressing/credential
-# keys the chart has no default for — so a future change to either file can't silently change what this
-# test deploys. Two deliberate differences from that combination: REPLICAS raised to 2 (the transition
-# test requires two ready replicas throughout), and every credential placeholder that
-# bootstrap/dbaas-values.yaml hardcodes to the literal "password" instead sourced from ${...} —
-# deploy-fixture.sh generates and exports random values for these before this file is rendered with
-# envsubst, and masks them immediately, so no fixed credential is ever deployed or printed.
+# This overlay fixes the chart values that the transition scenario depends on. It raises REPLICAS
+# to 2 and replaces bootstrap's fixed test passwords with credentials generated and masked by the
+# workflow.
 #
 # The chart's own template already renders REPLICAS into a RollingUpdate strategy with a hardcoded
 # maxSurge/maxUnavailable of 25%/25% (helm-templates/dbaas-aggregator/templates/deployment.yaml) —
-# at 2 replicas that is maxUnavailable=0 (25% of 2 rounds down to 0) and maxSurge=1, so a rollout can
-# only ever add a third pod before removing an old one and never drops below two ready replicas.
+# at 2 replicas that is maxUnavailable=0 (25% rounds down) and maxSurge=1. The rollout controller
+# therefore adds a third pod before it scales an old pod down.
 
-# ${TAG} is the ONLY thing that differs between the initial deploy and the transition step: the caller
-# exports TAG=<initial tag> for deploy-fixture.sh and TAG=<target tag> for transition-aggregator.sh,
-# then re-renders this same file. IMAGE_REPOSITORY is fixed — only the tag moves.
+# ${TAG} is the only value in this overlay that differs between the initial install and transition.
+# The transition also uses the target version's chart.
 DECLARATIVE_HOOK_IMAGE: ghcr.io/netcracker/qubership-dbaas-validation-image:${TAG}
 IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas
 TAG: ${TAG}
@@ -29,7 +23,7 @@ REPLICA_ROLLING_TIMEOUT_SECONDS: 600
 LIVENESS_PROBE_INITIAL_DELAY_SECONDS: 120
 REGION_DBAAS: ${REGION_DBAAS}
 NODE_SELECTOR_DBAAS_KEY: ${NODE_SELECTOR_DBAAS_KEY}
-# Keep RollingUpdate for the initial and target charts. deploy-fixture.sh rejects a Recreate strategy
+# Keep RollingUpdate for the initial and target charts. The harness rejects a Recreate strategy
 # before measurement; the continuous probes check availability during the Helm upgrade.
 DBAAS_RECREATE_DEPLOYMENT_STRATEGY: false
 
@@ -53,7 +47,7 @@ MEM_ARGS: "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=136m -XX:MaxMetaspaceSiz
 MEMORY_LIMIT: "520Mi"
 CPU_LIMIT: "2"
 CPU_REQUEST: "100m"
-# Two replicas is an availability prerequisite of this test, not a chart default — see header comment.
+# Two replicas provide the rolling-update availability baseline.
 REPLICAS: 2
 
 BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD: ${BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD}
