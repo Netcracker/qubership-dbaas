@@ -1182,6 +1182,20 @@ spec:
         - admin
 ```
 
+**Disable global permission grants only (no explicit role assignments):**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseAccessPolicy
+metadata:
+  name: my-policy
+  namespace: my-namespace
+spec:
+  operatorNamespace: dbaas-system
+  microserviceName: my-service
+  disableGlobalPermissions: true
+```
+
 **Check status:**
 
 ```bash
