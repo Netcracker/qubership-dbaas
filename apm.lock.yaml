@@ -1,23 +1,22 @@
 lockfile_version: '1'
-apm_version: 0.30.0
+apm_version: 0.31.0
 dependencies:
 - repo_url: netcracker/qubership-ai-packages
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: qubership-essentials
   host: github.com
-  resolved_commit: 0e384f374d05bf6dc1900f518312db62e71b71f4
-  version: 1.0.3
+  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
+  version: 1.1.0
   virtual_path: agent-packages/qubership-essentials
   is_virtual: true
   package_type: apm_package
-  content_hash: sha256:0fdceb015af525defdac7812371542f4cc039655928775608e652b9d6d5b11ba
+  content_hash: sha256:2b55c4ebee62c9eda431551239c26de4ba606a9842ff4e580f1b3fbebf7359b3
 - repo_url: netcracker/qubership-ai-packages
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: apm-authoring
   host: github.com
-  resolved_commit: 2925e6e57848f10e27f98956b89284c1212e6c98
-  resolved_ref: 2925e6e57848f10e27f98956b89284c1212e6c98
-  version: 1.0.0
+  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
+  version: 1.1.0
   virtual_path: agent-packages/apm-authoring
   is_virtual: true
   depth: 2
@@ -27,21 +26,17 @@ dependencies:
   - .agents/skills/apm-authoring
   - .agents/skills/apm-authoring/SKILL.md
   - .claude/rules/apm-authoring.md
-  - .claude/skills/apm-authoring
-  - .claude/skills/apm-authoring/SKILL.md
   - .cursor/rules/apm-authoring.mdc
   deployed_file_hashes:
-    .agents/skills/apm-authoring/SKILL.md: sha256:1832abc93a14884504dc87d97cc0c2825c7e7b4a6786f2daccf1d6ef172bc907
+    .agents/skills/apm-authoring/SKILL.md: sha256:b4dd9fa65061fcda3bef603ca980c28b0469db41627a3164395d23240b950380
     .claude/rules/apm-authoring.md: sha256:5c4185d3d69333a810c01f5e26a8ea46b033e7082a21f1551433d6c97d8a24a2
-    .claude/skills/apm-authoring/SKILL.md: sha256:1832abc93a14884504dc87d97cc0c2825c7e7b4a6786f2daccf1d6ef172bc907
     .cursor/rules/apm-authoring.mdc: sha256:b63b337e0af85886c49d961ba2063115a8a12c62d74c660e512f9b06c515a048
-  content_hash: sha256:1d731d0a26376eda0b82629e6e1cff1b41dfeae13fe8d7e5debb24a1699ea4a8
+  content_hash: sha256:c4931d5235c1b2632d537cf9b0f843ee3fb9dc7d84d8de113160b72ffbce4ed8
 - repo_url: netcracker/qubership-ai-packages
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: codex-review
   host: github.com
-  resolved_commit: 2925e6e57848f10e27f98956b89284c1212e6c98
-  resolved_ref: 2925e6e57848f10e27f98956b89284c1212e6c98
+  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
   version: 1.0.0
   virtual_path: agent-packages/codex-review
   is_virtual: true
@@ -61,8 +56,7 @@ dependencies:
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: english-us-developer-style
   host: github.com
-  resolved_commit: 2925e6e57848f10e27f98956b89284c1212e6c98
-  resolved_ref: 2925e6e57848f10e27f98956b89284c1212e6c98
+  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
   version: 2.1.0
   virtual_path: agent-packages/english-us-developer-style
   is_virtual: true
@@ -83,8 +77,7 @@ dependencies:
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: markdown-line-length-120
   host: github.com
-  resolved_commit: 2925e6e57848f10e27f98956b89284c1212e6c98
-  resolved_ref: 2925e6e57848f10e27f98956b89284c1212e6c98
+  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
   version: 1.0.1
   virtual_path: agent-packages/markdown-line-length-120
   is_virtual: true
@@ -199,24 +192,6 @@ deployments:
   content_hash: sha256:3b936301f81645936d916eb4b21578b8721dc373b521062860d7ed7731681636
 - kind: project-relative
   target: claude
-  value: .claude/skills/apm-authoring
-  runtime: null
-  scope: project
-  owners:
-  - netcracker/qubership-ai-packages/agent-packages/apm-authoring
-  active_owner: netcracker/qubership-ai-packages/agent-packages/apm-authoring
-  content_hash: null
-- kind: project-relative
-  target: claude
-  value: .claude/skills/apm-authoring/SKILL.md
-  runtime: null
-  scope: project
-  owners:
-  - netcracker/qubership-ai-packages/agent-packages/apm-authoring
-  active_owner: netcracker/qubership-ai-packages/agent-packages/apm-authoring
-  content_hash: sha256:1832abc93a14884504dc87d97cc0c2825c7e7b4a6786f2daccf1d6ef172bc907
-- kind: project-relative
-  target: claude
   value: .claude/skills/codex-review
   runtime: null
   scope: project
@@ -268,7 +243,7 @@ deployments:
   owners:
   - netcracker/qubership-ai-packages/agent-packages/apm-authoring
   active_owner: netcracker/qubership-ai-packages/agent-packages/apm-authoring
-  content_hash: sha256:1832abc93a14884504dc87d97cc0c2825c7e7b4a6786f2daccf1d6ef172bc907
+  content_hash: sha256:b4dd9fa65061fcda3bef603ca980c28b0469db41627a3164395d23240b950380
 - kind: project-relative
   target: codex
   value: .agents/skills/codex-review
