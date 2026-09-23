@@ -1,0 +1,15 @@
+# PostgreSQL/Patroni, from the pinned pgskipper checkout, via the existing bootstrap Make targets —
+# their STORAGE_CLASS auto-detection is real logic worth reusing, not worth reimplementing here.
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: >
+      make -C "$HARNESS_DIR/bootstrap" CONFIG_FILE=local.mk install-patroni-core
+      REPOS_DIR="$REPOS_DIR" PG_NAMESPACE="$PG_NAMESPACE" DBAAS_NAMESPACE="$DBAAS_NAMESPACE"
+      PATRONI_CORE_VALUES_FILE="$HARNESS_DIR/test-apps/dbaas-transition-test/testdata/values/patroni-core.yaml"
+      POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
+    timeout: 300
+  - script: >
+      make -C "$HARNESS_DIR/bootstrap" CONFIG_FILE=local.mk wait-patroni-pods
+      PG_NAMESPACE="$PG_NAMESPACE"
+    timeout: 600

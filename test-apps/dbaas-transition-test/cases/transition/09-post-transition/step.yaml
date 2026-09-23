@@ -1,0 +1,13 @@
+# Keeps probing for the fixed post-transition window after the rollout completes, confirms the
+# aggregator ends with 2 ready replicas, and records the measurement's end boundary.
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - command: sleep 65
+    timeout: 75
+  - script: |
+      ready=$(kubectl -n "$DBAAS_NAMESPACE" get deployment dbaas-aggregator -o jsonpath='{.status.readyReplicas}')
+      [ "${ready:-0}" -eq 2 ] || { echo "expected 2 ready aggregator replicas after the transition, got ${ready:-0}" >&2; exit 1; }
+    timeout: 15
+  - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-measurement-end.txt
+    timeout: 10

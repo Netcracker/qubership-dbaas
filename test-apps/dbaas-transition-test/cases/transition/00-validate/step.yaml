@@ -1,0 +1,16 @@
+# Confirms the checkouts the workflow prepared are real git checkouts (bootstrap's own `git clone`
+# target must no-op against them) and that helm/git/kubectl/the cluster connection are usable,
+# before anything gets installed.
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: |
+      for dir in "$REPOS_DIR/pgskipper-operator" "$INITIAL_DIR" "$TARGET_DIR" "$FIXTURE_DIR"; do
+        [ -d "$dir/.git" ] || { echo "expected an existing git checkout at $dir" >&2; exit 1; }
+        echo "$dir -> $(git -C "$dir" rev-parse HEAD)"
+      done
+    timeout: 30
+  - script: >
+      make -C "$HARNESS_DIR/bootstrap" CONFIG_FILE=local.mk validate
+      REPOS_DIR="$REPOS_DIR" PG_NAMESPACE="$PG_NAMESPACE" DBAAS_NAMESPACE="$DBAAS_NAMESPACE"
+    timeout: 60

@@ -7,8 +7,11 @@ name: DBaaS Transition (reusable)
 # match whichever aggregator version happens to be "initial" for a given direction and stays fixed
 # throughout. pgskipper supplies PostgreSQL/Patroni and the PostgreSQL adapter, pinned to a commit
 # that works with both aggregator versions. The harness (this branch) supplies the sample-service
-# chart and image, the probe app, and every script. See .github/scripts/dbaas-transition/*.sh
-# for the per-stage detail; this file only wires the stages together.
+# chart and image and the probe image. The scenario itself lives entirely in
+# test-apps/dbaas-transition-test/{kuttl-test.yaml,cases/}, run by KUTTL against the Kind cluster
+# this workflow creates below — KUTTL's own resource asserts, `kubectl`/`helm --wait`, and the
+# existing bootstrap Make targets own every infrastructure lifecycle step; this file only prepares
+# the cluster/images/credentials and invokes the one test suite.
 #
 # Called twice per run by dbaas-upgrade-downgrade.yml — once per direction — each getting its
 # own Kind cluster, so an upgrade-direction failure can never be caused by downgrade-direction state.
@@ -17,7 +20,7 @@ on:
   workflow_call:
     inputs:
       direction:
-        description: Which transition this run performs (upgrade or downgrade) — used only for labeling.
+        description: Which transition this run performs (upgrade or downgrade).
         required: true
         type: string
       initial-version:
@@ -49,9 +52,17 @@ jobs:
       cancel-in-progress: false
 
     env:
+      KIND_CLUSTER: kind
+      HARNESS_DIR: ${{ github.workspace }}/harness
+      REPOS_DIR: ${{ github.workspace }}/repos
+      INITIAL_DIR: ${{ github.workspace }}/repos/qubership-dbaas-initial
+      TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
+      FIXTURE_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
       PG_NAMESPACE: postgres
       DBAAS_NAMESPACE: dbaas
-      KIND_CLUSTER: kind
+      DBAAS_SERVICE_NAME: dbaas-aggregator
+      REGION_DBAAS: database
+      NODE_SELECTOR_DBAAS_KEY: region
       GO_IMAGE_REPOSITORY: go-test-app-service
       GO_IMAGE_TAG: it
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
@@ -63,17 +74,9 @@ jobs:
       INITIAL_TAG: v${{ inputs.initial-version }}
       TARGET_TAG: v${{ inputs.target-version }}
       FIXTURE_TAG: v${{ inputs.fixture-version }}
-      REPOS_DIR: ${{ github.workspace }}/repos
-      HARNESS_DIR: ${{ github.workspace }}/harness
-      INITIAL_DIR: ${{ github.workspace }}/repos/qubership-dbaas-initial
-      TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
-      FIXTURE_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
-      TRANSITION_TIMESTAMPS_FILE: ${{ github.workspace }}/transition-timestamps.txt
-      INITIAL_AGGREGATOR_HEALTH_EVIDENCE_FILE: ${{ github.workspace }}/initial-aggregator-health-evidence.txt
-      OUT_DIR: ${{ github.workspace }}/diagnostics
 
     steps:
-      - name: Checkout harness (current branch — scripts, sample-service chart/image, probe app)
+      - name: Checkout harness (current branch — the transition test module, sample-service chart/image)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: harness
@@ -116,40 +119,12 @@ jobs:
           path: repos/pgskipper-operator
           persist-credentials: false
 
-      - name: Validate checkouts
-        run: |
-          set -euo pipefail
-          for dir in harness repos/qubership-dbaas-initial repos/qubership-dbaas-target \
-                     repos/qubership-dbaas-fixture repos/pgskipper-operator; do
-            echo "$dir -> $(git -C "$dir" rev-parse HEAD)"
-          done
-
-      - name: Create kind config
-        run: |
-          cat <<EOF_KIND > kind-config.yaml
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          kubeadmConfigPatches:
-            - |
-              kind: ClusterConfiguration
-              apiServer:
-                extraArgs:
-                  - name: enable-admission-plugins
-                    value: NodeRestriction,OwnerReferencesPermissionEnforcement
-          nodes:
-            - role: control-plane
-            - role: worker
-              labels:
-                region: database
-            - role: worker
-          EOF_KIND
-
       - name: Set up Kind
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           version: v0.32.0
           cluster_name: kind
-          config: kind-config.yaml
+          config: harness/test-apps/dbaas-transition-test/testdata/kind.yaml
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
@@ -157,19 +132,30 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
+      - name: Install KUTTL (pinned release, checksum-verified)
+        run: |
+          set -euo pipefail
+          KUTTL_VERSION=0.27.0
+          KUTTL_BINARY=kubectl-kuttl_${KUTTL_VERSION}_linux_x86_64
+          KUTTL_SHA256=ead175622128c043cd5f90fc7f9ed07602d064e02a8bec89632be801f83c6490
+          curl -sSLO "https://github.com/kudobuilder/kuttl/releases/download/v${KUTTL_VERSION}/${KUTTL_BINARY}"
+          echo "${KUTTL_SHA256}  ${KUTTL_BINARY}" | sha256sum -c -
+          install -m 0755 -D "${KUTTL_BINARY}" "$RUNNER_TEMP/kuttl-bin/kubectl-kuttl"
+          echo "$RUNNER_TEMP/kuttl-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/kuttl-bin/kubectl-kuttl" version
+
       - name: Build go-test-app-service image from harness source and load into kind
         run: |
-          docker build -t "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" \
-            harness/test-apps/go-test-app-service
-          kind load docker-image "$GO_IMAGE_REPOSITORY:$GO_IMAGE_TAG" --name "$KIND_CLUSTER"
+          docker build -t go-test-app-service:it harness/test-apps/go-test-app-service
+          kind load docker-image go-test-app-service:it --name "$KIND_CLUSTER"
 
-      - name: Test and build dbaas-availability-probe image, then load into kind
+      - name: Build dbaas-availability-probe image and load into kind
         run: |
-          docker build -t "$PROBE_IMAGE_REPOSITORY:$PROBE_IMAGE_TAG" \
-            harness/test-apps/dbaas-availability-probe
-          kind load docker-image "$PROBE_IMAGE_REPOSITORY:$PROBE_IMAGE_TAG" --name "$KIND_CLUSTER"
+          docker build -f harness/test-apps/dbaas-transition-test/Dockerfile.probe \
+            -t dbaas-availability-probe:it harness/test-apps/dbaas-transition-test
+          kind load docker-image dbaas-availability-probe:it --name "$KIND_CLUSTER"
 
-      - name: Generate and mask test passwords
+      - name: Generate and mask test credentials
         run: |
           set -euo pipefail
           for var in POSTGRES_PASSWORD DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD DBAAS_TENANT_PASSWORD \
@@ -179,23 +165,66 @@ jobs:
             echo "$var=$value" >> "$GITHUB_ENV"
           done
 
-      - name: Deploy fixture and start availability probes
-        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/deploy-fixture.sh"
+      - name: Run DBaaS transition availability test
+        working-directory: harness/test-apps/dbaas-transition-test
+        # Timeout ordering: each KUTTL step below has its own explicit timeout (the inner layer);
+        # the `timeout` wrapper here is the outer command deadline; timeout-minutes above is the
+        # job's own outermost bound — inner < outer < job, same ordering the previous Go harness's
+        # SpecTimeout/`go test -timeout`/job timeout-minutes preserved.
+        run: timeout 55m kubectl kuttl test --config kuttl-test.yaml --artifacts-dir "$GITHUB_WORKSPACE/diagnostics"
 
-      - name: Transition the aggregator release
-        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/transition-aggregator.sh"
-
-      - name: Evaluate probe results (strict zero-failure gate)
-        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/evaluate-probes.sh"
-
+      # KUTTL collectors cover assertion failures. Capture fallback diagnostics for failures in
+      # command steps such as Helm installation, preflight checks, and probe evaluation.
       - name: Collect diagnostics
         if: always()
-        run: bash "$HARNESS_DIR/.github/scripts/dbaas-transition/collect-diagnostics.sh"
+        run: |
+          set -uo pipefail
+          OUT="$GITHUB_WORKSPACE/diagnostics"
+          mkdir -p "$OUT"
+
+          kubectl get pods,deployments,replicasets,endpoints -A -o wide > "$OUT/all-resources.txt" 2>&1 || true
+          kubectl -n "$DBAAS_NAMESPACE" get events --sort-by=.lastTimestamp > "$OUT/events-dbaas.txt" 2>&1 || true
+          kubectl -n "$PG_NAMESPACE" get events --sort-by=.lastTimestamp > "$OUT/events-postgres.txt" 2>&1 || true
+
+          helm -n "$DBAAS_NAMESPACE" status dbaas-aggregator > "$OUT/helm-status-dbaas-aggregator.txt" 2>&1 || true
+          helm -n "$DBAAS_NAMESPACE" history dbaas-aggregator > "$OUT/helm-history-dbaas-aggregator.txt" 2>&1 || true
+          # Never uploaded unsanitized: credential-key values are redacted before this file is written.
+          helm -n "$DBAAS_NAMESPACE" get values dbaas-aggregator -o yaml 2>/dev/null \
+            | sed -E 's/^(.*(PASSWORD|CREDENTIALS)[A-Za-z_]*:).*/\1 "***REDACTED***"/' \
+            > "$OUT/helm-values-dbaas-aggregator.sanitized.yaml" || true
+
+          # Raw aggregator logs carry encrypted password fields — only this known health-warning
+          # allowlist is ever captured, never a full log dump.
+          HEALTH_PATTERN='\[class=AdapterHealthCheck\] [A-Za-z0-9_-]+ [A-Za-z0-9_.:-]+ has problem\. Status: (PROBLEM|UNKNOWN|DOWN)$|\[class=AbstractDbaasAdapterRESTClient\] Failed to get health of adapter of type [A-Za-z0-9_-]+$|\[class=DbaasPostgresConnectHealthCheck\] Postgres connection is lost$'
+          for pod in $(kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o name 2>/dev/null); do
+            {
+              echo "--- ${pod#pod/} current ---"
+              kubectl -n "$DBAAS_NAMESPACE" logs "$pod" --tail=5000 2>/dev/null | grep -E "$HEALTH_PATTERN" || true
+              echo "--- ${pod#pod/} previous ---"
+              kubectl -n "$DBAAS_NAMESPACE" logs "$pod" --previous --tail=5000 2>/dev/null | grep -E "$HEALTH_PATTERN" || true
+            } >> "$OUT/dbaas-aggregator.health-evidence.txt"
+          done
+
+          for pair in "dbaas-operator:$DBAAS_NAMESPACE" "go-test-app-service:$DBAAS_NAMESPACE" \
+                      "dbaas-availability-probe:$DBAAS_NAMESPACE" "dbaas-postgres-adapter:$PG_NAMESPACE"; do
+            deploy="${pair%%:*}"; ns="${pair##*:}"
+            selector=$(kubectl get deploy "$deploy" -n "$ns" \
+              -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{printf "%s=%s\n" $k $v}}{{end}}' 2>/dev/null | paste -sd, -)
+            [ -z "$selector" ] && continue
+            for pod in $(kubectl -n "$ns" get pods -l "$selector" -o name 2>/dev/null); do
+              name=${pod#pod/}
+              kubectl -n "$ns" logs "$pod" --tail=2000 > "$OUT/$name.log" 2>&1 || true
+              kubectl -n "$ns" logs "$pod" --previous --tail=2000 > "$OUT/$name.previous.log" 2>&1 || true
+            done
+          done
+
+          kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-preflight --all-containers=true > "$OUT/job-dbaas-fixture-preflight.log" 2>&1 || true
+          cp /tmp/dbaas-transition-*.txt /tmp/dbaas-transition-probe.jsonl "$OUT/" 2>/dev/null || true
 
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dbaas-transition-${{ inputs.direction }}-diagnostics
-          path: ${{ env.OUT_DIR }}/**
+          path: ${{ github.workspace }}/diagnostics/**
           if-no-files-found: warn

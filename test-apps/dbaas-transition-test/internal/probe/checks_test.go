@@ -1,4 +1,4 @@
-package main
+package probe
 
 import (
 	"context"
@@ -13,9 +13,8 @@ import (
 	"time"
 )
 
-// evaluate-probes.sh orders samples against the transition boundary with plain string comparison, so
-// every recorded timestamp must keep a fixed-width 9-digit fractional-second field — a variable-width
-// field (as time.RFC3339Nano produces by stripping trailing zeros) can sort out of chronological order.
+// Recorded timestamps use the same fixed-width fractional-second field as the measurement
+// boundaries.
 var fixedWidthTimestamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$`)
 
 func TestRunProbe_TimestampIsFixedWidth(t *testing.T) {
@@ -27,21 +26,21 @@ func TestRunProbe_TimestampIsFixedWidth(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-ready", checkReady(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorReady, CheckReady(client, srv.URL))
 
 	if !fixedWidthTimestamp.MatchString(res.Timestamp) {
 		t.Fatalf("expected a fixed-width 9-digit fractional-second timestamp, got %q", res.Timestamp)
 	}
 }
 
-func decodeResults(t *testing.T, buf *strings.Builder) []probeResult {
+func decodeResults(t *testing.T, buf *strings.Builder) []Record {
 	t.Helper()
-	var out []probeResult
+	var out []Record
 	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
 		if line == "" {
 			continue
 		}
-		var r probeResult
+		var r Record
 		if err := json.Unmarshal([]byte(line), &r); err != nil {
 			t.Fatalf("output line is not valid JSON: %q: %v", line, err)
 		}
@@ -60,7 +59,7 @@ func TestCheckHealth_UpSucceeds(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorHealth, CheckHealth(client, srv.URL))
 
 	if !res.Success {
 		t.Fatalf("expected success, got error=%q", res.Error)
@@ -71,10 +70,10 @@ func TestCheckHealth_UpSucceeds(t *testing.T) {
 }
 
 func TestCheckHealth_ProblemWithHTTP200Fails(t *testing.T) {
-	// The aggregator returns HTTP 200 even when its own reported status is "PROBLEM" — the status code
-	// alone must never be treated as success. The error must name the failing component and its status
-	// (v6.15.0's cached adapters-access indicator is exactly this shape) so a recorded failure is
-	// actionable instead of just "health status=PROBLEM".
+	// The aggregator returns HTTP 200 even when its own reported status is "PROBLEM" — the status
+	// code alone must never be treated as success. The error must name the failing component and
+	// its status (v6.15.0's cached adapters-access indicator is exactly this shape) so a recorded
+	// failure is actionable instead of just "health status=PROBLEM".
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"PROBLEM","components":{"adaptersAccessIndicator":{"status":"PROBLEM"},"other":{"status":"UP"}}}`))
@@ -84,7 +83,7 @@ func TestCheckHealth_ProblemWithHTTP200Fails(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorHealth, CheckHealth(client, srv.URL))
 
 	if res.Success {
 		t.Fatalf("expected failure for status=PROBLEM despite HTTP 200")
@@ -110,7 +109,7 @@ func TestCheckHealth_MalformedResponseFails(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorHealth, CheckHealth(client, srv.URL))
 
 	if res.Success {
 		t.Fatalf("expected failure for a malformed health response")
@@ -129,7 +128,7 @@ func TestCheckHealth_Non200Fails(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorHealth, CheckHealth(client, srv.URL))
 
 	if res.Success {
 		t.Fatalf("expected failure for HTTP 503")
@@ -151,7 +150,7 @@ func TestCheckHealth_NeverLogsComponentDetailsOrBody(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-health", checkHealth(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorHealth, CheckHealth(client, srv.URL))
 
 	if res.Success {
 		t.Fatalf("expected failure for status=PROBLEM")
@@ -177,7 +176,7 @@ func TestCheckReady_Non200Fails(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-ready", checkReady(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorReady, CheckReady(client, srv.URL))
 
 	if res.Success {
 		t.Fatalf("expected failure for HTTP 503")
@@ -199,7 +198,7 @@ func TestCheckReady_TimeoutIsRecorded(t *testing.T) {
 	client := &http.Client{Timeout: 20 * time.Millisecond}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	res := runProbe(ctx, &buf, &mu, "aggregator-ready", checkReady(client, srv.URL))
+	res := runProbe(ctx, &buf, &mu, AggregatorReady, CheckReady(client, srv.URL))
 
 	if res.Success {
 		t.Fatalf("expected a client-timeout failure to be recorded as unsuccessful")
@@ -224,7 +223,7 @@ func TestCheckReady_ConnectionRefusedIsRecorded(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "aggregator-ready", checkReady(client, "http://"+addr))
+	res := runProbe(context.Background(), &buf, &mu, AggregatorReady, CheckReady(client, "http://"+addr))
 
 	if res.Success {
 		t.Fatalf("expected connection-refused to be recorded as unsuccessful")
@@ -258,7 +257,7 @@ func TestLoopContinuesAfterFailure(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Millisecond)
 	defer cancel()
-	runLoop(ctx, &buf, &mu, "aggregator-ready", checkReady(client, srv.URL), 10*time.Millisecond, time.Second)
+	runLoop(ctx, &buf, &mu, AggregatorReady, CheckReady(client, srv.URL), 10*time.Millisecond, time.Second)
 
 	if calls < 4 {
 		t.Fatalf("expected at least 4 probe attempts across pass/fail cycles, got %d", calls)
@@ -290,19 +289,41 @@ func TestCheckSamplePing_UnexpectedPayloadFails(t *testing.T) {
 	var buf strings.Builder
 	var mu sync.Mutex
 	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, "sample-postgres-ping", checkSamplePing(client, srv.URL))
+	res := runProbe(context.Background(), &buf, &mu, SamplePostgresPing, CheckSamplePing(client, srv.URL))
 
 	if res.Success {
 		t.Fatalf("expected failure when result != 1")
 	}
 
 	results := decodeResults(t, &buf)
-	if len(results) != 1 || results[0].Probe != "sample-postgres-ping" {
+	if len(results) != 1 || results[0].Probe != SamplePostgresPing {
 		t.Fatalf("expected exactly one sample-postgres-ping result line, got %v", results)
 	}
 }
 
-// --- waitStableChecks (pre-transition prerequisite) ---
+func TestCheckSamplePing_ExtraResponseFieldsAreIgnored(t *testing.T) {
+	// /postgres/ping also returns "url", "username", and "role" — none of that should ever
+	// surface, and it must not break decoding of the two fields this probe actually checks.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok","url":"jdbc:postgresql://host/db","username":"app","role":"master","result":1}`))
+	}))
+	defer srv.Close()
+
+	var buf strings.Builder
+	var mu sync.Mutex
+	client := &http.Client{Timeout: time.Second}
+	res := runProbe(context.Background(), &buf, &mu, SamplePostgresPing, CheckSamplePing(client, srv.URL))
+
+	if !res.Success {
+		t.Fatalf("expected success, got error=%q", res.Error)
+	}
+	if strings.Contains(buf.String(), "jdbc:postgresql") {
+		t.Fatalf("probe output must never contain the raw ping response body, got: %s", buf.String())
+	}
+}
+
+// --- RunPreflight (pre-transition prerequisite) ---
 
 func healthyPodServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -312,23 +333,25 @@ func healthyPodServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func TestWaitStableChecks_BothPodsHealthyPasses(t *testing.T) {
+func TestRunPreflight_BothPodsHealthyPasses(t *testing.T) {
 	pod1 := healthyPodServer(t)
 	defer pod1.Close()
 	pod2 := healthyPodServer(t)
 	defer pod2.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []probeTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2", url: pod2.URL}}
-	checks := []checkFunc{checkHealth(client, pod1.URL), checkHealth(client, pod2.URL)}
+	targets := []PreflightTarget{
+		{Name: "pod-1", Check: CheckHealth(client, pod1.URL)},
+		{Name: "pod-2", Check: CheckHealth(client, pod2.URL)},
+	}
 
-	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 3, time.Second)
+	err := RunPreflight(context.Background(), targets, time.Second, time.Millisecond, 3, time.Second)
 	if err != nil {
 		t.Fatalf("expected both healthy pods to pass, got: %v", err)
 	}
 }
 
-func TestWaitStableChecks_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
+func TestRunPreflight_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
 	pod1 := healthyPodServer(t)
 	defer pod1.Close()
 	pod2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -338,10 +361,12 @@ func TestWaitStableChecks_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
 	defer pod2.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []probeTarget{{name: "pod-1", url: pod1.URL}, {name: "pod-2-bad", url: pod2.URL}}
-	checks := []checkFunc{checkHealth(client, pod1.URL), checkHealth(client, pod2.URL)}
+	targets := []PreflightTarget{
+		{Name: "pod-1", Check: CheckHealth(client, pod1.URL)},
+		{Name: "pod-2-bad", Check: CheckHealth(client, pod2.URL)},
+	}
 
-	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 3, 20*time.Millisecond)
+	err := RunPreflight(context.Background(), targets, time.Second, time.Millisecond, 3, 20*time.Millisecond)
 	if err == nil {
 		t.Fatalf("expected a timeout error when one pod never becomes healthy")
 	}
@@ -350,7 +375,7 @@ func TestWaitStableChecks_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
 	}
 }
 
-func TestWaitStableChecks_ResetsConsecutiveCountOnFailure(t *testing.T) {
+func TestRunPreflight_ResetsConsecutiveCountOnFailure(t *testing.T) {
 	// Fails on the 3rd call, then recovers — with stableConsecutive=3, this must never pass on the
 	// strength of the first two calls alone; it needs 3 in a row after the failure.
 	var calls int
@@ -366,10 +391,9 @@ func TestWaitStableChecks_ResetsConsecutiveCountOnFailure(t *testing.T) {
 	defer pod.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []probeTarget{{name: "pod-1", url: pod.URL}}
-	checks := []checkFunc{checkHealth(client, pod.URL)}
+	targets := []PreflightTarget{{Name: "pod-1", Check: CheckHealth(client, pod.URL)}}
 
-	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 3, 2*time.Second)
+	err := RunPreflight(context.Background(), targets, time.Second, time.Millisecond, 3, 2*time.Second)
 	if err != nil {
 		t.Fatalf("expected eventual success once the pod recovers, got: %v", err)
 	}
@@ -378,9 +402,10 @@ func TestWaitStableChecks_ResetsConsecutiveCountOnFailure(t *testing.T) {
 	}
 }
 
-func TestWaitStableChecks_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
-	// A pod pinned by IP that stops answering — because it was replaced — must fail the same way any
-	// other unreachable pod does; there is no separate "pod changed" code path to test independently.
+func TestRunPreflight_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
+	// A pod pinned by IP that stops answering — because it was replaced — must fail the same way
+	// any other unreachable pod does; there is no separate "pod changed" code path to test
+	// independently.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("reserve a local port: %v", err)
@@ -389,10 +414,9 @@ func TestWaitStableChecks_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
 	_ = l.Close()
 
 	client := &http.Client{Timeout: 50 * time.Millisecond}
-	pods := []probeTarget{{name: "pod-gone", url: "http://" + addr}}
-	checks := []checkFunc{checkHealth(client, "http://"+addr)}
+	targets := []PreflightTarget{{Name: "pod-gone", Check: CheckHealth(client, "http://"+addr)}}
 
-	waitErr := waitStableChecks(pods, checks, 50*time.Millisecond, time.Millisecond, 3, 20*time.Millisecond)
+	waitErr := RunPreflight(context.Background(), targets, 50*time.Millisecond, time.Millisecond, 3, 20*time.Millisecond)
 	if waitErr == nil {
 		t.Fatalf("expected an error when the pinned pod is unreachable")
 	}
@@ -401,7 +425,7 @@ func TestWaitStableChecks_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
 	}
 }
 
-func TestWaitStableChecks_DoesNotPassAfterOverallTimeout(t *testing.T) {
+func TestRunPreflight_DoesNotPassAfterOverallTimeout(t *testing.T) {
 	pod := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(30 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
@@ -410,10 +434,9 @@ func TestWaitStableChecks_DoesNotPassAfterOverallTimeout(t *testing.T) {
 	defer pod.Close()
 
 	client := &http.Client{Timeout: time.Second}
-	pods := []probeTarget{{name: "slow-pod", url: pod.URL}}
-	checks := []checkFunc{checkHealth(client, pod.URL)}
+	targets := []PreflightTarget{{Name: "slow-pod", Check: CheckHealth(client, pod.URL)}}
 
-	err := waitStableChecks(pods, checks, time.Second, time.Millisecond, 1, 10*time.Millisecond)
+	err := RunPreflight(context.Background(), targets, time.Second, time.Millisecond, 1, 10*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected the overall timeout to reject a late healthy response")
 	}

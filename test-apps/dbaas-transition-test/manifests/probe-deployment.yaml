@@ -1,18 +1,14 @@
-# Continuous-mode probe (PROBE_MODE=probe, the default). Runs for the lifetime of the transition test,
-# polling dbaas-aggregator and the sample service from inside the cluster and writing one JSON result
-# line per probe cycle to stdout — evaluate-probes.sh reads it back via `kubectl logs`. Deliberately not
-# reached over kubectl port-forward: a port-forward drop would be indistinguishable from a real outage.
-#
-# The pre-transition checks run as a separate Job built inline by deploy-fixture.sh from this image
-# with PROBE_MODE=verify-preflight.
-#
-# __NAMESPACE__ and __IMAGE__ are substituted by the deploying script before
-# kubectl apply, matching the convention in test-apps/dbaas-agent-stub/deploy.yaml.
+# Continuous availability probe. Namespace and image are fixed constants (not per-run values), so
+# this manifest needs no templating — it's applied directly through KUTTL's own `apply:`/`assert:`
+# fields. Polls dbaas-aggregator and the sample service from inside the cluster every second and
+# writes one JSON result line per probe cycle to stdout, which the evaluate step reads back via
+# `kubectl logs`. Deliberately not reached over kubectl port-forward: a port-forward drop would be
+# indistinguishable from a real outage.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dbaas-availability-probe
-  namespace: __NAMESPACE__
+  namespace: dbaas
   labels:
     app.kubernetes.io/name: dbaas-availability-probe
     app.kubernetes.io/component: test-fixture
@@ -29,15 +25,15 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: dbaas-availability-probe
-          image: __IMAGE__
+          image: dbaas-availability-probe:it
           imagePullPolicy: Never
           env:
             - name: PROBE_MODE
               value: probe
             - name: AGGREGATOR_URL
-              value: http://dbaas-aggregator.__NAMESPACE__:8080
+              value: http://dbaas-aggregator.dbaas:8080
             - name: SAMPLE_SERVICE_URL
-              value: http://go-test-app-service.__NAMESPACE__:8080
+              value: http://go-test-app-service.dbaas:8080
             - name: PROBE_INTERVAL_MS
               value: "1000"
             - name: PROBE_REQUEST_TIMEOUT_MS

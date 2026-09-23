@@ -1,0 +1,22 @@
+# The initial-version dbaas-aggregator, from the initial checkout, at 2 replicas (an availability
+# prerequisite this test enforces, not a chart default — see assert.yaml).
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: >
+      TAG="$INITIAL_TAG" DBAAS_SERVICE_NAME="$DBAAS_SERVICE_NAME" REGION_DBAAS="$REGION_DBAAS"
+      NODE_SELECTOR_DBAAS_KEY="$NODE_SELECTOR_DBAAS_KEY" PG_NAMESPACE="$PG_NAMESPACE"
+      KUBERNETES_M2M_ENABLED=true
+      BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD="$BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD"
+      DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD="$DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD"
+      DBAAS_TENANT_PASSWORD="$DBAAS_TENANT_PASSWORD"
+      DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD="$DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD"
+      DISCR_TOOL_USER_PASSWORD="$DISCR_TOOL_USER_PASSWORD" POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
+      envsubst < "$HARNESS_DIR/test-apps/dbaas-transition-test/testdata/values/dbaas.yaml" > /tmp/dbaas-transition-aggregator-values.yaml
+    timeout: 30
+  - script: >
+      helm upgrade --install dbaas-aggregator "$INITIAL_DIR/helm-templates/dbaas-aggregator"
+      --namespace "$DBAAS_NAMESPACE" --create-namespace
+      -f /tmp/dbaas-transition-aggregator-values.yaml --wait --timeout 5m
+    timeout: 360
+# KUTTL loads assert.yaml automatically from this numbered step directory.
