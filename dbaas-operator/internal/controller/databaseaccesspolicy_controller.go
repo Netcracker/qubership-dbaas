@@ -96,7 +96,7 @@ func (r *DatabaseAccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 type dbPolicyAggregatorSpec struct {
 	Services                 []dbaasv1.ServiceRole `json:"services,omitempty"`
 	Policy                   []dbaasv1.PolicyRole  `json:"policy,omitempty"`
-	DisableGlobalPermissions bool                  `json:"disableGlobalPermissions,omitempty"`
+	DisableGlobalPermissions *bool                 `json:"disableGlobalPermissions,omitempty"`
 }
 
 // buildPayload assembles the DeclarativePayload for POST /api/declarations/v1/apply.

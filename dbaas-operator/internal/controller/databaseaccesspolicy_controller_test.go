@@ -207,12 +207,13 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 	Context("only disableGlobalPermissions is set", func() {
 		It("treats the spec as valid, calls the aggregator, and sets Phase=Succeeded", func() {
 			fixture.statusCode = http.StatusOK
+			disableGP := true
 			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec: dbaasv1.DatabaseAccessPolicySpec{
 					OperatorNamespace:        testOperatorNamespace,
 					MicroserviceName:         "test-service",
-					DisableGlobalPermissions: true,
+					DisableGlobalPermissions: &disableGP,
 				},
 			})).To(Succeed())
 
@@ -225,11 +226,12 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 
 			var sent struct {
 				Spec struct {
-					DisableGlobalPermissions bool `json:"disableGlobalPermissions"`
+					DisableGlobalPermissions *bool `json:"disableGlobalPermissions"`
 				} `json:"spec"`
 			}
 			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
-			Expect(sent.Spec.DisableGlobalPermissions).To(BeTrue())
+			Expect(sent.Spec.DisableGlobalPermissions).NotTo(BeNil())
+			Expect(*sent.Spec.DisableGlobalPermissions).To(BeTrue())
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonPolicyApplied)
 			expectNoRecordedEvent(fixture.recorder.Events)
