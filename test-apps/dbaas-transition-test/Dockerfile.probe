@@ -18,4 +18,4 @@ FROM ghcr.io/netcracker/qubership-core-base:2.4.1@sha256:c668333b6b03d897bfea3a7
 WORKDIR /app
 COPY --chown=10001:0 --chmod=555 --from=builder /app/dbaas-availability-probe /app/dbaas-availability-probe
 USER 10001:10001
-CMD ["/app/dbaas-availability-probe"]
+ENTRYPOINT ["/app/dbaas-availability-probe"]
