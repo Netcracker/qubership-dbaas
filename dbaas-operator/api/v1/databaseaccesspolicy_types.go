@@ -105,8 +105,6 @@ type DatabaseAccessPolicySpec struct {
 	// disableGlobalPermissions disables the default global permission grants that
 	// dbaas-aggregator would otherwise apply to all databases of the service.
 	// Set to true to opt out of global defaults and rely solely on explicit entries.
-	// A pointer is used so that an explicit false is preserved in the aggregator payload
-	// and distinguishable from "field not set".
 	// +optional
 	DisableGlobalPermissions *bool `json:"disableGlobalPermissions,omitempty"`
 }
