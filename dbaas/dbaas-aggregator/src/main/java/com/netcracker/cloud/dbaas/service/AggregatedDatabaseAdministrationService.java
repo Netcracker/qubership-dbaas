@@ -484,13 +484,6 @@ public class AggregatedDatabaseAdministrationService {
             return createResponseDatabaseCreated(new DatabaseResponseV3SingleCP(databaseRegistry, physicalDatabaseId, role));
         }
 
-        public static boolean isClassifierCorrect(Map<String, Object> classifier) {
-            if (classifier != null && classifier.containsKey(MICROSERVICE_NAME) && classifier.containsKey(NAMESPACE)) {
-                return Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_SERVICE) || (Objects.equals(classifier.get(SCOPE), SCOPE_VALUE_TENANT) && classifier.containsKey(TENANT_ID));
-            }
-            return false;
-        }
-
         private static Response createResponseDatabaseCreated(DatabaseResponseV3 response) {
             return Response
                     .status(Response.Status.CREATED)

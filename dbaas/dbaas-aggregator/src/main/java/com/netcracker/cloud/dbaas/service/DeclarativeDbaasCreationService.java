@@ -8,17 +8,17 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseDeclarativeConfig;
 import com.netcracker.cloud.dbaas.exceptions.DeclarativeConfigurationValidationException;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
+import com.netcracker.cloud.dbaas.utils.ClassifierValidator;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
-import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.*;
+import static com.netcracker.cloud.dbaas.service.DatabaseConfigurationCreationService.DatabaseExistence;
 
 @ApplicationScoped
 @Slf4j
@@ -153,17 +153,16 @@ public class DeclarativeDbaasCreationService {
         if (databaseDeclaration.getInitialInstantiation() != null) {
             sourceClassifier = databaseDeclaration.getInitialInstantiation().getSourceClassifier();
         }
-        if (!targetClassifier.containsKey(MICROSERVICE_NAME) || !targetClassifier.containsKey(SCOPE)) {
-            log.error("Target classifier={} doesn't contain mandatory fields as 'microserviceName' and 'scope'", targetClassifier);
-            throw new DeclarativeConfigurationValidationException("Target classifier doesn't contain mandatory fields as 'microserviceName' and 'scope'");
+        if (!ClassifierValidator.isValidDeclarative(targetClassifier)) {
+            log.error("Target classifier={} is not valid: must contain 'microserviceName' and a valid 'scope'", targetClassifier);
+            throw new DeclarativeConfigurationValidationException("Target classifier is not valid: must contain 'microserviceName' and a valid 'scope'");
         }
-        if (sourceClassifier != null && (!sourceClassifier.containsKey(MICROSERVICE_NAME) || !sourceClassifier.containsKey(SCOPE))) {
-            log.error("Source classifier={} doesn't contain mandatory fields as 'microserviceName' and 'scope'", targetClassifier);
-            throw new DeclarativeConfigurationValidationException("Source classifier doesn't contain mandatory fields as 'microserviceName' and 'scope'");
+        if (sourceClassifier != null && !ClassifierValidator.isValidDeclarative(sourceClassifier)) {
+            log.error("Source classifier={} is not valid: must contain 'microserviceName' and a valid 'scope'", sourceClassifier);
+            throw new DeclarativeConfigurationValidationException("Source classifier is not valid: must contain 'microserviceName' and a valid 'scope'");
         }
         if (!targetClassifier.get(MICROSERVICE_NAME).equals(serviceName) || (sourceClassifier != null && !sourceClassifier.get(MICROSERVICE_NAME).equals(serviceName))) {
-            log.error("Target classifier={} or source classifier={} contains microserviceName which is different from service name in path = {}",
-                    targetClassifier, sourceClassifier, serviceName);
+            log.error("Target classifier={} or source classifier={} contains microserviceName different from service name in path={}", targetClassifier, sourceClassifier, serviceName);
             throw new DeclarativeConfigurationValidationException("Target classifier or source classifier contains service name which is different from serviceName in request");
         }
     }
@@ -172,6 +171,7 @@ public class DeclarativeDbaasCreationService {
         databaseConfigFromDb.setLazy(newDatabaseConfig.getLazy());
         databaseConfigFromDb.setSettings(newDatabaseConfig.getSettings());
         databaseConfigFromDb.setNamePrefix(newDatabaseConfig.getNamePrefix());
+        databaseConfigFromDb.setPhysicalDatabaseId(newDatabaseConfig.getPhysicalDatabaseId());
         databaseConfigFromDb.setVersioningType(newDatabaseConfig.getVersioningType());
         databaseConfigFromDb.setVersioningApproach(newDatabaseConfig.getVersioningApproach());
         databaseConfigFromDb.setInstantiationApproach(newDatabaseConfig.getInstantiationApproach());

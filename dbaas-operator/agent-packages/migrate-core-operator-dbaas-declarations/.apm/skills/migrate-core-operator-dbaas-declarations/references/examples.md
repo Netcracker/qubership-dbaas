@@ -40,7 +40,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -95,7 +95,7 @@ metadata:
   name: db-declaration-1
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -143,9 +143,6 @@ spec:
   type: postgresql
 ```
 
-This block uses the plain-manifest form of `operatorNamespace`. A chart-local conversion uses the
-`API_DBAAS_ADDRESS` expression shown in the other examples instead.
-
 ## JSON DbPolicy to DatabaseAccessPolicy
 
 Before:
@@ -180,7 +177,7 @@ metadata:
   name: database-access-policy
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
+  operatorNamespace: "dbaas-system"
   microserviceName: "{{ .Values.SERVICE_NAME }}"
   services:
     - name: externalService
@@ -199,6 +196,42 @@ spec:
 
 Before JSON with two `declarations[]` entries must become two `InternalDatabase` resources:
 
+```json
+{
+  "apiVersion": "nc.core.dbaas/v3",
+  "kind": "DatabaseDeclaration",
+  "declarations": [
+    {
+      "classifierConfig": {
+        "classifier": {
+          "scope": "service",
+          "microserviceName": "{{$SERVICE_NAME}}"
+        }
+      },
+      "type": "postgresql",
+      "physicalDatabaseId": "postgresql-prod-a"
+    },
+    {
+      "classifierConfig": {
+        "classifier": {
+          "scope": "service",
+          "microserviceName": "{{$SERVICE_NAME}}",
+          "customKeys": {
+            "logicalDBName": "configs"
+          }
+        }
+      },
+      "type": "postgresql",
+      "versioningConfig": {
+        "approach": "new"
+      }
+    }
+  ]
+}
+```
+
+After:
+
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
 kind: InternalDatabase
@@ -206,11 +239,12 @@ metadata:
   name: transactional-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
   type: postgresql
+  physicalDatabaseId: postgresql-prod-a
 ---
 apiVersion: dbaas.netcracker.com/v1
 kind: InternalDatabase
@@ -218,7 +252,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: '{{ index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1 }}'
+  operatorNamespace: "dbaas-system"
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"

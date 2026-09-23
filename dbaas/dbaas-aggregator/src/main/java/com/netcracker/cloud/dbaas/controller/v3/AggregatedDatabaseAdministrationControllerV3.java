@@ -19,6 +19,7 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.security.validators.NamespaceValidator;
 import com.netcracker.cloud.dbaas.service.*;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
+import com.netcracker.cloud.dbaas.utils.ClassifierValidator;
 import com.netcracker.cloud.dbaas.utils.JwtUtils;
 import com.netcracker.cloud.framework.contexts.tenant.BaseTenantProvider;
 import com.netcracker.cloud.framework.contexts.tenant.TenantContextObject;
@@ -49,7 +50,6 @@ import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
 import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationServiceConst.*;
-import static com.netcracker.cloud.dbaas.service.AggregatedDatabaseAdministrationService.AggregatedDatabaseAdministrationUtils.isClassifierCorrect;
 
 @Slf4j
 @Path(DATABASES_PATH_V3)
@@ -108,7 +108,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                    @PathParam(NAMESPACE_PARAMETER) String namespace,
                                    @Parameter(description = "Determines if database should be created asynchronously")
                                    @QueryParam(ASYNC_PARAMETER) Boolean async) {
-        if (!isClassifierCorrect(createRequest.getClassifier()) ||
+        if (!ClassifierValidator.isValid(createRequest.getClassifier()) ||
                 !namespaceValidator.isNamespaceFromClassifierValid(securityContext, createRequest.getClassifier())) {
             throw InvalidClassifierException.withDefaultMsg(createRequest.getClassifier());
         }
@@ -221,7 +221,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                             @PathParam(NAMESPACE_PARAMETER) String namespace,
                                             @Parameter(description = "The type of base in which the database was created. For example PostgreSQL  or MongoDB", required = true)
                                             @PathParam("type") String type) {
-        if (!dBaaService.isValidClassifierV3(classifierRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, classifierRequest.getClassifier())) {
+        if (!ClassifierValidator.isValid(classifierRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, classifierRequest.getClassifier())) {
             throw new InvalidClassifierException("Invalid V3 classifier", classifierRequest.getClassifier(), Source.builder().pointer("").build());
         }
         checkTenantId(classifierRequest.getClassifier());
@@ -305,7 +305,7 @@ public class AggregatedDatabaseAdministrationControllerV3 extends AbstractContro
                                         @Parameter(description = "Namespace with which new database will be connected", required = true)
                                         @PathParam(NAMESPACE_PARAMETER) String namespace) {
         log.info("Get request on adding external database with classifier {} and type {} in namespace {}", externalDatabaseRequest.getClassifier(), externalDatabaseRequest.getType(), namespace);
-        if (!isClassifierCorrect(externalDatabaseRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, externalDatabaseRequest.getClassifier())) {
+        if (!ClassifierValidator.isValid(externalDatabaseRequest.getClassifier()) || !namespaceValidator.isNamespaceFromClassifierValid(securityContext, externalDatabaseRequest.getClassifier())) {
             throw InvalidClassifierException.withDefaultMsg(externalDatabaseRequest.getClassifier());
         }
         checkTenantId(externalDatabaseRequest.getClassifier());
