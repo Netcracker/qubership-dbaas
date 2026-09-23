@@ -1075,9 +1075,9 @@ spec:
 | Field | Required | Mutable | Description |
 |-------|:--------:|:-------:|-------------|
 | `spec.microserviceName` | Yes | **No** | The microservice that owns this policy. Sent as `metadata.microserviceName` in the aggregator payload. Immutable after creation (CRD CEL rule `self == oldSelf`): repointing the same CR at a different microservice would silently rewrite role grants under the original Kubernetes object and lose the audit link to who created the policy. Create a new CR for a different service. |
-| `spec.services` | At least one of `services` or `policy` | Yes | Per-microservice role assignments. |
-| `spec.policy` | At least one of `services` or `policy` | Yes | Default role rules per database type, applied to services not listed in `services`. |
-| `spec.disableGlobalPermissions` | No | Yes | When `true`, opts out of dbaas-aggregator's default global permission grants. Defaults to `false`. |
+| `spec.services` | No (see constraint) | Yes | Per-microservice role assignments. |
+| `spec.policy` | No (see constraint) | Yes | Default role rules per database type, applied to services not listed in `services`. |
+| `spec.disableGlobalPermissions` | No (see constraint) | Yes | When `true`, opts out of dbaas-aggregator's default global permission grants. Defaults to `false`. |
 
 **`spec.services[]` fields:**
 
@@ -1094,17 +1094,16 @@ spec:
 | `defaultRole` | Yes | Role assigned to any microservice not explicitly listed in `services`. |
 | `additionalRole` | No | Extra roles that may be granted beyond `defaultRole`. Interpretation is adapter-specific. |
 
-> **Constraint:** at least one of `spec.services` or `spec.policy` must be non-empty. A CR with both fields absent is
-> rejected by the controller with `InvalidSpec` before the aggregator is contacted.
+> **Constraint (CRD admission):** at least one of `spec.services`, `spec.policy`, or `spec.disableGlobalPermissions`
+> must be set. A CR that omits all three is rejected by the API server with HTTP 422 before the object is stored.
 
 #### How DatabaseAccessPolicy Works
 
 Each time the spec changes (i.e., `metadata.generation` increments), the controller:
 
 1. Checks `spec.operatorNamespace` against `CLOUD_NAMESPACE` (skips if assigned elsewhere).
-2. Validates that at least one of `services` or `policy` is non-empty.
-3. Sends a `POST /api/declarations/v1/apply` request to dbaas-aggregator with `subKind: DbPolicy`.
-4. Updates `status.phase` and `status.conditions` based on the outcome.
+2. Sends a `POST /api/declarations/v1/apply` request to dbaas-aggregator with `subKind: DbPolicy`.
+3. Updates `status.phase` and `status.conditions` based on the outcome.
 
 ```text
 CR created / spec changed
@@ -1114,10 +1113,6 @@ CR created / spec changed
         │ assigned elsewhere → skip
         ▼
   phase = Processing
-        │
-        ▼
-  Pre-flight validation
-    services and policy both empty? ────────────────▶ InvalidConfiguration (InvalidSpec)
         │
         ▼
   Call dbaas-aggregator POST /api/declarations/v1/apply
@@ -1139,14 +1134,11 @@ dbaas-aggregator. Kind-specific reasons:
 |--------|-----------|---------|
 | `PolicyApplied` | `Ready=True` | Policy successfully applied through dbaas-aggregator |
 
-`InvalidSpec` has a single cause for this kind: both `services` and `policy` are empty.
-
 **Full state matrix:**
 
 | Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
 |----------|---------|:-------:|----------|:---------:|
 | Applied (200) | `Succeeded` | `True` | `PolicyApplied` | `False` |
-| Both `services` and `policy` empty | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
 | Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
@@ -1188,6 +1180,20 @@ spec:
       defaultRole: readonly
       additionalRole:
         - admin
+```
+
+**Disable global permission grants only (no explicit role assignments):**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseAccessPolicy
+metadata:
+  name: my-policy
+  namespace: my-namespace
+spec:
+  operatorNamespace: dbaas-system
+  microserviceName: my-service
+  disableGlobalPermissions: true
 ```
 
 **Check status:**
