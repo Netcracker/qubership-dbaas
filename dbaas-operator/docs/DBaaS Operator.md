@@ -474,13 +474,13 @@ When `restrictedEnvironment: false` (the default), the chart creates:
 | Resource | Name | Scope | Purpose |
 |----------|------|-------|---------|
 | `ServiceAccount` | `dbaas-operator` | Namespaced (operator namespace) | Pod identity |
-| `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs and Event recording across reconciled namespaces (**no `secrets`** — Secret access is namespaced, see below) |
-| `ClusterRoleBinding` | `dbaas-operator-<NAMESPACE>` (e.g. `dbaas-operator-dbaas-system`, truncated to 63 characters) | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
+| `ClusterRole` | `<NAMESPACE>-dbaas-operator` (e.g. `dbaas-system-dbaas-operator`, truncated to 63 characters) | Cluster-wide | Access to dbaas CRs and Event recording across reconciled namespaces (**no `secrets`** — Secret access is namespaced, see below) |
+| `ClusterRoleBinding` | `<NAMESPACE>-dbaas-operator`, the same name as the `ClusterRole` | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
 | `Role` | `dbaas-operator` | Namespaced (operator namespace) | Leader-election leases and event recording |
 | `RoleBinding` | `dbaas-operator` | Namespaced (operator namespace) | Binds `Role` to the `ServiceAccount` |
 
-Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader-election leases and
-`PermanentBalancingRule` reconciliation stay in the operator namespace, so they use a namespace-scoped `Role`.
+Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader-election leases stay in
+the operator namespace, so they use a namespace-scoped `Role`.
 Events are written to the namespace of the involved object: the `Role` covers operator-namespace objects, while the
 `ClusterRole` covers objects reconciled in other namespaces.
 
@@ -547,8 +547,7 @@ Both extra arguments are load-bearing:
 #### Permission Reference
 
 The tables below explain *why* each permission is needed; the authoritative rule
-set is the linked templates above (and the `+kubebuilder:rbac` markers they are
-generated from).
+set is the linked templates above.
 
 **ClusterRole** (cluster-wide access):
 
@@ -583,9 +582,6 @@ generated from).
 |-----------|----------|-------|-----------------|
 | `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Leader election lock (required when `LEADER_ELECT=true`) |
 | `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events for involved objects in the operator namespace (required when `K8S_EVENTS_ENABLED=true`) |
-| `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read the singleton permanent balancing rule CR **in the operator namespace only** (informer scoped there); `patch` adds/removes the cleanup finalizer |
-| `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 
 > **Note:** Events are enabled by default. The chart omits the `events` rules from both the `Role` and `ClusterRole`
 > when `K8S_EVENTS_ENABLED=false`; hand-written RBAC may omit them in that mode as well. The `leases` rule is **not**
@@ -2277,7 +2273,7 @@ or leaves them unset:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `NAMESPACE` | string | `default` | Namespace the chart renders into. Load-bearing beyond naming: the `ClusterRoleBinding` subject and the `ClusterRoleBinding` name are built from it, so it must be set explicitly (`--namespace` alone is not read by these templates). |
+| `NAMESPACE` | string | `default` | Namespace the chart renders into. Load-bearing beyond naming: the `ClusterRoleBinding` subject and the `ClusterRole` and `ClusterRoleBinding` names (`<NAMESPACE>-dbaas-operator`) are built from it, so it must be set explicitly (`--namespace` alone is not read by these templates). |
 | `IMAGE_REPOSITORY` / `TAG` | string | env-specific | Operator image and tag. |
 | `PAAS_PLATFORM` | string | `KUBERNETES` | Target platform. Allowed values: `KUBERNETES`, `OPENSHIFT`. Controls security-context settings and, together with `PAAS_VERSION`, the `HorizontalPodAutoscaler` API version. |
 | `REPLICAS` | integer | `1` | Number of operator pod replicas. Set `LEADER_ELECT=true` when using more than one. |
