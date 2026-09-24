@@ -28,17 +28,21 @@ Plan shape::
           "helmValues": {"SERVICE_NAME": "orders", "NAMESPACE": "orders-ns"},
           "outputFile": "templates/dbaas-operator-resources.yaml",
           "sources": [{"path": "chart/templates/dbaas-configuration.json", "sha256": "<hash>"}],
-          "nameOverrides": {"chart/templates/dbaas-configuration.json#1#1#1": "orders-db"}
+          "nameOverrides": {"chart/templates/dbaas-configuration.json#1#1#1": "orders-db"},
+          "capabilityGuard": "dbaas.netcracker.com/v1"
         }
       ]
     }
 
 A source is matched against the plan's recorded SHA-256 before it is read.
 Every supported item in a source is converted; a source is deleted only when
-every item in it converted successfully. A ``nameOverrides`` key addresses
-one generated resource as ``<source path>#<doc index>#<item index>#<declaration index>``
-(all 1-based) and is required whenever that resource's default name would be
-templated or would mix literal text with a Helm expression.
+every item in it converted successfully -- unless ``capabilityGuard`` (optional;
+omitted above by default) is set, in which case it is preserved instead, guarded
+to the operator-absent branch (see references/mapping.md's "Capability guard"
+section). A ``nameOverrides`` key addresses one generated resource as
+``<source path>#<doc index>#<item index>#<declaration index>`` (all 1-based) and
+is required whenever that resource's default name would be templated or would
+mix literal text with a Helm expression.
 """
 
 from __future__ import annotations
@@ -74,10 +78,43 @@ _GUARD_IF = re.compile(r"^\s*\{\{-?\s*if\b.*-?\}\}\s*$")
 _GUARD_END = re.compile(r"^\s*\{\{-?\s*end\s*-?\}\}\s*$")
 _ANY_VALUE_REF = re.compile(r"\.Values\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)")
 
+# A standalone Helm action: the whole line, once stripped, is one (or more
+# concatenated) {{ ... }} action(s) and nothing else -- if/else/range/with/end/
+# define/block/template, or a "{{- $x := ... }}" variable assignment.
+_STANDALONE_HELM_LINE = re.compile(r"^\{\{-?.*-?\}\}$", re.S)
+# A non-nested {{ ... }} expression, matched non-greedily so two separate
+# expressions on one line ("{{ .A }}-{{ .B }}") are each matched on their own.
+_INLINE_TEMPLATE = re.compile(r"\{\{(?:(?!\{\{|\}\}).)*\}\}", re.S)
+# A mapping-entry scalar whose value contains a template: "key: {{ .X }}" or
+# "- key: {{ .X }}" (a sequence item that is itself a one-line mapping).
+_SCALAR_WITH_TEMPLATE = re.compile(r"^(\s*[^#\n][^:]*:\s*)(.*\{\{.*\}\}.*)$")
+# A bare sequence-item scalar with no mapping key at all: "- {{ .X }}".
+_SEQ_ITEM_WITH_TEMPLATE = re.compile(r"^(\s*-\s+)(\{\{.*\}\}.*)$")
+
 _ROOT_KEYS = {
     "root", "kind", "operatorNamespace", "serviceName", "namespace",
     "namePrefix", "helmValues", "outputFile", "outputSha256", "sources", "nameOverrides",
+    "capabilityGuard",
 }
+
+
+def _capability_guard_open(capability_guard: str) -> str:
+    return '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
+
+
+def _negated_guard_open(capability_guard: str) -> str:
+    return '{{- if not (.Capabilities.APIVersions.Has "' + capability_guard + '") }}\n'
+
+
+_CAPABILITY_GUARD_CLOSE = "{{- end }}\n"
+
+
+def _wrap_in_negated_guard(capability_guard: str, span: str) -> str:
+    # issue #776: preserve a superseded legacy declaration's bytes -- comments
+    # and labels included -- verbatim, guarded to render only in the
+    # operator-absent fallback branch, instead of deleting it.
+    body = span if span.endswith("\n") else span + "\n"
+    return _negated_guard_open(capability_guard) + body + _CAPABILITY_GUARD_CLOSE
 _SOURCE_KEYS = {"path", "sha256"}
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -198,6 +235,15 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
         seen_namespaces.add(root["namespace"])
         if "namePrefix" in root and not isinstance(root["namePrefix"], str):
             raise PlanError(f"{where}.namePrefix must be a string")
+        # capabilityGuard is optional (issue #776): omitting it preserves the
+        # existing operator-only behavior exactly. When present, the
+        # generated resource is wrapped in a ".Capabilities.APIVersions.Has"
+        # guard and the superseded source document is preserved -- guarded to
+        # the operator-absent branch -- instead of deleted (see build_root).
+        if "capabilityGuard" in root and (
+            not isinstance(root["capabilityGuard"], str) or not root["capabilityGuard"].strip()
+        ):
+            raise PlanError(f"{where}.capabilityGuard must be a non-empty string")
         for field in ("helmValues", "nameOverrides"):
             value = root.get(field)
             if value is None:
@@ -296,24 +342,109 @@ def check_output_ownership(repo_root: Path, plan: dict[str, Any]) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _sanitize_guards(text: str) -> str:
-    """Blank out whole-line Helm guard actions so PyYAML can parse the rest.
+def _mask_for_spans(text: str) -> str:
+    """Length- and line-preserving mask used only so ``yaml.compose_all`` can
+    locate each document's span (issue #776): a standalone Helm action line
+    (``if``/``else``/``range``/``with``/``end``/``define``/``block``/
+    ``template``, or a ``{{- $x := ... }}`` assignment -- not only the
+    ``if``/``end`` guard pair) is blanked to spaces, and an inline
+    ``{{ ... }}`` template expression is replaced with same-length filler so
+    an otherwise-unquoted scalar (``name: {{ .Values.SERVICE_NAME }}``)
+    parses as a plain YAML string.
 
-    ``{{- if ... }}`` is not valid YAML on its own -- composing the raw text
-    would fail before guard detection ever ran. Each guard line is replaced
-    by spaces of the exact same length (never removed), so every other
-    character keeps its original offset and indices from composing this
-    sanitized text stay valid into the original.
+    Every replacement is exactly as long as what it replaces, so line count,
+    column positions, and every untouched byte are unchanged -- the node
+    marks ``yaml.compose_all`` reports against this masked text stay valid
+    offsets into the *original* text. This buffer is never used to read a
+    document's actual value (see ``_mask_for_value`` for that); a masked
+    scalar's content here is disposable filler.
     """
 
     out = []
     for line in text.splitlines(keepends=True):
         body = line.rstrip("\r\n")
-        if _GUARD_IF.match(body) or _GUARD_END.match(body):
-            out.append(" " * len(body) + line[len(body):])
-        else:
-            out.append(line)
+        ending = line[len(body):]
+        stripped = body.strip()
+        if stripped.startswith("{{") and _STANDALONE_HELM_LINE.match(stripped):
+            out.append(" " * len(body) + ending)
+            continue
+        if "{{" in body:
+            out.append(_INLINE_TEMPLATE.sub(lambda m: "x" * len(m.group(0)), body) + ending)
+            continue
+        out.append(line)
     return "".join(out)
+
+
+def _split_trailing_comment(value: str) -> tuple[str, str]:
+    """Split a plain (unquoted) scalar's trailing ``# comment`` (if any) from
+    its real value (issue #776) -- matching YAML's own rule that a ``#``
+    preceded by whitespace starts a comment on a plain scalar, so it is
+    never captured as part of the quoted value. Only searched *after* the
+    expression's last ``}}``, so a literal ``#`` inside the template
+    expression itself is never mistaken for a comment marker.
+    """
+
+    last_close = value.rfind("}}")
+    search_from = last_close + 2 if last_close != -1 else 0
+    match = re.search(r"\s#", value[search_from:])
+    if match is None:
+        return value, ""
+    comment_start = search_from + match.start() + 1  # index of '#' itself
+    return value[:comment_start].rstrip(), value[comment_start:]
+
+
+def _mask_for_value(text: str) -> str:
+    """Parse-only mask (issue #776) used to read one already-located
+    document's actual value: a standalone Helm action line is blanked to
+    nothing, and an unquoted templated scalar is single-quoted so it loads as
+    the exact expression text (``{{ .Values.SERVICE_NAME }}`` becomes that
+    literal string value, not a masked placeholder). This buffer's offsets
+    are never used for source replacement -- only its parsed value is read --
+    so quoting is free to change the text's length.
+    """
+
+    out_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("{{") and _STANDALONE_HELM_LINE.match(stripped):
+            out_lines.append("")
+            continue
+        match = _SCALAR_WITH_TEMPLATE.match(line) or _SEQ_ITEM_WITH_TEMPLATE.match(line)
+        if match:
+            prefix, value = match.groups()
+            # A quoted scalar is already valid YAML. Preserve it verbatim so
+            # a literal " #" inside the quotes is not mistaken for a comment.
+            original_bare = value.strip()
+            if original_bare.startswith(("'", '"')):
+                out_lines.append(line)
+                continue
+            value_part, comment_part = _split_trailing_comment(value)
+            bare = value_part.strip()
+            if not (
+                (bare.startswith("'") and bare.endswith("'"))
+                or (bare.startswith('"') and bare.endswith('"'))
+            ):
+                escaped = bare.replace("'", "''")
+                suffix = f" {comment_part}" if comment_part else ""
+                out_lines.append(f"{prefix}'{escaped}'{suffix}")
+                continue
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+def _contains_standalone_helm_action(text: str) -> bool:
+    """Whether ``text`` (a document's already-guard-stripped ``inner``
+    content) contains any standalone Helm action line -- if/else/range/with/
+    end/define/block/template, or a ``{{- $x := ... }}`` assignment.
+    ``_mask_for_value`` blanks each of these to nothing when reading a
+    document's value, which is safe for locating static fields but would
+    silently discard one of these found *inside* a document actually being
+    converted (see ``build_root``'s use of this check)."""
+
+    return any(
+        line.strip().startswith("{{") and _STANDALONE_HELM_LINE.match(line.strip())
+        for line in text.splitlines()
+    )
 
 
 def _is_phantom_empty_node(node: Any) -> bool:
@@ -363,7 +494,7 @@ def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]
         # document that is an explicit, real `null`/`~` value.
         nodes = [
             n
-            for n in yaml.compose_all(_sanitize_guards(text))
+            for n in yaml.compose_all(_mask_for_spans(text))
             if n is not None and not _is_phantom_empty_node(n)
         ]
     except yaml.YAMLError as exc:
@@ -382,6 +513,7 @@ def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]
         content = raw[raw.index("\n") + 1 :] if raw.startswith("---") else raw
         lines = content.splitlines(keepends=True)
         guard = None
+        guard_action = None
         inner = content
         meaningful = [
             index for index, line in enumerate(lines)
@@ -394,16 +526,31 @@ def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]
         ):
             first, last = meaningful[0], meaningful[-1]
             guard = ("".join(lines[: first + 1]), "".join(lines[last:]))
+            guard_action = lines[first].strip()
             inner = "".join(lines[first + 1:last])
-        elif any(_GUARD_IF.match(l.rstrip("\r\n")) or _GUARD_END.match(l.rstrip("\r\n")) for l in lines):
+        elif any(_GUARD_IF.match(l.rstrip("\r\n")) for l in lines):
+            # An unmatched {{- if ... }} (no whole-document guard pair found
+            # above) is genuinely a partial guard. A standalone {{- end }}
+            # with no such "if" is not necessarily one -- it is the same
+            # closing token range/with/define/block use, and is otherwise
+            # reported more specifically as nested Helm control flow (see
+            # _contains_standalone_helm_action in build_root) rather than
+            # misreported as a mismatched guard here.
             raise UnsupportedError(
                 f"{rel}: a Helm guard action does not wrap the entire document; partial guards are unsupported"
             )
         try:
-            value = yaml.safe_load(inner)
+            value = yaml.safe_load(_mask_for_value(inner))
         except yaml.YAMLError as exc:
             raise UnsupportedError(f"{rel}: not valid YAML inside guard: {exc}") from None
-        docs.append({"start": start, "end": end, "value": value, "guard": guard})
+        docs.append({
+            "start": start,
+            "end": end,
+            "value": value,
+            "guard": guard,
+            "guardAction": guard_action,
+            "inner": inner,
+        })
     preamble = text[: docs[0]["start"]] if docs else ""
     return preamble, docs
 
@@ -508,6 +655,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
     """Return (changes for this root, warnings). Raises PlanError/UnsupportedError."""
 
     args = _args_for_root(root)
+    capability_guard = root.get("capabilityGuard")
     overrides: dict[str, str] = root.get("nameOverrides") or {}
     used_overrides: set[str] = set()
     warnings: list[str] = []
@@ -529,6 +677,10 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
         doc_results: list[tuple[dict[str, Any], bool]] = []  # (doc, fully_supported)
         for doc_index, doc in enumerate(docs, start=1):
             value = doc["value"]
+            doc["capabilityFallbackGuard"] = bool(
+                capability_guard
+                and doc.get("guardAction") == _negated_guard_open(capability_guard).strip()
+            )
             if value is None:
                 doc_results.append((doc, False))
                 continue
@@ -536,12 +688,36 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
             doc_results.append((doc, supported))
             if not supported:
                 continue
+            # issue #776: a document's *value* was read from a masked copy that
+            # blanks every standalone Helm action -- if/else/range/with/end/
+            # assignment -- to nothing (_mask_for_value), which is safe for
+            # locating and reading a document's static fields but silently
+            # drops the semantics of any such action found *inside* the
+            # document being converted (excluding its own already-handled
+            # whole-document guard): a `{{- range .Values.externalServices }}`
+            # over a services list collapses to one static entry whose name is
+            # still the literal loop-variable expression, not one entry per
+            # service. That is not a lossy-but-usable conversion, it is a
+            # corrupted one -- block instead of emitting it.
+            if not is_json and _contains_standalone_helm_action(doc["inner"]):
+                raise UnsupportedError(
+                    f"{rel}#{doc_index}: contains nested Helm control flow (if/else/range/with/"
+                    "assignment) inside the declaration being converted; this cannot be preserved "
+                    "in the static generated resource and is not supported for automatic "
+                    "conversion -- migrate this document manually"
+                )
             guard = doc.get("guard") if not is_json else None
+            if doc["capabilityFallbackGuard"]:
+                # This guard was emitted by an earlier run to retain the
+                # legacy declaration only for operator-absent clusters. It is
+                # not source semantics to carry into the generated native CR.
+                guard = None
             for item_index, item in enumerate(convert.as_legacy_items(value), start=1):
                 kind = str(item.get("kind", ""))
                 sub_kind = str(item.get("subKind", ""))
                 legacy_kind = (sub_kind or kind).lower()
-                body_value = item.get("spec") if kind == "DBaaS" else item
+                is_wrapper = kind == "DBaaS"
+                body_value = item.get("spec") if is_wrapper else item
                 metadata_value = item.get("metadata")
                 if not isinstance(body_value, dict):
                     raise UnsupportedError(f"{rel}#{doc_index}#{item_index}: spec must be an object")
@@ -576,7 +752,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                         try:
                             resource = convert.convert_database_declaration(
                                 declaration, metadata, doc_index, declaration_index, multiple,
-                                args, warnings, errors, override_name=override,
+                                args, warnings, errors, override_name=override, is_wrapper=is_wrapper,
                             )
                         except convert.TemplatedNameRequired as exc:
                             raise UnsupportedError(
@@ -593,7 +769,8 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                         used_overrides.add(key)
                     try:
                         resource = convert.convert_db_policy(
-                            body, metadata, doc_index, 1, args, warnings, errors, override_name=override
+                            body, metadata, doc_index, 1, args, warnings, errors,
+                            override_name=override, is_wrapper=is_wrapper,
                         )
                     except convert.TemplatedNameRequired as exc:
                         raise UnsupportedError(
@@ -612,11 +789,35 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                     f"{rel}: the JSON source mixes supported and unsupported/irrelevant items; "
                     "migrate it as a whole or split it first"
                 )
-            changes[rel] = None
+            # issue #776: preserve the source under capabilityGuard instead of
+            # deleting it -- the native CR (in the output file) and the legacy
+            # declaration (here) render in opposite, mutually exclusive branches.
+            changes[rel] = _wrap_in_negated_guard(capability_guard, text) if capability_guard else None
         elif all(supported for _d, supported in doc_results):
-            changes[rel] = None
+            if capability_guard:
+                if len(doc_results) == 1 and doc_results[0][0]["capabilityFallbackGuard"]:
+                    changes[rel] = text
+                else:
+                    changes[rel] = preamble + _wrap_in_negated_guard(
+                        capability_guard, text[docs[0]["start"]:]
+                    )
+            else:
+                changes[rel] = None
         elif not any(supported for _d, supported in doc_results):
             changes[rel] = preamble + text[docs[0]["start"]:]  # report it without changing its bytes
+        elif capability_guard:
+            # Every document keeps its original position; a supported one is
+            # wrapped to the operator-absent branch in place rather than removed.
+            parts = [
+                (
+                    text[d["start"]:d["end"]]
+                    if d["capabilityFallbackGuard"]
+                    else _wrap_in_negated_guard(capability_guard, text[d["start"]:d["end"]])
+                ) if supported
+                else text[d["start"]:d["end"]]
+                for d, supported in doc_results
+            ]
+            changes[rel] = preamble + "".join(parts)
         else:
             # The preamble (if any) is reattached whenever some document
             # survives, regardless of which document(s) that is.
@@ -638,20 +839,27 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
     if errors:
         raise UnsupportedError("; ".join(errors))
 
-    output_text = _render_output(entries)
+    output_text = _render_output(entries, capability_guard)
     changes[root["outputFile"]] = output_text
     return changes, warnings
 
 
-def _render_output(entries: list[tuple[dict[str, Any], tuple[str, str] | None]]) -> str:
+def _render_output(
+    entries: list[tuple[dict[str, Any], tuple[str, str] | None]],
+    capability_guard: str | None = None,
+) -> str:
     chunks = []
     for resource, guard in entries:
         body = yaml.safe_dump(resource, sort_keys=False, allow_unicode=False, default_flow_style=False)
         if guard:
             prefix, suffix = guard
-            chunks.append(f"---\n{prefix}{body}{suffix}")
-        else:
-            chunks.append(f"---\n{body}")
+            body = f"{prefix}{body}{suffix}"
+        if capability_guard:
+            # issue #776: the native CR only renders when the target cluster's
+            # dbaas-operator CRDs are present -- nested inside any pre-existing
+            # guard the source document already carried (both conditions apply).
+            body = _capability_guard_open(capability_guard) + body + _CAPABILITY_GUARD_CLOSE
+        chunks.append(f"---\n{body}")
     return "".join(chunks)
 
 
@@ -742,25 +950,68 @@ def validate_helm_root(tree_root: Path, root: dict[str, Any], generated_content:
 
     values_file = tree_root / ".dbaas-migration-values.yaml"
     values_file.write_text(yaml.safe_dump(_values_tree(values), sort_keys=True), encoding="utf-8")
-    cmd = [
-        helm, "template", "dbaas-migration-pilot", str(chart_dir),
-        "--namespace", release_ns, "--values", str(values_file),
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return [f"helm template did not run: {exc}"]
-    if proc.returncode != 0:
-        return [f"helm template failed: {proc.stderr.strip()[:2000]}"]
+    capability_guard = root.get("capabilityGuard")
 
-    problems: list[str] = []
+    def render(*, api_versions: str | None) -> tuple[str | None, list[str]]:
+        cmd = [
+            helm, "template", "dbaas-migration-pilot", str(chart_dir),
+            "--namespace", release_ns, "--values", str(values_file),
+        ]
+        if api_versions:
+            cmd += ["--api-versions", api_versions]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, [f"helm template did not run: {exc}"]
+        if proc.returncode != 0:
+            return None, [f"helm template failed: {proc.stderr.strip()[:2000]}"]
+        return proc.stdout, []
+
+    # Without a capability guard, a single render at the runner's own default
+    # capabilities is the whole (pre-issue-#776) validation. With one, the
+    # default render lacks the guard's capability -- rendering the
+    # operator-absent fallback branch -- so certifying the branch the
+    # generated resource actually lives in requires rendering *with*
+    # --api-versions <capabilityGuard> instead (see the "twice" requirement
+    # in mapping.md's Helm-templated sources note); the second,
+    # default-capabilities render is certified separately below.
+    stdout, problems = render(api_versions=capability_guard)
+    if stdout is None:
+        return problems
+
     try:
-        docs = [d for d in yaml.safe_load_all(proc.stdout) if isinstance(d, dict)]
+        docs = [d for d in yaml.safe_load_all(stdout) if isinstance(d, dict)]
     except yaml.YAMLError as exc:
         return [f"rendered output is not valid YAML: {exc}"]
-    for doc in docs:
-        if doc.get("kind") in ("InternalDatabase", "DatabaseAccessPolicy"):
-            _check_generated_object(doc, problems)
+    generated_kinds = [doc for doc in docs if doc.get("kind") in ("InternalDatabase", "DatabaseAccessPolicy")]
+    for doc in generated_kinds:
+        _check_generated_object(doc, problems)
+    if capability_guard and not generated_kinds:
+        # _check_generated_object is passive -- it validates whatever is
+        # found and is silently a no-op when nothing is. Without this, a
+        # capability guard that never evaluates true (a typo in the
+        # condition, say) would render nothing and still "pass".
+        problems.append(
+            f"rendered with --api-versions {capability_guard!r} but no InternalDatabase/"
+            "DatabaseAccessPolicy was found -- the capability guard did not let it render"
+        )
+
+    if capability_guard:
+        fallback_stdout, fallback_problems = render(api_versions=None)
+        problems.extend(fallback_problems)
+        if fallback_stdout is not None:
+            try:
+                fallback_docs = [d for d in yaml.safe_load_all(fallback_stdout) if isinstance(d, dict)]
+            except yaml.YAMLError as exc:
+                problems.append(f"operator-absent render is not valid YAML: {exc}")
+                fallback_docs = []
+            for doc in fallback_docs:
+                if doc.get("kind") in ("InternalDatabase", "DatabaseAccessPolicy"):
+                    problems.append(
+                        f"operator-absent render (no --api-versions) still contains "
+                        f"{doc.get('kind')} {doc.get('metadata', {}).get('name')!r}; "
+                        "the capability guard did not suppress it"
+                    )
     return problems
 
 

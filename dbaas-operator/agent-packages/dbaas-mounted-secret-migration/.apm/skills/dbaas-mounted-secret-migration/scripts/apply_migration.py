@@ -27,7 +27,10 @@ reuse the same generated name when their workload namespaces differ)::
           "root": "chart",                 // repo-relative; "" or "." is the repo root
           "kind": "helm",                  // "helm" | "plain"
           "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-          "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
+          // Derived from a namespaced Kubernetes service address in API_DBAAS_ADDRESS --
+          // the second DNS label is the operator's namespace. See references/contracts.md
+          // for when a plain literal or an explicit override is required instead.
+          "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) }}",
           "workloadNamespace": "{{ .Values.NAMESPACE }}",
           "originService": "orders",
           "helmValues": {"API_DBAAS_ADDRESS": "http://dbaas-aggregator.dbaas-operator:8080"},
@@ -54,10 +57,12 @@ reuse the same generated name when their workload namespaces differ)::
 
 ``sourceHashes`` keys are root-relative (like ``workloadFile`` and
 ``supersededDeclarations[].path``) and must cover every path the writer reads
-under this root (every workload file, every superseded-declaration file, and
-``values.yaml`` / ``values.schema.json`` when present) with the SHA-256 the
-skill inspected; a mismatch is a stale-plan error (exit 3), not silently
-re-read.
+under this root (every workload file and every superseded-declaration file)
+with the SHA-256 the skill inspected; a mismatch is a stale-plan error (exit
+3), not silently re-read. The writer never reads or writes ``values.yaml`` /
+``values.schema.json`` -- ``operatorNamespace`` must already be a concrete,
+verified value or Helm expression when the plan is built (see
+references/contracts.md).
 """
 
 from __future__ import annotations
@@ -98,7 +103,6 @@ EXIT_VALIDATION = 5
 DNS_MAX = 63
 RESERVED_CLASSIFIER_KEYS = {"microserviceName", "scope", "namespace", "tenantId", "customKeys"}
 MOUNT_ROOT = "/etc/secrets/dbaas-secrets"
-DBAAS_OPERATOR_NAMESPACE_VALUE = "DBAAS_OPERATOR_NAMESPACE"
 _TAIL_BUDGET = 20
 _PILOT_RELEASE = "dbaas-migration-pilot"
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -336,8 +340,9 @@ def cr_classifier(classifier: dict[str, Any]) -> dict[str, Any]:
 _ROOT_KEYS = {
     "root", "kind", "outputFile", "outputSha256", "operatorNamespace", "workloadNamespace",
     "originService", "helmValues", "datasources", "claims", "supersededDeclarations",
-    "sourceHashes", "valuesFile", "schemaFile",
+    "sourceHashes", "capabilityGuard", "operatorModeEnvironment",
 }
+_OPERATOR_MODE_ENV_KEYS = {"name", "value"}
 _DATASOURCE_KEYS = {
     "id", "type", "classifier", "requestedRoles", "parameters", "migrationFeasibility",
     "resourceName", "codeLocations",
@@ -398,6 +403,25 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             raise bad_input(f"{where}.operatorNamespace must be a valid RFC-1123 namespace label")
         if not is_templated(entry["workloadNamespace"]) and not is_dns_label(entry["workloadNamespace"]):
             raise bad_input(f"{where}.workloadNamespace must be a valid RFC-1123 namespace label")
+        # capabilityGuard is optional (issue #776): omitting it preserves the
+        # existing operator-only behavior exactly. When present, every
+        # generated resource and inserted volume/mount is wrapped in a
+        # ".Capabilities.APIVersions.Has" guard, and a superseded declaration
+        # is preserved (guarded to the operator-absent branch) instead of
+        # deleted -- see build_resources/apply_workload_patches/verify_superseded.
+        capability_guard = entry.get("capabilityGuard")
+        if capability_guard is not None and (
+            not isinstance(capability_guard, str) or not capability_guard.strip()
+        ):
+            raise bad_input(f"{where}.capabilityGuard must be a non-empty string")
+        operator_mode_environment = entry.get("operatorModeEnvironment")
+        if operator_mode_environment is not None:
+            if capability_guard is None:
+                raise bad_input(f"{where}.operatorModeEnvironment requires capabilityGuard to be set")
+            _reject_unknown(operator_mode_environment, _OPERATOR_MODE_ENV_KEYS, f"{where}.operatorModeEnvironment")
+            for key in ("name", "value"):
+                if not isinstance(operator_mode_environment.get(key), str) or not operator_mode_environment[key]:
+                    raise bad_input(f"{where}.operatorModeEnvironment.{key} is required and must be a non-empty string")
         output_file = entry.get("outputFile")
         if not isinstance(output_file, str) or not output_file:
             raise bad_input(f"{where}.outputFile is required")
@@ -626,19 +650,6 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
                 f"the same root: {', '.join(overlap)}"
             )
         touched = workload_paths | declaration_paths
-        # update_values() reads -- and sometimes writes -- values.yaml and
-        # values.schema.json under exactly this same condition; those files
-        # need the same stale-plan protection as every workload/declaration
-        # the writer reads, or an edit to either between discovery and apply
-        # goes uncaught.
-        if entry["operatorNamespace"] == f"{{{{ .Values.{DBAAS_OPERATOR_NAMESPACE_VALUE} }}}}":
-            values_rel = join_rel(norm_root, entry.get("valuesFile", "values.yaml"), what=f"{where}.valuesFile")
-            touched.add(values_rel)
-            schema_rel = join_rel(
-                norm_root, entry.get("schemaFile", "values.schema.json"), what=f"{where}.schemaFile"
-            )
-            if (repo_root / schema_rel).is_file():
-                touched.add(schema_rel)
         # sourceHashes is how a stale-plan edit gets caught (exit 3) instead
         # of silently re-read; an entry missing here for a file the writer
         # will actually read is not "optional", it is a coverage hole.
@@ -951,19 +962,147 @@ def check_collisions(databases: dict[str, Any], claims: dict[str, Any]) -> None:
         raise unsupported("resource name collision", problems)
 
 
-def render_resources(bodies: list[dict[str, Any]]) -> str:
+def _capability_guard_open(capability_guard: str) -> str:
+    return '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
+
+
+_CAPABILITY_GUARD_CLOSE = "{{- end }}\n"
+
+
+def render_resources(bodies: list[dict[str, Any]], capability_guard: str | None = None) -> str:
     chunks = []
     for body in bodies:
         chunks.append("---\n" + yaml.safe_dump(body, sort_keys=False, allow_unicode=False, default_flow_style=False))
-    return "".join(chunks)
+    content = "".join(chunks)
+    if capability_guard:
+        # issue #776: every generated InternalDatabase/DatabaseSecretClaim only
+        # renders when the target cluster's dbaas-operator CRDs are present --
+        # the operator is never assumed to be installed. Omitting
+        # capabilityGuard on the plan preserves the unwrapped, operator-only
+        # output exactly as before.
+        content = _capability_guard_open(capability_guard) + content + _CAPABILITY_GUARD_CLOSE
+    return content
 
 
 # --------------------------------------------------------------------------- #
 # Workload patching -- raw span insertion, never a full re-dump
 # --------------------------------------------------------------------------- #
 
-_BLOCK_ACTION = re.compile(r"^\s*\{\{-?\s*(if|range|with|include|define|block|template|end|else)\b")
-_STANDALONE_ACTION = re.compile(r"^\s*\{\{-?.*-?\}\}\s*$")
+# A standalone Helm action: the whole line, once stripped, is one (or more
+# concatenated) {{ ... }} action(s) and nothing else -- if/else/range/with/end/
+# define/block/template, or a "{{- $x := ... }}" variable assignment.
+_STANDALONE_HELM_LINE = re.compile(r"^\{\{-?.*-?\}\}$", re.S)
+_HELM_BLOCK_OPEN = re.compile(r"^\{\{-?\s*(?:if|range|with|define|block)\b")
+_HELM_BLOCK_END = re.compile(r"^\{\{-?\s*end\s*-?\}\}$")
+# A non-nested {{ ... }} expression, matched non-greedily so two separate
+# expressions on one line ("{{ .A }}-{{ .B }}") are each matched on their own.
+_INLINE_TEMPLATE = re.compile(r"\{\{(?:(?!\{\{|\}\}).)*\}\}", re.S)
+
+
+def _template_filler(match: re.Match[str]) -> str:
+    length = len(match.group(0))
+    digest = hashlib.sha256(match.group(0).encode("utf-8")).hexdigest()
+    return ("x" + digest * ((length // len(digest)) + 1))[:length]
+
+
+def _mask_helm_template(text: str) -> str:
+    """Length- and line-preserving mask (issue #776) used only so
+    ``yaml.compose_all`` can locate static workload/pod-spec/container/
+    volume/mount/environment nodes: a standalone Helm action line
+    (``if``/``else``/``range``/``with``/``end``/``define``/``block``/
+    ``template``, or a ``{{- $x := ... }}`` assignment) is blanked to spaces,
+    and an inline ``{{ ... }}`` template expression is replaced with
+    deterministic same-length filler so an otherwise-unquoted scalar
+    (``name: {{ .Values.SERVICE_NAME }}``) parses as plain YAML.
+
+    Every replacement is exactly as long as what it replaces, so line count,
+    column positions, and every untouched byte are unchanged -- an edit
+    computed from a node mark against this masked text applies at the same
+    offset into the *original* text. Callers must feed this the already
+    CRLF-normalized ``work`` text (bare ``\\n`` only): a masked scalar's
+    content is disposable filler, never read back.
+    """
+
+    out = []
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip("\n")
+        ending = line[len(body):]
+        stripped = body.strip()
+        if stripped.startswith("{{") and _STANDALONE_HELM_LINE.match(stripped):
+            out.append(" " * len(body) + ending)
+            continue
+        if "{{" in body:
+            out.append(_INLINE_TEMPLATE.sub(_template_filler, body) + ending)
+            continue
+        out.append(line)
+    return "".join(out)
+
+
+# A mapping-entry scalar whose value contains a template: "key: {{ .X }}" or
+# "- key: {{ .X }}" (a sequence item that is itself a one-line mapping).
+_SCALAR_WITH_TEMPLATE = re.compile(r"^(\s*[^#\n][^:]*:\s*)(.*\{\{.*\}\}.*)$")
+# A bare sequence-item scalar with no mapping key at all: "- {{ .X }}".
+_SEQ_ITEM_WITH_TEMPLATE = re.compile(r"^(\s*-\s+)(\{\{.*\}\}.*)$")
+
+
+def _split_trailing_comment(value: str) -> tuple[str, str]:
+    """Split a plain (unquoted) scalar's trailing ``# comment`` (if any) from
+    its real value (issue #776) -- matching YAML's own rule that a ``#``
+    preceded by whitespace starts a comment on a plain scalar, so it is
+    never captured as part of the quoted value. Only searched *after* the
+    expression's last ``}}``, so a literal ``#`` inside the template
+    expression itself is never mistaken for a comment marker.
+    """
+
+    last_close = value.rfind("}}")
+    search_from = last_close + 2 if last_close != -1 else 0
+    match = re.search(r"\s#", value[search_from:])
+    if match is None:
+        return value, ""
+    comment_start = search_from + match.start() + 1  # index of '#' itself
+    return value[:comment_start].rstrip(), value[comment_start:]
+
+
+def _mask_for_reading(text: str) -> str:
+    """Parse-only mask (issue #776), distinct from ``_mask_helm_template``:
+    a standalone Helm action line is blanked to nothing, and an unquoted
+    templated scalar is single-quoted so it loads as the exact expression
+    text (``{{ .Release.Name }}`` becomes that literal string value, not
+    filler). Used only to read a value back -- by ``_verify_insertions``, to
+    confirm a just-inserted volume/mount is reachable where it belongs, name
+    intact even when that name is itself a Helm expression (a templated
+    resource identity) -- never to locate a node's byte offset, so quoting
+    is free to change the text's length.
+    """
+
+    out_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("{{") and _STANDALONE_HELM_LINE.match(stripped):
+            out_lines.append("")
+            continue
+        match = _SCALAR_WITH_TEMPLATE.match(line) or _SEQ_ITEM_WITH_TEMPLATE.match(line)
+        if match:
+            prefix, value = match.groups()
+            # A quoted scalar already parses as YAML, including either an
+            # external trailing comment or a literal " #" inside its quotes.
+            # Comment splitting applies only to plain scalars.
+            original_bare = value.strip()
+            if original_bare.startswith(("'", '"')):
+                out_lines.append(line)
+                continue
+            value_part, comment_part = _split_trailing_comment(value)
+            bare = value_part.strip()
+            if not (
+                (bare.startswith("'") and bare.endswith("'"))
+                or (bare.startswith('"') and bare.endswith('"'))
+            ):
+                escaped = bare.replace("'", "''")
+                suffix = f" {comment_part}" if comment_part else ""
+                out_lines.append(f"{prefix}'{escaped}'{suffix}")
+                continue
+        out_lines.append(line)
+    return "\n".join(out_lines)
 
 
 class WorkloadError(Exception):
@@ -976,6 +1115,16 @@ def _yaml_scalar(value: str) -> str:
     if value.startswith("{{"):
         return "'" + value.replace("'", "''") + "'"
     return value
+
+
+def _masked_template_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    return _INLINE_TEMPLATE.sub(_template_filler, value)
+
+
+def _template_value_matches(actual: Any, expected: Any) -> bool:
+    return actual == expected or actual == _masked_template_value(expected)
 
 
 def _indent(line: str) -> int:
@@ -993,7 +1142,7 @@ def _find_workload(nodes: list[Any], kind: str, name: str) -> Any:
             continue
         meta_map = {k.value: v for k, v in metadata_node.value if hasattr(k, "value")}
         name_node = meta_map.get("name")
-        if name_node is not None and name_node.value == name:
+        if name_node is not None and _template_value_matches(name_node.value, name):
             return node
     return None
 
@@ -1022,14 +1171,40 @@ def _child_key_column(mapping_node: Any) -> int:
 
 
 def _block_content_end(lines: list[str], start_line: int, min_indent: int) -> int:
+    """Where the block anchored at ``start_line`` ends: the first line at or
+    below ``min_indent`` that is not blank.
+
+    A standalone Helm action line (issue #776) -- masked to blank spaces for
+    parsing, but still literally present with its original text in this
+    unmasked ``lines`` array -- is also treated as insignificant here,
+    transparent to the scan regardless of its own indentation: a real next
+    sibling key, or the true end of a sequence, may sit past a conditional
+    wrapping something else entirely. ``patch_workload`` re-verifies every
+    inserted item is reachable in the result afterward (``_verify_insertions``),
+    which catches an insertion point this transparency moved outside its
+    target's workload/container -- but not every case: a conditional wrapping
+    the *entire* target key/sequence still parses as "found" under masking
+    (YAML tolerates a blank line, what the conditional's closing action
+    becomes, between sequence items regardless of the real indentation the
+    guard implies), so that specific shape relies on the real
+    helm-render/validate-rendered pass downstream instead.
+    """
+
     index = start_line + 1
     total = len(lines)
     while index < total:
         stripped = lines[index].strip()
-        if stripped == "" or _indent(lines[index]) > min_indent:
+        if stripped == "" or _STANDALONE_HELM_LINE.match(stripped) or _indent(lines[index]) > min_indent:
             index += 1
             continue
         break
+    # Trim back over trailing *blank* lines only -- reached only when the loop
+    # above ran off the end of the file without finding a real next line, so
+    # the insertion point does not land after a pile of trailing whitespace.
+    # A standalone Helm action line is not blank filler: it is a meaningful
+    # boundary that the insertion point must stay *after* once skipped, so it
+    # is never trimmed back over here even when the forward scan above
+    # treated it as transparent.
     while index - 1 > start_line and lines[index - 1].strip() == "":
         index -= 1
     return index
@@ -1092,6 +1267,111 @@ def _render_mount(name: str, mount_path: str, indent: int) -> str:
     return f"{pad}- name: {_yaml_scalar(name)}\n{pad}  mountPath: {_yaml_scalar(mount_path)}\n{pad}  readOnly: true\n"
 
 
+def _render_env(name: str, value: str, indent: int) -> str:
+    pad = " " * indent
+    return f"{pad}- name: {_yaml_scalar(name)}\n{pad}  value: {_yaml_scalar(value)}\n"
+
+
+def _guard_wrapped(capability_guard: str | None, indent: int, block: str) -> str:
+    """Wrap ``block`` (already-rendered, ``indent``-indented sequence items)
+    in the capability guard (issue #776), or return it unchanged when no
+    guard is configured. The guard lines' own indentation is cosmetic --
+    masking treats a standalone Helm action line as blank regardless of its
+    column -- but matches ``indent`` for readability."""
+
+    if not capability_guard:
+        return block
+    pad = " " * indent
+    open_line = pad + '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
+    close_line = pad + "{{- end }}\n"
+    return open_line + block + close_line
+
+
+def _item_content_end(lines: list[str], start_line: int, min_indent: int) -> int:
+    """Where an existing item's own content ends: the first line at or below
+    ``min_indent`` (blank or not). Deliberately *not* ``_block_content_end``:
+    that function treats a standalone Helm action line as transparent so an
+    insertion point can be found past a conditional wrapping something
+    unrelated -- exactly wrong here, since the line right after an existing
+    item is very often the ``{{- end }}`` closing its own guard, which this
+    function must stop *at*, never skip past.
+    """
+
+    index = start_line + 1
+    total = len(lines)
+    while index < total:
+        if lines[index].strip() == "" or _indent(lines[index]) > min_indent:
+            index += 1
+            continue
+        break
+    return index
+
+
+def _existing_item_span(lines: list[str], item: Any) -> tuple[int, int]:
+    """(start_line, end_line_exclusive) for an already-existing sequence
+    item node. Used only to locate an existing item's own span for the
+    guard-wrapping check below, never to edit its content.
+    """
+
+    start_line = item.start_mark.line
+    dash_col = _indent(lines[start_line])
+    end_line = _item_content_end(lines, start_line, dash_col)
+    return start_line, end_line
+
+
+def _is_item_guarded(lines: list[str], item: Any, capability_guard: str) -> bool:
+    """Return whether the item is inside this capability guard.
+
+    One guard may wrap several adjacent generated sequence items. Track Helm
+    block nesting up to the item's first line instead of requiring an opening
+    and closing action immediately around that individual item.
+    """
+
+    target_open = _capability_guard_open(capability_guard).strip()
+    stack: list[bool] = []
+    for raw_line in lines[:item.start_mark.line]:
+        action = raw_line.strip()
+        if _HELM_BLOCK_OPEN.match(action):
+            stack.append(action == target_open)
+        elif _HELM_BLOCK_END.match(action) and stack:
+            stack.pop()
+    return any(stack)
+
+
+def _guard_existing_item(lines: list[str], item: Any, capability_guard: str, edits: list[tuple[int, int, str]]) -> None:
+    """Wrap an already-existing, unguarded sequence item in the capability
+    guard in place -- two pure insertions around its untouched span, never a
+    rewrite of its own content."""
+
+    start_line, end_line = _existing_item_span(lines, item)
+    pad = " " * _indent(lines[start_line])
+    edits.append((start_line, 0, pad + _capability_guard_open(capability_guard)))
+    edits.append((end_line, 0, pad + _CAPABILITY_GUARD_CLOSE))
+
+
+def _guard_existing_items(
+    lines: list[str], items: list[Any], capability_guard: str, edits: list[tuple[int, int, str]]
+) -> None:
+    """Guard existing items, merging adjacent spans under one guard.
+
+    Separate per-item edits collide where one item's closing insertion and
+    the next item's opening insertion share a line. Merging each contiguous
+    run avoids inverted, nested guards and matches how new items are emitted.
+    """
+
+    spans = sorted((_existing_item_span(lines, item) for item in items), key=lambda span: span[0])
+    runs: list[list[int]] = []
+    for start_line, end_line in spans:
+        if runs and start_line <= runs[-1][1]:
+            runs[-1][1] = max(runs[-1][1], end_line)
+        else:
+            runs.append([start_line, end_line])
+    for start_line, end_line in runs:
+        pad = " " * _indent(lines[start_line])
+        edits.append((start_line, 0, pad + _capability_guard_open(capability_guard)))
+        edits.append((end_line, 0, pad + _CAPABILITY_GUARD_CLOSE))
+
+
 def _existing_names(mapping_node: Any, key: str, name_field: str = "name") -> dict[str, Any]:
     result: dict[str, Any] = {}
     for k, v in mapping_node.value:
@@ -1105,7 +1385,37 @@ def _existing_names(mapping_node: Any, key: str, name_field: str = "name") -> di
     return result
 
 
-def patch_workload(text: str, *, filename: str, targets: list[dict[str, Any]]) -> str:
+def _existing_named(existing: dict[str, Any], name: str) -> Any:
+    if name in existing:
+        return existing[name]
+    return existing.get(_masked_template_value(name))
+
+
+def _find_container(pod_spec: Any, container_field: str, container_name: str) -> Any:
+    for key, value in pod_spec.value:
+        if not (hasattr(key, "value") and key.value == container_field and value.tag.endswith(":seq")):
+            continue
+        for item in value.value:
+            if not item.tag.endswith(":map"):
+                continue
+            for item_key, item_value in item.value:
+                if (
+                    hasattr(item_key, "value")
+                    and item_key.value == "name"
+                    and _template_value_matches(getattr(item_value, "value", None), container_name)
+                ):
+                    return item
+    return None
+
+
+def patch_workload(
+    text: str,
+    *,
+    filename: str,
+    targets: list[dict[str, Any]],
+    capability_guard: str | None = None,
+    operator_mode_environment: dict[str, str] | None = None,
+) -> str:
     if yaml is None:  # pragma: no cover
         raise WorkloadError([f"{filename}: PyYAML is required"])
     uses_crlf = "\r\n" in text
@@ -1119,18 +1429,16 @@ def patch_workload(text: str, *, filename: str, targets: list[dict[str, Any]]) -
         raise WorkloadError([f"{filename}: mixed line endings; cannot edit in place"])
     work = text.replace("\r\n", "\n") if uses_crlf else text
     had_trailing_newline = work.endswith("\n")
-    for lineno, line in enumerate(work.splitlines(), start=1):
-        if _BLOCK_ACTION.match(line):
-            raise WorkloadError([f"{filename}:{lineno}: standalone Helm block action; refusing to patch"])
-        stripped = line.strip()
-        if stripped.startswith("{{") and _STANDALONE_ACTION.match(line) and ":" not in stripped:
-            raise WorkloadError([f"{filename}:{lineno}: standalone Helm action; refusing to patch"])
-
     lines = work.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
     try:
-        nodes = [node for node in yaml.compose_all(work) if node is not None]
+        # Parse the masked buffer, not the original: a standalone Helm action is no
+        # longer rejected outright (issue #776) -- it is blanked to same-length
+        # spaces/filler so compose_all can locate the static structure around it.
+        # Node marks from the masked text are still valid offsets into `lines`
+        # (the original, unmasked text) since every replacement preserves length.
+        nodes = [node for node in yaml.compose_all(_mask_helm_template(work)) if node is not None]
     except yaml.YAMLError as exc:
         raise WorkloadError([f"{filename}: not valid YAML: {exc}"]) from None
 
@@ -1152,60 +1460,148 @@ def patch_workload(text: str, *, filename: str, targets: list[dict[str, Any]]) -
             )
             continue
 
+        # Appends below are ordered outermost-first (new sibling items before
+        # guarding an existing item in place) for the same reason as the
+        # container loop further down: an existing item's own guard-close
+        # must end up closest to it, not have newly appended siblings land
+        # between it and its own close (see the container loop's comment).
         existing_volumes = _existing_names(pod_spec, "volumes")
         new_volumes: list[tuple[str, str]] = []
+        volumes_needing_guard: list[Any] = []
         for volume_name, secret_name in target["volumes"]:
-            if volume_name in existing_volumes:
-                existing_secret = _walk(existing_volumes[volume_name], ["secret", "secretName"])
-                if existing_secret is not None and existing_secret.value == secret_name:
-                    continue  # idempotent: already exactly this mount
-                problems.append(f"{filename}: volume {volume_name!r} already exists with a different secret")
-                continue
+            existing_item = _existing_named(existing_volumes, volume_name)
+            if existing_item is not None:
+                existing_secret = _walk(existing_item, ["secret", "secretName"])
+                if existing_secret is None or not _template_value_matches(existing_secret.value, secret_name):
+                    problems.append(f"{filename}: volume {volume_name!r} already exists with a different secret")
+                    continue
+                # issue #776: an existing, matching volume from a prior apply
+                # made *before* capabilityGuard was set on this plan is not
+                # idempotent-and-done -- it is unconditional today, and would
+                # stay unconditional forever if silently skipped here, mounting
+                # a Secret the (possibly absent) operator never creates in the
+                # operator-absent branch. Guard it in place instead; only a
+                # volume already wrapped in exactly this guard is a true no-op.
+                if capability_guard and not _is_item_guarded(lines, existing_item, capability_guard):
+                    volumes_needing_guard.append(existing_item)
+                continue  # idempotent: already exactly this mount (and now guarded if needed)
             new_volumes.append((volume_name, secret_name))
         if new_volumes:
             _insert_block_list(
                 pod_spec, "volumes", lines,
-                lambda indent, items=new_volumes: "".join(_render_volume(n, s, indent) for n, s in items),
+                lambda indent, items=new_volumes: _guard_wrapped(
+                    capability_guard, indent, "".join(_render_volume(n, s, indent) for n, s in items)
+                ),
                 edits, problems, f"{filename} {target['kind']}/{target['name']} spec.template.spec.volumes",
             )
+        if volumes_needing_guard:
+            _guard_existing_items(lines, volumes_needing_guard, capability_guard, edits)
 
         for container_field, mounts in (("containers", target["containerMounts"]), ("initContainers", target["initContainerMounts"])):
             for container_name, wanted in mounts.items():
-                container_node = None
-                for k, v in pod_spec.value:
-                    if hasattr(k, "value") and k.value == container_field and v.tag.endswith(":seq"):
-                        for item in v.value:
-                            if not item.tag.endswith(":map"):
-                                continue
-                            for ik, iv in item.value:
-                                if hasattr(ik, "value") and ik.value == "name" and getattr(iv, "value", None) == container_name:
-                                    container_node = item
-                        break
+                container_node = _find_container(pod_spec, container_field, container_name)
                 if container_node is None:
                     problems.append(f"{filename}: {container_field} {container_name!r} not found in {target['kind']}/{target['name']}")
                     continue
+                # Two or more of the edits below can compute the exact same
+                # insertion line: _block_content_end (used to find a new key's
+                # or a new sequence item's insertion point) treats a standalone
+                # Helm action as transparent, and an unconditional existing key
+                # with nothing else after it in the container gives every edit
+                # anchored off "the end of this container's existing content"
+                # the same landing spot, regardless of which of these three
+                # concerns it belongs to. Two edits at one line apply in
+                # reverse-append order (the later-appended one ends up first,
+                # pushing the earlier one after it), so appends below are
+                # ordered outermost-first: operatorModeEnvironment's new "env"
+                # key (a whole new sibling key, belongs furthest out) before
+                # new volumeMounts items (new siblings *within* the existing
+                # "volumeMounts" sequence) before guarding an existing item in
+                # place (issue #776 -- tightly bound to that exact item, must
+                # end up closest to it, closing immediately after it rather
+                # than after content appended alongside it).
                 existing_mounts = _existing_names(container_node, "volumeMounts")
                 new_mounts: list[tuple[str, str]] = []
+                mounts_needing_guard: list[Any] = []
                 for volume_name, mount_path in wanted:
-                    if volume_name in existing_mounts:
-                        existing_path = _walk(existing_mounts[volume_name], ["mountPath"])
-                        if existing_path is not None and existing_path.value == mount_path:
-                            continue  # idempotent
-                        problems.append(f"{filename}: {container_field} {container_name!r} already mounts {volume_name!r} at a different path")
-                        continue
+                    existing_item = _existing_named(existing_mounts, volume_name)
+                    if existing_item is not None:
+                        existing_path = _walk(existing_item, ["mountPath"])
+                        if existing_path is None or not _template_value_matches(existing_path.value, mount_path):
+                            problems.append(f"{filename}: {container_field} {container_name!r} already mounts {volume_name!r} at a different path")
+                            continue
+                        # issue #776: an existing, matching mount predating
+                        # capabilityGuard must be guarded now, not left
+                        # unconditional forever.
+                        if capability_guard and not _is_item_guarded(lines, existing_item, capability_guard):
+                            mounts_needing_guard.append(existing_item)
+                        continue  # idempotent
                     new_mounts.append((volume_name, mount_path))
+
+                if operator_mode_environment is not None:
+                    env_name = operator_mode_environment["name"]
+                    env_value = operator_mode_environment["value"]
+                    existing_env = _existing_names(container_node, "env")
+                    env_needing_guard = None
+                    existing_item = _existing_named(existing_env, env_name)
+                    if existing_item is not None:
+                        existing_value = _walk(existing_item, ["value"])
+                        if existing_value is None or not _template_value_matches(existing_value.value, env_value):
+                            problems.append(
+                                f"{filename}: {container_field} {container_name!r} already has env "
+                                f"{env_name!r} with a different value"
+                            )
+                        elif not _is_item_guarded(lines, existing_item, capability_guard):
+                            # operatorModeEnvironment requires capabilityGuard (load_plan),
+                            # so an existing, matching entry predating it must be guarded now.
+                            env_needing_guard = existing_item
+                    else:
+                        _insert_block_list(
+                            container_node, "env", lines,
+                            lambda indent: _guard_wrapped(
+                                capability_guard, indent, _render_env(env_name, env_value, indent)
+                            ),
+                            edits, problems, f"{filename} {container_field} {container_name!r} env",
+                        )
+
                 if new_mounts:
                     _insert_block_list(
                         container_node, "volumeMounts", lines,
-                        lambda indent, items=new_mounts: "".join(_render_mount(n, p, indent) for n, p in items),
+                        lambda indent, items=new_mounts: _guard_wrapped(
+                            capability_guard, indent, "".join(_render_mount(n, p, indent) for n, p in items)
+                        ),
                         edits, problems, f"{filename} {container_field} {container_name!r} volumeMounts",
                     )
+
+                if mounts_needing_guard:
+                    _guard_existing_items(lines, mounts_needing_guard, capability_guard, edits)
+                if operator_mode_environment is not None and env_needing_guard is not None:
+                    _guard_existing_item(lines, env_needing_guard, capability_guard, edits)
 
     if problems:
         raise WorkloadError(problems)
     for line_index, replace_count, chunk in sorted(edits, key=lambda item: -item[0]):
         lines[line_index:line_index + replace_count] = [chunk]
     result = "".join(lines)
+
+    # _block_content_end treats a standalone Helm action as transparent so a
+    # real next sibling key (or a sequence's true end) can be found past a
+    # conditional wrapping something unrelated (issue #776). Re-locate every
+    # inserted item in the fully edited result to catch the cases that check
+    # can still get wrong -- most reliably a target the edit moved outside
+    # its workload/container entirely, or edited text that no longer parses
+    # at all. It cannot detect every semantic break: YAML tolerates a blank
+    # line (what a masked Helm action line becomes) anywhere between sequence
+    # items regardless of the real indentation the guard closing over it
+    # would imply, so a conditional wrapping the *entire* target key/sequence
+    # (not just unrelated content) still reads as "found" here even though
+    # real Helm would omit it whenever the condition is false -- that specific
+    # shape is instead caught downstream, by the real helm-render/
+    # validate-rendered pass against actual chart values.
+    verification_problems = _verify_insertions(result, filename, targets, operator_mode_environment)
+    if verification_problems:
+        raise WorkloadError(verification_problems)
+
     # The synthetic trailing newline above exists only so internal editing
     # never appends content onto an unterminated last line; restore the
     # original's own final-newline state here rather than always keeping it
@@ -1215,6 +1611,77 @@ def patch_workload(text: str, *, filename: str, targets: list[dict[str, Any]]) -
     if not had_trailing_newline and result.endswith("\n"):
         result = result[:-1]
     return result.replace("\n", "\r\n") if uses_crlf else result
+
+
+def _verify_insertions(
+    result: str,
+    filename: str,
+    targets: list[dict[str, Any]],
+    operator_mode_environment: dict[str, str] | None = None,
+) -> list[str]:
+    """Confirm every requested volume and mount is actually reachable where
+    it belongs in the fully edited ``result`` (issue #776) -- the precise
+    blocking path for an insertion point that turned out to sit outside the
+    structure it meant to extend (see ``patch_workload``'s call site)."""
+
+    try:
+        nodes = [node for node in yaml.compose_all(_mask_for_reading(result)) if node is not None]
+    except yaml.YAMLError as exc:
+        return [f"{filename}: editing produced invalid YAML: {exc}"]
+
+    problems: list[str] = []
+    for target in targets:
+        node = _find_workload(nodes, target["kind"], target["name"])
+        pod_spec = _walk(node, ["spec", "template", "spec"]) if node is not None else None
+        if pod_spec is None or not _is_mapping(pod_spec):
+            problems.append(
+                f"{filename}: {target['kind']}/{target['name']}: editing did not preserve a static "
+                "spec.template.spec mapping"
+            )
+            continue
+
+        volumes = _existing_names(pod_spec, "volumes")
+        for volume_name, secret_name in target["volumes"]:
+            volume = _existing_named(volumes, volume_name)
+            secret_ref = _walk(volume, ["secret", "secretName"]) if volume is not None else None
+            if secret_ref is None or not _template_value_matches(secret_ref.value, secret_name):
+                problems.append(
+                    f"{filename}: {target['kind']}/{target['name']}: volume {volume_name!r} is not safely "
+                    "nested under spec.template.spec.volumes after editing -- the insertion point found by "
+                    "indentation alone landed outside a Helm conditional/loop that wraps the target structure "
+                    "itself; no static insertion point exists"
+                )
+
+        for container_field, mounts in (
+            ("containers", target["containerMounts"]),
+            ("initContainers", target["initContainerMounts"]),
+        ):
+            for container_name, wanted in mounts.items():
+                container_node = _find_container(pod_spec, container_field, container_name)
+                mount_names = _existing_names(container_node, "volumeMounts") if container_node is not None else {}
+                for volume_name, mount_path in wanted:
+                    mount = _existing_named(mount_names, volume_name)
+                    path_ref = _walk(mount, ["mountPath"]) if mount is not None else None
+                    if path_ref is None or not _template_value_matches(path_ref.value, mount_path):
+                        problems.append(
+                            f"{filename}: {target['kind']}/{target['name']} {container_field} "
+                            f"{container_name!r}: volumeMount {volume_name!r} is not safely nested after editing "
+                            "-- no static insertion point exists"
+                        )
+                if operator_mode_environment is not None:
+                    env_names = _existing_names(container_node, "env") if container_node is not None else {}
+                    env_name = operator_mode_environment["name"]
+                    env = _existing_named(env_names, env_name)
+                    value_ref = _walk(env, ["value"]) if env is not None else None
+                    if value_ref is None or not _template_value_matches(
+                        value_ref.value, operator_mode_environment["value"]
+                    ):
+                        problems.append(
+                            f"{filename}: {target['kind']}/{target['name']} {container_field} "
+                            f"{container_name!r}: env {env_name!r} is not safely nested after editing -- "
+                            "no static insertion point exists"
+                        )
+    return problems
 
 
 def apply_workload_patches(repo_root: Path, root_plan: dict[str, Any], name_bundle: dict[str, dict[str, str]], changes: Changes) -> None:
@@ -1252,7 +1719,11 @@ def apply_workload_patches(repo_root: Path, root_plan: dict[str, Any], name_bund
                     init_mounts.setdefault(container, []).append((bundle["volume"], bundle["mountPath"]))
             targets.append({"kind": kind, "name": name, "volumes": volumes, "containerMounts": container_mounts, "initContainerMounts": init_mounts})
         try:
-            patched = patch_workload(original, filename=path, targets=targets)
+            patched = patch_workload(
+                original, filename=path, targets=targets,
+                capability_guard=root_plan.get("capabilityGuard"),
+                operator_mode_environment=root_plan.get("operatorModeEnvironment"),
+            )
         except WorkloadError as exc:
             raise unsupported("workload adapter blocked", exc.entries) from None
         changes.set_content(path, patched)
@@ -1423,7 +1894,22 @@ def _identity_overlaps_known(items: list[Any], known: dict[tuple[str, str], dict
     return False
 
 
+def _negated_guard_open(capability_guard: str) -> str:
+    return '{{- if not (.Capabilities.APIVersions.Has "' + capability_guard + '") }}\n'
+
+
+def _wrap_in_negated_guard(capability_guard: str, span: str) -> str:
+    # issue #776: preserve a superseded legacy declaration's bytes -- comments
+    # and labels included -- verbatim, rather than deleting it, guarded to
+    # render only in the operator-absent fallback branch. Ensure a trailing
+    # newline before "{{- end }}" so it never lands glued onto the span's own
+    # last line.
+    body = span if span.endswith("\n") else span + "\n"
+    return _negated_guard_open(capability_guard) + body + _CAPABILITY_GUARD_CLOSE
+
+
 def verify_superseded(repo_root: Path, root_plan: dict[str, Any], changes: Changes) -> None:
+    capability_guard = root_plan.get("capabilityGuard")
     known: dict[tuple[str, str], dict[str, Any]] = {
         (canonical(wire_classifier(ds["classifier"])), ds["type"].lower()): ds
         for ds in root_plan["datasources"]
@@ -1472,7 +1958,10 @@ def verify_superseded(repo_root: Path, root_plan: dict[str, Any], changes: Chang
                 problems.extend(_check_declaration_items(path, _as_legacy_items(element), known))
             if problems:
                 raise unsupported("a superseded declaration is not fully proven migrated", problems)
-            changes.delete(path)
+            if capability_guard:
+                changes.set_content(path, _wrap_in_negated_guard(capability_guard, text))
+            else:
+                changes.delete(path)
             continue
 
         preamble, docs = _split_yaml_source(text, path)
@@ -1495,7 +1984,12 @@ def verify_superseded(repo_root: Path, root_plan: dict[str, Any], changes: Chang
                 problems.extend(_check_declaration_items(f"{path}#{index}", _as_legacy_items(doc["value"]), known))
             if problems:
                 raise unsupported("a superseded declaration is not fully proven migrated", problems)
-            changes.delete(path)
+            if capability_guard:
+                changes.set_content(
+                    path, preamble + _wrap_in_negated_guard(capability_guard, text[docs[0]["start"]:])
+                )
+            else:
+                changes.delete(path)
             continue
 
         out_of_range = [i for i in addressed if i < 1 or i > len(docs)]
@@ -1528,196 +2022,22 @@ def verify_superseded(repo_root: Path, root_plan: dict[str, Any], changes: Chang
         # byte-for-byte from its own original span. The preamble (if any) is
         # reattached whenever some document survives, regardless of which
         # document(s) that is.
+        if capability_guard:
+            # Every document keeps its original position; an addressed one is
+            # wrapped to the operator-absent branch in place rather than removed.
+            parts = [
+                _wrap_in_negated_guard(capability_guard, text[doc["start"]:doc["end"]])
+                if i in addressed
+                else text[doc["start"]:doc["end"]]
+                for i, doc in enumerate(docs, start=1)
+            ]
+            changes.set_content(path, preamble + "".join(parts))
+            continue
         kept = "".join(text[doc["start"]:doc["end"]] for i, doc in enumerate(docs, start=1) if i not in addressed)
         if kept:
             changes.set_content(path, preamble + kept)
         else:
             changes.delete(path)
-
-
-# --------------------------------------------------------------------------- #
-# values.yaml / values.schema.json
-# --------------------------------------------------------------------------- #
-
-
-def update_values(repo_root: Path, root_plan: dict[str, Any], changes: Changes) -> None:
-    if root_plan["operatorNamespace"] != f"{{{{ .Values.{DBAAS_OPERATOR_NAMESPACE_VALUE} }}}}":
-        return
-    values_rel = join_rel(root_plan["_root"], root_plan.get("valuesFile", "values.yaml"), what="valuesFile")
-    values_path = resolve_within(repo_root, values_rel, what="values file")
-    if not values_path.is_file():
-        raise unsupported(f"{values_rel}: values file missing")
-    # Path.read_text() performs universal-newline translation -- every "\r\n" in the file
-    # would silently become "\n" in values_text, and that flattened text is what gets
-    # echoed back as the unchanged prefix below, rewriting a CRLF file's every existing
-    # line as LF. Decoding raw bytes instead performs no such translation.
-    values_text = values_path.read_bytes().decode("utf-8")
-    if not any(
-        line[:1] not in (" ", "\t") and line.split(":", 1)[0].rstrip() == DBAAS_OPERATOR_NAMESPACE_VALUE
-        for line in values_text.splitlines()
-    ):
-        newline = "\r\n" if "\r\n" in values_text else "\n"
-        separator = "" if values_text.endswith("\n") else newline
-        ending = newline if values_text.endswith("\n") else ""
-        changes.set_content(values_rel, f'{values_text}{separator}{DBAAS_OPERATOR_NAMESPACE_VALUE}: ""{ending}')
-
-    schema_rel = join_rel(root_plan["_root"], root_plan.get("schemaFile", "values.schema.json"), what="schemaFile")
-    schema_path = resolve_within(repo_root, schema_rel, what="values schema file")
-    if not schema_path.is_file():
-        return
-    # newline="" so CRLF reaches _edit_values_schema verbatim -- it does its
-    # own CRLF normalize/restore round trip, the same pattern patch_workload
-    # uses for a workload manifest.
-    with schema_path.open(encoding="utf-8", newline="") as handle:
-        raw = handle.read()
-    try:
-        schema = json.loads(raw)
-    except ValueError as exc:
-        raise bad_input(f"{schema_rel}: invalid JSON: {exc}") from None
-    if not isinstance(schema, dict):
-        return
-    properties = schema.get("properties")
-    required = schema.get("required")
-    properties_correct = isinstance(properties, dict) and properties.get(DBAAS_OPERATOR_NAMESPACE_VALUE) == {
-        "type": "string"
-    }
-    required_needs_removal = isinstance(required, list) and DBAAS_OPERATOR_NAMESPACE_VALUE in required
-    if properties_correct and not required_needs_removal:
-        return  # already semantically correct -- leave the file untouched
-
-    edited = _edit_values_schema(raw, schema_rel, properties_correct, required_needs_removal)
-    changes.set_content(schema_rel, edited)
-
-
-def _insert_yaml_member(work: str, map_node: Any, key: str, value: Any) -> tuple[int, int, str]:
-    """Edit tuple inserting ``key: value`` as the first member of the
-    (already-composed) YAML/JSON mapping node ``map_node``.
-
-    Matches the mapping's own compact-vs-pretty style -- a first member
-    that starts on the same line as ``{`` versus one on its own indented
-    line -- instead of always gluing a compact entry onto the "{" line,
-    which would look wrong pasted into an otherwise pretty object.
-    """
-
-    open_index = map_node.start_mark.index
-    entry_text = json.dumps(key) + ": " + json.dumps(value)
-    if not map_node.value:
-        close_index = map_node.end_mark.index - 1  # index of '}'
-        inner = work[open_index + 1 : close_index]
-        if "\n" not in inner:
-            return open_index + 1, open_index + 1, entry_text
-        # A pretty (but empty) mapping: match the closing brace's own
-        # indentation, one level deeper, instead of gluing a compact entry
-        # onto the "{" line -- the closing "}" itself stays untouched and
-        # keeps the original whitespace leading up to it.
-        line_start = work.rfind("\n", 0, close_index) + 1
-        closing_indent = work[line_start:close_index]
-        return open_index + 1, open_index + 1, "\n" + closing_indent + "  " + entry_text
-    first_key = map_node.value[0][0]
-    pretty = "\n" in work[open_index:first_key.start_mark.index]
-    entry = entry_text + ","
-    if pretty:
-        entry = "\n" + " " * first_key.start_mark.column + entry
-    return open_index + 1, open_index + 1, entry
-
-
-def _edit_values_schema(raw: str, schema_rel: str, properties_correct: bool, required_needs_removal: bool) -> str:
-    """Apply only the byte spans that need to change, leaving every other
-    byte -- property order, indentation, compact vs. pretty layout,
-    newline style -- exactly as it was.
-
-    Locates those spans the same way ``patch_workload`` locates spans in a
-    workload manifest: compose the (CRLF-normalized) text with PyYAML and
-    read node start/end marks, never a custom parser.
-    """
-
-    uses_crlf = "\r\n" in raw
-    if uses_crlf and "\n" in raw.replace("\r\n", ""):
-        raise unsupported(f"{schema_rel}: mixed line endings; cannot edit in place")
-    work = raw.replace("\r\n", "\n") if uses_crlf else raw
-    try:
-        root = yaml.compose(work)
-    except yaml.YAMLError as exc:
-        # The caller already proved this is valid JSON via json.loads(); a
-        # compose() failure here means PyYAML's (YAML 1.1) grammar rejects
-        # some valid-JSON construct (a literal tab used as whitespace, for
-        # example) -- not that the document itself is invalid.
-        raise unsupported(f"{schema_rel}: valid JSON layout is unsupported for in-place editing: {exc}") from None
-    if not _is_mapping(root):
-        raise unsupported(f"{schema_rel}: not a JSON object at the top level; cannot edit in place")
-
-    def top_member(name: str) -> Any | None:
-        for key_node, value_node in root.value:
-            if key_node.value == name:
-                return value_node
-        return None
-
-    edits: list[tuple[int, int, str]] = []
-
-    if not properties_correct:
-        properties_node = top_member("properties")
-        if properties_node is None:
-            edits.append(
-                _insert_yaml_member(work, root, "properties", {DBAAS_OPERATOR_NAMESPACE_VALUE: {"type": "string"}})
-            )
-        elif not _is_mapping(properties_node):
-            raise unsupported(f"{schema_rel}: properties is not a JSON object; cannot edit in place")
-        else:
-            prop_value_node = None
-            for key_node, value_node in properties_node.value:
-                if key_node.value == DBAAS_OPERATOR_NAMESPACE_VALUE:
-                    prop_value_node = value_node
-                    break
-            if prop_value_node is None:
-                edits.append(_insert_yaml_member(work, properties_node, DBAAS_OPERATOR_NAMESPACE_VALUE, {"type": "string"}))
-            else:
-                edits.append(
-                    (prop_value_node.start_mark.index, prop_value_node.end_mark.index, json.dumps({"type": "string"}))
-                )
-
-    if required_needs_removal:
-        required_node = top_member("required")
-        if required_node is None or not required_node.tag.endswith(":seq"):
-            raise unsupported(f"{schema_rel}: required is not a JSON array; cannot edit in place")
-        target = next((item for item in required_node.value if item.value == DBAAS_OPERATOR_NAMESPACE_VALUE), None)
-        if target is None:
-            raise unsupported(f"{schema_rel}: could not relocate {DBAAS_OPERATOR_NAMESPACE_VALUE!r} in required")
-        seq_start = required_node.start_mark.index
-        seq_end = required_node.end_mark.index
-        elem_start = target.start_mark.index
-        elem_end = target.end_mark.index
-        # Remove the element plus one adjacent comma (and its whitespace),
-        # preferring the preceding comma so the remaining array keeps its
-        # existing per-line layout with nothing left to reformat.
-        before = elem_start
-        while before > seq_start + 1 and work[before - 1] in " \t\n":
-            before -= 1
-        if before > seq_start + 1 and work[before - 1] == ",":
-            edits.append((before - 1, elem_end, ""))
-        else:
-            after = elem_end
-            while after < seq_end - 1 and work[after] in " \t\n":
-                after += 1
-            if after < seq_end - 1 and work[after] == ",":
-                after += 1
-                while after < seq_end - 1 and work[after] in " \t\n":
-                    after += 1
-            edits.append((elem_start, after, ""))
-
-    for start, end, replacement in sorted(edits, key=lambda e: -e[0]):
-        work = work[:start] + replacement + work[end:]
-
-    try:
-        result = json.loads(work)
-    except ValueError as exc:
-        raise unsupported(f"{schema_rel}: edited JSON is invalid: {exc}") from None
-    if result.get("properties", {}).get(DBAAS_OPERATOR_NAMESPACE_VALUE) != {"type": "string"}:
-        raise unsupported(f"{schema_rel}: edit did not produce the expected properties.{DBAAS_OPERATOR_NAMESPACE_VALUE}")
-    result_required = result.get("required")
-    if isinstance(result_required, list) and DBAAS_OPERATOR_NAMESPACE_VALUE in result_required:
-        raise unsupported(f"{schema_rel}: edit did not remove {DBAAS_OPERATOR_NAMESPACE_VALUE} from required")
-
-    return work.replace("\n", "\r\n") if uses_crlf else work
 
 
 # --------------------------------------------------------------------------- #
@@ -1828,20 +2148,15 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
     overrides: dict[str, str] = {}
     for key in value_keys:
         existing = _value_at(chart_values, key)
-        # DBAAS_OPERATOR_NAMESPACE is deliberately registered with an empty
-        # default (update_values) so the chart stays installable before a
-        # deployer supplies the real value -- validating against that empty
-        # placeholder would make spec.operatorNamespace's required-non-empty
-        # check fail on every render, not just a genuinely broken one, so a
-        # pilot value stands in for it *only* when the chart has not already
-        # supplied a real one. When the chart's own values.yaml pins a real
-        # (possibly invalid) value, rendering with it is the whole point of
-        # this check -- silently substituting a clean pilot value instead
-        # would make expected_operator_ns below compare the substitution
-        # against itself and never catch a genuinely bad pinned value.
-        if key == DBAAS_OPERATOR_NAMESPACE_VALUE and existing in (None, ""):
-            resolved[key] = overrides[key] = _pilot_value(key)
-        elif isinstance(existing, (str, int, float, bool)):
+        # The writer never registers a default for any value key (including
+        # DBAAS_OPERATOR_NAMESPACE -- it no longer gets special treatment): when
+        # the chart's own values.yaml already pins a value, rendering with it is
+        # the whole point of this check, including a real-but-empty value, since
+        # a chart that explicitly chose an empty operator namespace must fail
+        # spec.operatorNamespace's required-non-empty check here, not be
+        # silently masked by a clean pilot substitute. Only a key genuinely
+        # absent from values.yaml gets a pilot placeholder.
+        if isinstance(existing, (str, int, float, bool)):
             resolved[key] = str(existing)
         else:
             resolved[key] = overrides[key] = _pilot_value(key)
@@ -1850,20 +2165,40 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
     release_namespace = _resolve_templates(root_plan["workloadNamespace"], resolved) or _PILOT_RELEASE
     values_file = tree_root / ".dbaas-migration-values.yaml"
     values_file.write_text(yaml.safe_dump(_values_tree(overrides), sort_keys=True), encoding="utf-8")
-    cmd = [
-        helm, "template", _PILOT_RELEASE, str(chart_dir),
-        "--namespace", release_namespace, "--values", str(values_file),
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return [{"name": "helm-render", "status": "failed", "details": f"helm template did not run: {exc}"}]
-    if proc.returncode != 0:
-        return [{"name": "helm-render", "status": "failed", "details": f"helm template failed: {proc.stderr.strip()[:2000]}"}]
-    results.append({"name": "helm-render", "status": "passed", "details": ""})
+    capability_guard = root_plan.get("capabilityGuard")
+
+    def render(*, api_versions: str | None) -> tuple[str | None, list[dict[str, str]]]:
+        cmd = [
+            helm, "template", _PILOT_RELEASE, str(chart_dir),
+            "--namespace", release_namespace, "--values", str(values_file),
+        ]
+        if api_versions:
+            cmd += ["--api-versions", api_versions]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return None, [{"name": "helm-render", "status": "failed", "details": f"helm template did not run: {exc}"}]
+        if proc.returncode != 0:
+            return None, [{"name": "helm-render", "status": "failed", "details": f"helm template failed: {proc.stderr.strip()[:2000]}"}]
+        return proc.stdout, [{"name": "helm-render", "status": "passed", "details": ""}]
+
+    # Without a capability guard, a single render at the runner's own default
+    # capabilities is the whole (pre-issue-#776) validation. With one, that
+    # default render normally lacks the guard's capability -- rendering the
+    # operator-absent fallback branch -- so the writer's own gate must
+    # instead render *with* --api-versions <capabilityGuard> to certify the
+    # branch its generated resources actually live in (see the "twice"
+    # requirement in references/contracts.md's "Helm-templated workloads"
+    # section); the second, default-capabilities render is certified
+    # separately, below, to prove the fallback branch is what actually
+    # renders when the operator's CRDs are absent.
+    stdout, render_results = render(api_versions=capability_guard)
+    results.extend(render_results)
+    if stdout is None:
+        return results
 
     rendered_path = tree_root / "__rendered.yaml"
-    rendered_path.write_text(proc.stdout, encoding="utf-8")
+    rendered_path.write_text(stdout, encoding="utf-8")
     rendered_inventory = tree_root / "__rendered-inventory.json"
     rendered_inventory.write_text(_resolve_templates(json.dumps({"datasources": inventory_datasources}), resolved), encoding="utf-8")
     expected_operator_ns = None
@@ -1879,6 +2214,81 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
     except (TypeError, ValueError) as exc:
         errors = [str(exc)]
     results.append({"name": "validate-rendered", "status": "failed" if errors else "passed", "details": "; ".join(errors)})
+
+    if capability_guard:
+        # The second, operator-absent render: native CRs and the operator-mode
+        # env var must be entirely absent -- proving the guard actually
+        # suppresses them rather than merely being present as inert text.
+        fallback_stdout, fallback_results = render(api_versions=None)
+        results.extend(r for r in fallback_results if r["status"] != "passed")
+        if fallback_stdout is not None:
+            fallback_problems: list[str] = []
+            try:
+                fallback_docs = [d for d in yaml.safe_load_all(fallback_stdout) if isinstance(d, dict)]
+            except yaml.YAMLError as exc:
+                fallback_problems.append(f"operator-absent render is not valid YAML: {exc}")
+                fallback_docs = []
+            for doc in fallback_docs:
+                if doc.get("kind") in ("InternalDatabase", "DatabaseSecretClaim"):
+                    fallback_problems.append(
+                        f"operator-absent render (no --api-versions) still contains "
+                        f"{doc.get('kind')} {doc.get('metadata', {}).get('name')!r}; "
+                        "the capability guard did not suppress it"
+                    )
+            operator_mode_environment = root_plan.get("operatorModeEnvironment")
+            if operator_mode_environment:
+                env_name = operator_mode_environment["name"]
+                for doc in fallback_docs:
+                    for container in (doc.get("spec", {}).get("template", {}).get("spec", {}).get("containers") or []):
+                        for entry in container.get("env") or []:
+                            if isinstance(entry, dict) and entry.get("name") == env_name:
+                                fallback_problems.append(
+                                    f"operator-absent render still sets env {env_name!r} on "
+                                    f"container {container.get('name')!r}"
+                                )
+            # issue #776: the generated Secret volume/volumeMount must be just
+            # as absent as the native CRs -- a workload that still mounts it
+            # here would fail on a real cluster with the operator's CRDs
+            # absent (the Secret those CRs would have populated never exists),
+            # even though every native-CR check above passed. This is what
+            # actually catches an existing, unconditional mount left over
+            # from an apply made before capabilityGuard was set (see
+            # patch_workload's idempotency checks) if that upgrade path is
+            # ever reintroduced incorrectly.
+            _, fallback_name_bundle = build_resources(root_plan)
+            expected_secret_names = {bundle["secret"] for bundle in fallback_name_bundle.values()}
+            expected_volume_names = {bundle["volume"] for bundle in fallback_name_bundle.values()}
+            for doc in fallback_docs:
+                pod_spec = (doc.get("spec") or {}).get("template", {})
+                pod_spec = pod_spec.get("spec") if isinstance(pod_spec, dict) else None
+                if not isinstance(pod_spec, dict):
+                    continue
+                doc_id = f"{doc.get('kind')}/{(doc.get('metadata') or {}).get('name')!r}"
+                for volume in pod_spec.get("volumes") or []:
+                    if not isinstance(volume, dict):
+                        continue
+                    secret = volume.get("secret")
+                    if isinstance(secret, dict) and secret.get("secretName") in expected_secret_names:
+                        fallback_problems.append(
+                            f"operator-absent render still has volume {volume.get('name')!r} mounting "
+                            f"Secret {secret.get('secretName')!r} in {doc_id}"
+                        )
+                for field in ("containers", "initContainers"):
+                    for container in pod_spec.get(field) or []:
+                        if not isinstance(container, dict):
+                            continue
+                        for mount in container.get("volumeMounts") or []:
+                            if isinstance(mount, dict) and mount.get("name") in expected_volume_names:
+                                fallback_problems.append(
+                                    f"operator-absent render still mounts volume {mount.get('name')!r} "
+                                    f"in {field} {container.get('name')!r} of {doc_id}"
+                                )
+            results.append({
+                "name": "validate-operator-absent-fallback",
+                "status": "failed" if fallback_problems else "passed",
+                "details": "; ".join(fallback_problems),
+            })
+
     return results
 
 
@@ -1896,11 +2306,10 @@ def build_changes(repo_root: Path, plan: dict[str, Any]) -> Changes:
         if root_plan["kind"] == "helm" and shutil.which("helm") is None:
             raise unsupported("helm is required to build a helm-root plan", [f"{root_plan['_root']}: helm is not on PATH"])
         bodies, name_bundle = build_resources(root_plan)
-        content = render_resources(bodies)
+        content = render_resources(bodies, root_plan.get("capabilityGuard"))
         changes.set_content(root_plan["_outputPath"], content)
         apply_workload_patches(repo_root, root_plan, name_bundle, changes)
         verify_superseded(repo_root, root_plan, changes)
-        update_values(repo_root, root_plan, changes)
     return changes
 
 

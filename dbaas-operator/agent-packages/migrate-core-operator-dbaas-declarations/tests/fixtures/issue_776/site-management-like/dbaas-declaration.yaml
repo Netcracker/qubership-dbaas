@@ -1,0 +1,14 @@
+apiVersion: nc.core.dbaas/v3
+kind: DatabaseDeclaration
+declarations:
+  - classifierConfig:
+      classifier:
+        microserviceName: site-management
+        scope: service
+        dbClassifier: default
+    type: mongodb
+---
+apiVersion: nc.core.dbaas/v3
+kind: DbPolicy
+microserviceName: site-management
+disableGlobalPermissions: false
