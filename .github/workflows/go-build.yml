@@ -55,14 +55,6 @@ jobs:
           --no-input
           --requirement dbaas-operator/agent-packages/requirements-test.txt
 
-      # ubuntu-latest ships Helm preinstalled; this fails the job loudly with a
-      # clear message if that ever stops being true, instead of every
-      # @unittest.skipUnless(shutil.which("helm"), ...) helm-dependent test
-      # (Helm chart rendering/validation, including the issue #776 capability
-      # guard and operatorNamespace render tests) silently self-skipping.
-      - name: Check helm is available
-        run: helm version --short
-
       - name: Run agent package tests
         working-directory: dbaas-operator
         env:
