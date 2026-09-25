@@ -7,11 +7,16 @@ name: DBaaS Transition (reusable)
 # match whichever aggregator version happens to be "initial" for a given direction and stays fixed
 # throughout. pgskipper supplies PostgreSQL/Patroni and the PostgreSQL adapter, pinned to a commit
 # that works with both aggregator versions. The harness (this branch) supplies the sample-service
-# chart and image and the probe image. The scenario itself lives entirely in
-# test-apps/dbaas-transition-test/{kuttl-test.yaml,cases/}, run by KUTTL against the Kind cluster
-# this workflow creates below — KUTTL's own resource asserts, `kubectl`/`helm --wait`, and the
-# existing bootstrap Make targets own every infrastructure lifecycle step; this file only prepares
-# the cluster/images/credentials and invokes the one test suite.
+# chart and image and the probe image.
+#
+# Ownership is split three ways. This file prepares the Kind cluster, the images, and the generated
+# credentials, then runs Helmfile once (test-apps/dbaas-transition-test/helmfile.yaml.gotmpl) to
+# provision the whole initial environment — Patroni, the initial aggregator, the operator, the
+# adapter, and the sample service — as declared Helm releases with explicit dependencies. From there,
+# KUTTL (test-apps/dbaas-transition-test/{kuttl-test.yaml,cases/}) owns only the test itself: it
+# confirms the environment is ready, runs the preflight check, starts the continuous probe, drives
+# the transition by re-syncing the aggregator release alone through the same Helmfile state, and
+# evaluates the result. The continuous probe performs the availability measurements throughout.
 #
 # Called twice per run by dbaas-upgrade-downgrade.yml — once per direction — each getting its
 # own Kind cluster, so an upgrade-direction failure can never be caused by downgrade-direction state.
@@ -144,6 +149,20 @@ jobs:
           echo "$RUNNER_TEMP/kuttl-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/kuttl-bin/kubectl-kuttl" version
 
+      - name: Install Helmfile (pinned release, checksum-verified)
+        run: |
+          set -euo pipefail
+          HELMFILE_VERSION=1.8.0
+          HELMFILE_ARCHIVE=helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
+          HELMFILE_SHA256=35d5d39fc608342b23fc7ce1dd0c3bf0c96cc07ec3796507ab6894a5d172bf20
+          curl -sSLO "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/${HELMFILE_ARCHIVE}"
+          echo "${HELMFILE_SHA256}  ${HELMFILE_ARCHIVE}" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/helmfile-bin"
+          tar -xzf "${HELMFILE_ARCHIVE}" -C "$RUNNER_TEMP/helmfile-bin" helmfile
+          chmod 0755 "$RUNNER_TEMP/helmfile-bin/helmfile"
+          echo "$RUNNER_TEMP/helmfile-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/helmfile-bin/helmfile" version
+
       - name: Build go-test-app-service image from harness source and load into kind
         run: |
           docker build -t go-test-app-service:it harness/test-apps/go-test-app-service
@@ -164,6 +183,19 @@ jobs:
             echo "::add-mask::$value"
             echo "$var=$value" >> "$GITHUB_ENV"
           done
+
+      - name: Provision transition environment
+        # One full `helmfile sync` installs everything the test starts from: Patroni, the initial
+        # aggregator, the operator, the adapter, and the sample service — see
+        # test-apps/dbaas-transition-test/helmfile.yaml.gotmpl for the release list and dependency
+        # order. AGGREGATOR_CHART_DIR/AGGREGATOR_TAG select the initial aggregator version here;
+        # cases/transition/04-transition later re-syncs only that one release onto the target
+        # version, through the same state file.
+        working-directory: harness/test-apps/dbaas-transition-test
+        env:
+          AGGREGATOR_CHART_DIR: ${{ env.INITIAL_DIR }}
+          AGGREGATOR_TAG: ${{ env.INITIAL_TAG }}
+        run: helmfile sync
 
       - name: Run DBaaS transition availability test
         working-directory: harness/test-apps/dbaas-transition-test

@@ -1,0 +1,17 @@
+# Patroni Core values for the aggregator transition test. The pgskipper chart enables its own
+# integration tests by default; those tests mutate and restart Patroni, so they're disabled here to
+# keep the PostgreSQL fixture stable while the DBaaS availability checks run. storageClass is fixed to
+# "standard" because this test always runs against a Kind cluster, which provisions that class by
+# default — no environment-specific auto-detection needed here.
+postgresPassword: {{ requiredEnv "POSTGRES_PASSWORD" | quote }}
+
+patroni:
+  affinity:
+    podAntiAffinity: {}
+  replicas: 1
+  storage:
+    storageClass: standard
+    size: 2Gi
+
+tests:
+  install: false

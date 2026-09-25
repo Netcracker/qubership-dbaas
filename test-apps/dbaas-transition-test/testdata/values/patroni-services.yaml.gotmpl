@@ -1,0 +1,24 @@
+# patroni-services (pgskipper PostgreSQL adapter) values overlay for the upgrade/downgrade
+# availability test. The registration password matches the aggregator's generated cluster DBA
+# credentials, so the adapter's registration with the aggregator succeeds. The pgskipper chart's
+# bundled integration tests are disabled because they mutate the database fixture and restart Patroni
+# while this workflow is measuring DBaaS availability. storageClass is fixed to "standard" because
+# this test always runs against a Kind cluster.
+postgresPassword: {{ requiredEnv "POSTGRES_PASSWORD" | quote }}
+
+backupDaemon:
+  install: false
+  storage:
+    storageClass: standard
+    type: pv
+    size: 2Gi
+
+dbaas:
+  install: true
+  aggregator:
+    registrationAddress: {{ printf "http://%s.%s.svc.cluster.local:8080" (requiredEnv "DBAAS_SERVICE_NAME") (requiredEnv "DBAAS_NAMESPACE") | quote }}
+    registrationUsername: cluster-dba
+    registrationPassword: {{ requiredEnv "DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD" | quote }}
+
+tests:
+  install: false
