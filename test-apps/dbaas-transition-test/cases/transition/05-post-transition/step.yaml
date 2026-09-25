@@ -1,5 +1,3 @@
-# Keeps probing for the fixed post-transition window after the rollout completes, confirms the
-# aggregator ends with 2 ready replicas, and records the measurement's end boundary.
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:

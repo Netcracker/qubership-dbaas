@@ -1,11 +1,3 @@
-# Upgrades (or downgrades) the dbaas-aggregator release alone onto the target-version chart and
-# image, via `helmfile -l component=aggregator sync` — no --include-needs, since patroni-core, the
-# operator, and the adapter must stay fixed throughout the measurement (see helmfile.yaml.gotmpl's
-# needs: graph). No --atomic and no cleanup-on-fail: a failed transition must stay up for diagnostics
-# rather than being rolled back or deleted. transitionStart/End bracket only the Helmfile invocation
-# itself.
-# KUTTL runs commands from cases/transition, so helmfile.yaml.gotmpl is one level above this working
-# directory.
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:

@@ -1,14 +1,3 @@
-# The environment (Patroni, the initial aggregator, the operator, the PostgreSQL adapter, and the
-# sample service) is provisioned by Helmfile before KUTTL starts — see ../../helmfile.yaml.gotmpl.
-# This step has no step.yaml; it only confirms that provisioning actually finished before the test
-# proper begins.
-#
-# The aggregator's replica count and strategy matter beyond mere readiness: the continuous probes
-# later check availability during a Helm upgrade, which only proves something if the Deployment can
-# never legitimately drop below two ready replicas. The sample service's own readiness/liveness
-# probes only call /health, which never touches PostgreSQL — a clean Helmfile rollout proves the
-# process started, not that its database exists, so the InternalDatabase must also have reached
-# Succeeded before baseline probing starts.
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
 timeout: 60

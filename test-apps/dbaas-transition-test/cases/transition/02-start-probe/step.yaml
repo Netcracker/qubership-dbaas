@@ -1,6 +1,3 @@
-# The continuous availability probe. Namespace and image are fixed, so this is a fully static
-# manifest applied through KUTTL's own apply/assert — no templating needed.
-# KUTTL resolves apply paths from cases/transition and loads this step's assert.yaml automatically.
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 apply:

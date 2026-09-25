@@ -1,25 +1,6 @@
 name: DBaaS Transition (reusable)
 
-# Runs one direction (upgrade or downgrade) of the dbaas-aggregator availability test in a fresh Kind
-# cluster. The initial and target checkouts supply only their own dbaas-aggregator chart — nothing
-# else is taken from them. The fixture checkout (always the newer of the two versions, regardless of
-# direction) supplies the dbaas-operator chart and resource profile, so the operator never has to
-# match whichever aggregator version happens to be "initial" for a given direction and stays fixed
-# throughout. pgskipper supplies PostgreSQL/Patroni and the PostgreSQL adapter, pinned to a commit
-# that works with both aggregator versions. The harness (this branch) supplies the sample-service
-# chart and image and the probe image.
-#
-# Ownership is split three ways. This file prepares the Kind cluster, the images, and the generated
-# credentials, then runs Helmfile once (test-apps/dbaas-transition-test/helmfile.yaml.gotmpl) to
-# provision the whole initial environment — Patroni, the initial aggregator, the operator, the
-# adapter, and the sample service — as declared Helm releases with explicit dependencies. From there,
-# KUTTL (test-apps/dbaas-transition-test/{kuttl-test.yaml,cases/}) owns only the test itself: it
-# confirms the environment is ready, runs the preflight check, starts the continuous probe, drives
-# the transition by re-syncing the aggregator release alone through the same Helmfile state, and
-# evaluates the result. The continuous probe performs the availability measurements throughout.
-#
-# Called twice per run by dbaas-upgrade-downgrade.yml — once per direction — each getting its
-# own Kind cluster, so an upgrade-direction failure can never be caused by downgrade-direction state.
+# Helmfile provisions the environment, and KUTTL runs one transition test in an isolated Kind cluster.
 
 on:
   workflow_call:
@@ -72,10 +53,7 @@ jobs:
       GO_IMAGE_TAG: it
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
-      # Every published dbaas-aggregator / dbaas-operator release tag and image tag in this repo's GHCR
-      # packages carries a leading "v" (verified against ghcr.io/v2/netcracker/qubership-dbaas and
-      # ghcr.io/v2/netcracker/qubership-dbaas-operator's tag lists) even though the workflow_dispatch
-      # inputs are given without one, matching the release page's display title.
+      # Release inputs omit the "v" prefix used by Git tags and images.
       INITIAL_TAG: v${{ inputs.initial-version }}
       TARGET_TAG: v${{ inputs.target-version }}
       FIXTURE_TAG: v${{ inputs.fixture-version }}
@@ -115,11 +93,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Netcracker/pgskipper-operator
-          # Tag 1.55.0 (Sep 1, 2026) — the first pgskipper-operator release after dbaas v6.15.0
-          # (Aug 31, 2026) and close after v6.14.1 (Aug 19, 2026); includes the patroni leader-label
-          # fix from pgskipper PR #583 (see test-docs/patroni-leader-label-ci-failure.md). Pinned to
-          # the commit, not the mutable tag, per this workflow's own SHA-pinning rule; update this
-          # comment together with the SHA if the pin is ever deliberately moved.
+          # Version 1.55.0 includes the Patroni leader-label fix required by this test.
           ref: e05bed81afa7e81a59d4724a2d7f228fd7a72232 # tag: 1.55.0
           path: repos/pgskipper-operator
           persist-credentials: false
@@ -185,12 +159,6 @@ jobs:
           done
 
       - name: Provision transition environment
-        # One full `helmfile sync` installs everything the test starts from: Patroni, the initial
-        # aggregator, the operator, the adapter, and the sample service — see
-        # test-apps/dbaas-transition-test/helmfile.yaml.gotmpl for the release list and dependency
-        # order. AGGREGATOR_CHART_DIR/AGGREGATOR_TAG select the initial aggregator version here;
-        # cases/transition/04-transition later re-syncs only that one release onto the target
-        # version, through the same state file.
         working-directory: harness/test-apps/dbaas-transition-test
         env:
           AGGREGATOR_CHART_DIR: ${{ env.INITIAL_DIR }}
@@ -199,14 +167,8 @@ jobs:
 
       - name: Run DBaaS transition availability test
         working-directory: harness/test-apps/dbaas-transition-test
-        # Timeout ordering: each KUTTL step below has its own explicit timeout (the inner layer);
-        # the `timeout` wrapper here is the outer command deadline; timeout-minutes above is the
-        # job's own outermost bound — inner < outer < job, same ordering the previous Go harness's
-        # SpecTimeout/`go test -timeout`/job timeout-minutes preserved.
         run: timeout 55m kubectl kuttl test --config kuttl-test.yaml --artifacts-dir "$GITHUB_WORKSPACE/diagnostics"
 
-      # KUTTL collectors cover assertion failures. Capture fallback diagnostics for failures in
-      # command steps such as Helm installation, preflight checks, and probe evaluation.
       - name: Collect diagnostics
         if: always()
         run: |
@@ -220,13 +182,12 @@ jobs:
 
           helm -n "$DBAAS_NAMESPACE" status dbaas-aggregator > "$OUT/helm-status-dbaas-aggregator.txt" 2>&1 || true
           helm -n "$DBAAS_NAMESPACE" history dbaas-aggregator > "$OUT/helm-history-dbaas-aggregator.txt" 2>&1 || true
-          # Never uploaded unsanitized: credential-key values are redacted before this file is written.
+          # Redact credentials before uploading Helm values.
           helm -n "$DBAAS_NAMESPACE" get values dbaas-aggregator -o yaml 2>/dev/null \
             | sed -E 's/^(.*(PASSWORD|CREDENTIALS)[A-Za-z_]*:).*/\1 "***REDACTED***"/' \
             > "$OUT/helm-values-dbaas-aggregator.sanitized.yaml" || true
 
-          # Raw aggregator logs carry encrypted password fields — only this known health-warning
-          # allowlist is ever captured, never a full log dump.
+          # Full aggregator logs can contain encrypted passwords, so capture only health warnings.
           HEALTH_PATTERN='\[class=AdapterHealthCheck\] [A-Za-z0-9_-]+ [A-Za-z0-9_.:-]+ has problem\. Status: (PROBLEM|UNKNOWN|DOWN)$|\[class=AbstractDbaasAdapterRESTClient\] Failed to get health of adapter of type [A-Za-z0-9_-]+$|\[class=DbaasPostgresConnectHealthCheck\] Postgres connection is lost$'
           for pod in $(kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o name 2>/dev/null); do
             {

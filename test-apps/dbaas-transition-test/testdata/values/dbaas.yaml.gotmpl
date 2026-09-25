@@ -1,17 +1,3 @@
-# dbaas-aggregator Helm values overlay for the upgrade/downgrade availability test.
-#
-# This overlay fixes the chart values the transition scenario depends on. It raises REPLICAS to 2 and
-# supplies credentials generated and masked by the workflow instead of the chart's own
-# hardcoded-password test defaults.
-#
-# The chart's own template already renders REPLICAS into a RollingUpdate strategy with a hardcoded
-# maxSurge/maxUnavailable of 25%/25% (helm-templates/dbaas-aggregator/templates/deployment.yaml) — at
-# 2 replicas that is maxUnavailable=0 (25% rounds down) and maxSurge=1. The rollout controller
-# therefore adds a third pod before it scales an old pod down.
-#
-# AGGREGATOR_TAG is the only value that differs between the initial install and the transition — see
-# helmfile.yaml.gotmpl's dbaas-aggregator release, which supplies both AGGREGATOR_CHART_DIR and
-# AGGREGATOR_TAG per invocation.
 DECLARATIVE_HOOK_IMAGE: {{ printf "ghcr.io/netcracker/qubership-dbaas-validation-image:%s" (requiredEnv "AGGREGATOR_TAG") | quote }}
 IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas
 TAG: {{ requiredEnv "AGGREGATOR_TAG" | quote }}
@@ -24,8 +10,6 @@ REPLICA_ROLLING_TIMEOUT_SECONDS: 600
 LIVENESS_PROBE_INITIAL_DELAY_SECONDS: 120
 REGION_DBAAS: {{ requiredEnv "REGION_DBAAS" | quote }}
 NODE_SELECTOR_DBAAS_KEY: {{ requiredEnv "NODE_SELECTOR_DBAAS_KEY" | quote }}
-# Keep RollingUpdate for the initial and target charts. The harness rejects a Recreate strategy before
-# measurement; the continuous probes check availability during the Helm upgrade.
 DBAAS_RECREATE_DEPLOYMENT_STRATEGY: false
 
 LOG_LEVEL: "INFO"
@@ -48,7 +32,6 @@ MEM_ARGS: "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=136m -XX:MaxMetaspaceSiz
 MEMORY_LIMIT: "520Mi"
 CPU_LIMIT: "2"
 CPU_REQUEST: "100m"
-# Two replicas provide the rolling-update availability baseline.
 REPLICAS: 2
 
 BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD: {{ requiredEnv "BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD" | quote }}

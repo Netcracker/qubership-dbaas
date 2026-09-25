@@ -1,9 +1,3 @@
-# Continuous availability probe. Namespace and image are fixed constants (not per-run values), so
-# this manifest needs no templating — it's applied directly through KUTTL's own `apply:`/`assert:`
-# fields. Polls dbaas-aggregator and the sample service from inside the cluster every second and
-# writes one JSON result line per probe cycle to stdout, which the evaluate step reads back via
-# `kubectl logs`. Deliberately not reached over kubectl port-forward: a port-forward drop would be
-# indistinguishable from a real outage.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

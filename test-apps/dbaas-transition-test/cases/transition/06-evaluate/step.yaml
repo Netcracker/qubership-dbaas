@@ -1,7 +1,3 @@
-# Pulls the continuous probe's JSONL log and restart count out of the cluster, then hands them to
-# the probe binary's own `evaluate` mode (run via the already-built probe image, no Go toolchain
-# needed on the runner) to judge the run against the availability contract. A non-zero exit here
-# fails this step, the test case, the suite, and the workflow step that invoked it.
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:

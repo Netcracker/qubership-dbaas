@@ -1,12 +1,3 @@
-# Pre-transition prerequisite: both selected aggregator pods and the sample-service path must
-# report healthy for ten consecutive one-second checks before the measured baseline starts. The
-# initial release can briefly report a cached PROBLEM status right after startup — running this as
-# a Job before probeStart classifies that as a setup failure instead of transition downtime.
-#
-# ${AGGREGATOR_POD_1_NAME}, ${AGGREGATOR_POD_1_IP}, ${AGGREGATOR_POD_2_NAME},
-# ${AGGREGATOR_POD_2_IP} are the only per-run values (the two pods the preflight step's `jq`
-# selection just picked) — rendered by `envsubst` before this file is applied. Namespace and image
-# are fixed constants, same as probe-deployment.yaml.
 apiVersion: batch/v1
 kind: Job
 metadata:
