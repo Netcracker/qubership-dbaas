@@ -20,8 +20,8 @@
 #   operator + patroni-services ─> go-test-app-service
 helmDefaults:
   wait: true
-  # Up to 10 minutes for the slowest release (aggregator/operator pod readiness). This applies to
-  # every release except patroni-core, whose custom resource needs a separate readiness check.
+  # Up to 10 minutes for the slowest release (aggregator/operator pod readiness). Releases with
+  # operator-managed custom resources use explicit readiness checks below.
   timeout: 600
   createNamespace: true
   # No --atomic and no cleanup-on-fail: a failed release must stay up, not roll back or get deleted —
@@ -86,21 +86,59 @@ releases:
   - name: patroni-services
     namespace: {{ requiredEnv "PG_NAMESPACE" }}
     chart: {{ requiredEnv "REPOS_DIR" }}/pgskipper-operator/operator/charts/patroni-services
+    # Helm 4 cannot determine when the operator-managed PatroniServices resource is ready. Wait for
+    # the resulting adapter Deployment instead; database provisioning below verifies registration.
+    wait: false
     values:
       - testdata/values/patroni-services.yaml.gotmpl
     needs:
       - {{ requiredEnv "PG_NAMESPACE" }}/patroni-core
       - {{ requiredEnv "DBAAS_NAMESPACE" }}/dbaas-aggregator
+    hooks:
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "wait"
+          - '--namespace={{ requiredEnv "PG_NAMESPACE" }}'
+          - "deployment/dbaas-postgres-adapter"
+          - "--for=create"
+          - "--for=condition=Available"
+          - "--timeout=600s"
     labels:
       component: patroni-services
 
   - name: go-test-app-service
     namespace: {{ requiredEnv "DBAAS_NAMESPACE" }}
     chart: {{ requiredEnv "HARNESS_DIR" }}/test-apps/go-test-app-service/helm-templates/go-test-app-service
+    # The chart includes an operator-managed InternalDatabase resource, so use explicit readiness
+    # checks for both the service and its database instead of Helm's generic resource wait.
+    wait: false
     values:
       - testdata/values/sample-service.yaml.gotmpl
     needs:
       - {{ requiredEnv "DBAAS_NAMESPACE" }}/dbaas-operator
       - {{ requiredEnv "PG_NAMESPACE" }}/patroni-services
+    hooks:
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "wait"
+          - '--namespace={{ requiredEnv "DBAAS_NAMESPACE" }}'
+          - "deployment/go-test-app-service"
+          - "--for=create"
+          - "--for=condition=Available"
+          - "--timeout=600s"
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "wait"
+          - '--namespace={{ requiredEnv "DBAAS_NAMESPACE" }}'
+          - "internaldatabase/go-test-app-service-postgres"
+          - "--for=create"
+          - "--for=jsonpath={.status.phase}=Succeeded"
+          - "--timeout=600s"
     labels:
       component: sample-service
