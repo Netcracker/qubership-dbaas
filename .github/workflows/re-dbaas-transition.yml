@@ -241,7 +241,8 @@ jobs:
                       "dbaas-availability-probe:$DBAAS_NAMESPACE" "dbaas-postgres-adapter:$PG_NAMESPACE"; do
             deploy="${pair%%:*}"; ns="${pair##*:}"
             selector=$(kubectl get deploy "$deploy" -n "$ns" \
-              -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{printf "%s=%s\n" $k $v}}{{end}}' 2>/dev/null | paste -sd, -)
+              -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{printf "%s=%s\n" $k $v}}{{end}}' 2>/dev/null | paste -sd, -) \
+              || selector=""
             [ -z "$selector" ] && continue
             for pod in $(kubectl -n "$ns" get pods -l "$selector" -o name 2>/dev/null); do
               name=${pod#pod/}
