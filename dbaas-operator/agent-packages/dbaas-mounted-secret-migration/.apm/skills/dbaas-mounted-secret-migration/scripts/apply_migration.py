@@ -1117,6 +1117,10 @@ def _yaml_scalar(value: str) -> str:
     return value
 
 
+def _yaml_string_scalar(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
 def _masked_template_value(value: Any) -> Any:
     if not isinstance(value, str):
         return value
@@ -1269,7 +1273,7 @@ def _render_mount(name: str, mount_path: str, indent: int) -> str:
 
 def _render_env(name: str, value: str, indent: int) -> str:
     pad = " " * indent
-    return f"{pad}- name: {_yaml_scalar(name)}\n{pad}  value: {_yaml_scalar(value)}\n"
+    return f"{pad}- name: {_yaml_scalar(name)}\n{pad}  value: {_yaml_string_scalar(value)}\n"
 
 
 def _guard_wrapped(capability_guard: str | None, indent: int, block: str) -> str:

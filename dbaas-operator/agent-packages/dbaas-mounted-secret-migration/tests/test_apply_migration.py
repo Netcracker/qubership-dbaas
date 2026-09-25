@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - PyYAML is a pinned test dependency
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "dbaas-mounted-secret-migration" / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
+VALIDATOR = SCRIPTS / "validate_generated.py"
 
 CHART_YAML = "apiVersion: v2\nname: orders\nversion: 0.1.0\n"
 VALUES = "NAMESPACE: orders-ns\nSERVICE_NAME: orders\n"
@@ -236,7 +237,7 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertIn(f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}', deployment)
             self.assertIn("name: orders-postgresql-service-default-secret", deployment)
             self.assertIn("name: DBAAS_OPERATOR_ENABLED", deployment)
-            self.assertIn("value: true", deployment.replace('"true"', "true"))
+            self.assertIn("value: 'true'", deployment)
 
             # The legacy declaration is preserved, not deleted, guarded to the
             # operator-absent (negated) branch -- comments/labels included,
@@ -374,6 +375,47 @@ class CapabilityGuardTest(unittest.TestCase):
             code, report = run_migration(repo, the_plan, "check", tmp)
             self.assertEqual(code, 2, report.get("__stderr"))
             self.assertTrue(any("capabilityGuard" in e for e in report.get("blocking", [])))
+
+
+class GeneratedManifestValidationTest(unittest.TestCase):
+    def run_validator(self, value: str) -> subprocess.CompletedProcess[str]:
+        manifest = (
+            "apiVersion: apps/v1\n"
+            "kind: Deployment\n"
+            "metadata:\n"
+            "  name: orders\n"
+            "spec:\n"
+            "  template:\n"
+            "    spec:\n"
+            "      containers:\n"
+            "        - name: orders\n"
+            "          image: orders:latest\n"
+            "          env:\n"
+            "            - name: DBAAS_OPERATOR_ENABLED\n"
+            f"              value: {value}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / "deployment.yaml"
+            manifest_path.write_text(manifest, encoding="utf-8")
+
+            return subprocess.run(
+                [sys.executable, str(VALIDATOR), str(manifest_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    def test_environment_value_must_be_a_string(self) -> None:
+        proc = self.run_validator("true")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(
+            "Deployment/default/orders container orders: env 'DBAAS_OPERATOR_ENABLED' value must be a string, got bool",
+            proc.stderr,
+        )
+
+    def test_null_environment_value_is_treated_as_empty(self) -> None:
+        proc = self.run_validator("")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 @unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")

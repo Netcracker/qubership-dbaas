@@ -235,6 +235,12 @@ Helm guarantees unique per release -- the writer rejects both a plan that omits 
 identity and one that slugifies the template text into a fixed literal instead (every release of
 the chart would then generate the same name).
 
+Before running the writer for a Helm root, make every dependency from `Chart.yaml` available with
+the repository's existing dependency command. Use `helm dependency build <chart-root>` when the
+chart has a current `Chart.lock`; use `helm dependency update <chart-root>` when the lock file must
+be created or refreshed. The writer renders a temporary chart copy and does not download missing
+dependencies.
+
 Run, from the directory containing this `SKILL.md`:
 
 ```bash
