@@ -20,8 +20,8 @@
 #   operator + patroni-services ─> go-test-app-service
 helmDefaults:
   wait: true
-  # Up to 10 minutes for the slowest release (Patroni/aggregator/operator pod readiness). Applies to
-  # every release; the fast ones (transition-prerequisites) simply finish well inside it.
+  # Up to 10 minutes for the slowest release (aggregator/operator pod readiness). This applies to
+  # every release except patroni-core, whose custom resource needs a separate readiness check.
   timeout: 600
   createNamespace: true
   # No --atomic and no cleanup-on-fail: a failed release must stay up, not roll back or get deleted —
@@ -39,8 +39,24 @@ releases:
   - name: patroni-core
     namespace: {{ requiredEnv "PG_NAMESPACE" }}
     chart: {{ requiredEnv "REPOS_DIR" }}/pgskipper-operator/operator/charts/patroni-core
+    # Helm 4 cannot determine when the operator-managed PatroniCore resource is ready. Wait for the
+    # resulting primary pod instead, which is the readiness boundary required by dependent releases.
+    wait: false
     values:
       - testdata/values/patroni-core.yaml.gotmpl
+    hooks:
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "wait"
+          - '--namespace={{ requiredEnv "PG_NAMESPACE" }}'
+          - "pod"
+          - "--selector=app=patroni"
+          - "--for=create"
+          - "--for=condition=Ready"
+          - "--for=jsonpath={.metadata.labels.pgtype}=primary"
+          - "--timeout=600s"
     labels:
       component: patroni-core
 
