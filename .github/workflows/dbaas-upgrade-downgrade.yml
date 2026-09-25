@@ -9,9 +9,11 @@ run-name: >
 # operator is fixed at the newer of the two versions for both directions (fixture-version below) —
 # it already supports both the initial and target aggregator's CR contract, so neither direction needs
 # operator-version-specific setup. Each direction runs in its own fresh Kind cluster via the reusable
-# worker workflow — see re-dbaas-transition.yml and the KUTTL test suite it runs,
-# test-apps/dbaas-transition-test/{kuttl-test.yaml,cases/}, for the implementation. A full
-# operator/CRD upgrade is a separate, future test and is intentionally out of scope here.
+# worker workflow — see re-dbaas-transition.yml, which provisions the initial environment with
+# Helmfile and then runs the KUTTL test suite that drives the transition and evaluates it
+# (test-apps/dbaas-transition-test/{helmfile.yaml.gotmpl,kuttl-test.yaml,cases/}), for the
+# implementation. A full operator/CRD upgrade is a separate, future test and is intentionally out of
+# scope here.
 #
 # No concurrency block here deliberately: re-dbaas-transition.yml's own job-level concurrency group is
 # keyed by direction, so upgrade and downgrade run in parallel within one dispatch while repeated

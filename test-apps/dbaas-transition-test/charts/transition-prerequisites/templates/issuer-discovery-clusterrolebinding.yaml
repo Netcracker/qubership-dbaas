@@ -1,0 +1,20 @@
+# Grants the future dbaas-aggregator ServiceAccount cluster-wide OIDC issuer-discovery access, which
+# the aggregator needs to verify Kubernetes-issued M2M tokens (the operator's and the sample
+# service's) by discovery against the kube-apiserver. Installed before dbaas-aggregator itself:
+# Kubernetes allows a ClusterRoleBinding subject to reference a ServiceAccount that does not exist
+# yet, so the aggregator now starts already covered by this grant instead of the previous imperative
+# sequence (create the binding, restart the aggregator, wait for rollout).
+#
+# Test-only — the product chart does not ship this binding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dbaas-aggregator-issuer-discovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:service-account-issuer-discovery
+subjects:
+  - kind: ServiceAccount
+    name: dbaas-aggregator
+    namespace: {{ .Release.Namespace }}

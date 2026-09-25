@@ -1,0 +1,90 @@
+# Provisions the DBaaS aggregator upgrade/downgrade availability test's environment as Helm releases,
+# values, and dependencies — not as shell hooks or a reimplementation of bootstrap/Makefile. KUTTL no
+# longer owns any of this: it starts from an already-provisioned environment (see
+# cases/transition/00-environment-ready) and contains only the test itself — the preflight check, the
+# continuous probe, the transition, and evaluation.
+#
+# Two invocations of this same file cover the whole test:
+#   - The workflow runs a full `helmfile sync` once, with AGGREGATOR_CHART_DIR=$INITIAL_DIR and
+#     AGGREGATOR_TAG=$INITIAL_TAG, before KUTTL starts at all.
+#   - cases/transition/04-transition runs `helmfile -l component=aggregator sync` (no
+#     --include-needs), with AGGREGATOR_CHART_DIR=$TARGET_DIR and AGGREGATOR_TAG=$TARGET_TAG, to
+#     perform the transition itself — the only release that changes during measurement.
+#
+# Dependency order (see `needs:` below, verified with `helmfile show-dag`):
+#
+#   transition-prerequisites ─┐
+#   patroni-core ─────────────┼─> dbaas-aggregator
+#                             └─> dbaas-operator
+#   patroni-core + aggregator ──> patroni-services
+#   operator + patroni-services ─> go-test-app-service
+helmDefaults:
+  wait: true
+  # Up to 10 minutes for the slowest release (Patroni/aggregator/operator pod readiness). Applies to
+  # every release; the fast ones (transition-prerequisites) simply finish well inside it.
+  timeout: 600
+  createNamespace: true
+  # No --atomic and no cleanup-on-fail: a failed release must stay up, not roll back or get deleted —
+  # its state is the diagnostics evidence the workflow uploads on failure.
+  atomic: false
+  cleanupOnFail: false
+
+releases:
+  - name: transition-prerequisites
+    namespace: {{ requiredEnv "DBAAS_NAMESPACE" }}
+    chart: ./charts/transition-prerequisites
+    labels:
+      component: prerequisites
+
+  - name: patroni-core
+    namespace: {{ requiredEnv "PG_NAMESPACE" }}
+    chart: {{ requiredEnv "REPOS_DIR" }}/pgskipper-operator/operator/charts/patroni-core
+    values:
+      - testdata/values/patroni-core.yaml.gotmpl
+    labels:
+      component: patroni-core
+
+  # The only release the transition step (04-transition) targets by itself, via -l component=aggregator.
+  - name: dbaas-aggregator
+    namespace: {{ requiredEnv "DBAAS_NAMESPACE" }}
+    chart: {{ requiredEnv "AGGREGATOR_CHART_DIR" }}/helm-templates/dbaas-aggregator
+    values:
+      - testdata/values/dbaas.yaml.gotmpl
+    needs:
+      - {{ requiredEnv "DBAAS_NAMESPACE" }}/transition-prerequisites
+      - {{ requiredEnv "PG_NAMESPACE" }}/patroni-core
+    labels:
+      component: aggregator
+
+  - name: dbaas-operator
+    namespace: {{ requiredEnv "DBAAS_NAMESPACE" }}
+    chart: {{ requiredEnv "FIXTURE_DIR" }}/dbaas-operator/helm-templates/dbaas-operator
+    values:
+      - testdata/values/operator.yaml.gotmpl
+      - {{ requiredEnv "FIXTURE_DIR" }}/dbaas-operator/helm-templates/dbaas-operator/resource-profiles/dev.yaml
+    needs:
+      - {{ requiredEnv "PG_NAMESPACE" }}/patroni-core
+    labels:
+      component: operator
+
+  - name: patroni-services
+    namespace: {{ requiredEnv "PG_NAMESPACE" }}
+    chart: {{ requiredEnv "REPOS_DIR" }}/pgskipper-operator/operator/charts/patroni-services
+    values:
+      - testdata/values/patroni-services.yaml.gotmpl
+    needs:
+      - {{ requiredEnv "PG_NAMESPACE" }}/patroni-core
+      - {{ requiredEnv "DBAAS_NAMESPACE" }}/dbaas-aggregator
+    labels:
+      component: patroni-services
+
+  - name: go-test-app-service
+    namespace: {{ requiredEnv "DBAAS_NAMESPACE" }}
+    chart: {{ requiredEnv "HARNESS_DIR" }}/test-apps/go-test-app-service/helm-templates/go-test-app-service
+    values:
+      - testdata/values/sample-service.yaml.gotmpl
+    needs:
+      - {{ requiredEnv "DBAAS_NAMESPACE" }}/dbaas-operator
+      - {{ requiredEnv "PG_NAMESPACE" }}/patroni-services
+    labels:
+      component: sample-service

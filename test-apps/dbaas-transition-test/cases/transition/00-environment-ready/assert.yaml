@@ -1,0 +1,57 @@
+# The environment (Patroni, the initial aggregator, the operator, the PostgreSQL adapter, and the
+# sample service) is provisioned by Helmfile before KUTTL starts — see ../../helmfile.yaml.gotmpl.
+# This step has no step.yaml; it only confirms that provisioning actually finished before the test
+# proper begins.
+#
+# The aggregator's replica count and strategy matter beyond mere readiness: the continuous probes
+# later check availability during a Helm upgrade, which only proves something if the Deployment can
+# never legitimately drop below two ready replicas. The sample service's own readiness/liveness
+# probes only call /health, which never touches PostgreSQL — a clean Helmfile rollout proves the
+# process started, not that its database exists, so the InternalDatabase must also have reached
+# Succeeded before baseline probing starts.
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 60
+resourceRefs:
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: dbaas
+    name: dbaas-aggregator
+    ref: aggregator
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: dbaas
+    name: dbaas-operator
+    ref: operator
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: postgres
+    name: dbaas-postgres-adapter
+    ref: adapter
+  - apiVersion: dbaas.netcracker.com/v1
+    kind: InternalDatabase
+    namespace: dbaas
+    name: go-test-app-service-postgres
+    ref: idb
+collectors:
+  - type: pod
+    selector: name=dbaas-aggregator
+    namespace: dbaas
+    tail: 200
+  - type: command
+    command: kubectl -n dbaas describe deployment dbaas-aggregator
+  - type: command
+    command: kubectl -n dbaas describe deployment dbaas-operator
+  - type: command
+    command: kubectl -n postgres describe deployment dbaas-postgres-adapter
+  - type: command
+    command: kubectl -n dbaas get internaldatabase go-test-app-service-postgres -o yaml
+  - type: command
+    command: kubectl -n dbaas logs deploy/dbaas-operator --all-containers=true --tail=500
+assertAll:
+  - celExpr: "aggregator.spec.replicas == 2"
+  - celExpr: "aggregator.status.readyReplicas == 2"
+  - celExpr: "aggregator.spec.strategy.type != 'Recreate'"
+  - celExpr: "operator.status.readyReplicas >= 1"
+  - celExpr: "adapter.status.readyReplicas >= 1"
+  - celExpr: "idb.status.phase == 'Succeeded'"
