@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - PyYAML is a pinned test dependency
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "dbaas-mounted-secret-migration" / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
+VALIDATOR = SCRIPTS / "validate_generated.py"
 
 CHART_YAML = "apiVersion: v2\nname: orders\nversion: 0.1.0\n"
 VALUES = "NAMESPACE: orders-ns\nSERVICE_NAME: orders\n"
@@ -176,7 +177,290 @@ def run_migration(repo: Path, the_plan: dict, mode: str, tmp: Path) -> tuple[int
 
 
 @unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
+class CapabilityGuardTest(unittest.TestCase):
+    """Issue #776 phase 4: the optional capabilityGuard/operatorModeEnvironment
+    plan fields wrap every generated resource, inserted volume/mount, and
+    operator-mode env var in a ".Capabilities.APIVersions.Has" guard, and
+    preserve a superseded legacy declaration under the negated (operator-
+    absent) branch instead of deleting it. Omitting capabilityGuard preserves
+    the existing operator-only behavior exactly."""
+
+    GUARD = "dbaas.netcracker.com/v1"
+    LEGACY_DECLARATION = {
+        "kind": "DatabaseDeclaration",
+        "declarations": [
+            {
+                "classifierConfig": {"classifier": {"microserviceName": "orders", "scope": "service"}},
+                "type": "postgresql",
+            }
+        ],
+    }
+
+    def test_omitting_capability_guard_preserves_existing_behavior(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            output = (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")
+            self.assertNotIn(".Capabilities.APIVersions.Has", output)
+            names = {entry["name"] for entry in report["validation"]}
+            self.assertNotIn("validate-operator-absent-fallback", names)
+
+    def test_generated_resources_new_mounts_and_env_are_guarded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            declaration_path = repo / "chart/templates/dbaas-declaration.json"
+            declaration_path.write_text(json.dumps(self.LEGACY_DECLARATION), encoding="utf-8")
+            the_plan = plan(
+                repo,
+                capabilityGuard=self.GUARD,
+                operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"},
+            )
+            the_plan["roots"][0]["supersededDeclarations"] = [{"path": "templates/dbaas-declaration.json"}]
+            the_plan["roots"][0]["sourceHashes"]["templates/dbaas-declaration.json"] = sha256(declaration_path)
+
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            names = {entry["name"]: entry for entry in report["validation"]}
+            self.assertEqual(names["validate-rendered"]["status"], "passed")
+            self.assertEqual(names["validate-operator-absent-fallback"]["status"], "passed")
+
+            output = (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")
+            self.assertTrue(output.startswith(f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}\n'))
+            self.assertIn("kind: InternalDatabase", output)
+            self.assertIn("kind: DatabaseSecretClaim", output)
+            self.assertTrue(output.rstrip("\n").endswith("{{- end }}"))
+
+            deployment = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            self.assertIn(f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}', deployment)
+            self.assertIn("name: orders-postgresql-service-default-secret", deployment)
+            self.assertIn("name: DBAAS_OPERATOR_ENABLED", deployment)
+            self.assertIn("value: 'true'", deployment)
+
+            # The legacy declaration is preserved, not deleted, guarded to the
+            # operator-absent (negated) branch -- comments/labels included,
+            # since it is the original bytes verbatim.
+            self.assertTrue(declaration_path.exists())
+            preserved = declaration_path.read_text(encoding="utf-8")
+            self.assertIn(f'{{{{- if not (.Capabilities.APIVersions.Has "{self.GUARD}") }}}}', preserved)
+            self.assertIn(json.dumps(self.LEGACY_DECLARATION), preserved)
+            self.assertIn("{{- end }}", preserved)
+
+            # Repeated apply (of the resources/mounts/env this writer still
+            # owns -- a real workflow would no longer list the now-migrated
+            # declaration in a fresh plan's supersededDeclarations at all) is
+            # unchanged.
+            second_plan = plan(
+                repo,
+                capabilityGuard=self.GUARD,
+                operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"},
+            )
+            code2, report2 = run_migration(repo, second_plan, "apply", tmp)
+            self.assertEqual(code2, 0, report2.get("__stderr"))
+            self.assertEqual(report2["status"], "unchanged")
+
+    def test_upgrading_an_unguarded_apply_guards_the_existing_mount_env_and_volume(self) -> None:
+        # A real upgrade path: apply once with no capabilityGuard (3.0.0
+        # behavior), then apply again with capabilityGuard now set, against
+        # the existing output/workload. The pre-existing volume/mount/env
+        # must not be treated as "idempotent, nothing to do" -- left
+        # unconditional, they would still be required on a cluster where the
+        # operator (and the Secret its CRs would populate) is absent.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            first_plan = plan(repo)
+            code, report = run_migration(repo, first_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            deployment_before = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            self.assertNotIn(".Capabilities.APIVersions.Has", deployment_before)
+
+            second_plan = plan(
+                repo,
+                capabilityGuard=self.GUARD,
+                operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"},
+                outputSha256=sha256(repo / "chart/templates/dbaas-mounted-secret-resources.yaml"),
+            )
+            code2, report2 = run_migration(repo, second_plan, "apply", tmp)
+            self.assertEqual(code2, 0, report2.get("__stderr"))
+            names = {entry["name"]: entry for entry in report2["validation"]}
+            self.assertEqual(names["validate-operator-absent-fallback"]["status"], "passed")
+
+            deployment_after = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            # The pre-existing mount, volume, and (newly added) env are each
+            # individually wrapped -- not merely present somewhere in a file
+            # that also happens to contain the guard string elsewhere.
+            guard_open = f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}'
+            self.assertIn(
+                f"{guard_open}\n            - name: orders-postgresql-service-default-secret\n"
+                "              mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials\n"
+                "              readOnly: true\n            {{- end }}",
+                deployment_after,
+            )
+            self.assertIn(
+                f"{guard_open}\n        - name: orders-postgresql-service-default-secret\n"
+                "          secret:\n            secretName: orders-postgresql-service-default-credentials\n"
+                "        {{- end }}",
+                deployment_after,
+            )
+
+            # A third apply (already guarded) is a true no-op: no double-wrapping.
+            third_plan = plan(
+                repo,
+                capabilityGuard=self.GUARD,
+                operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"},
+            )
+            code3, report3 = run_migration(repo, third_plan, "apply", tmp)
+            self.assertEqual(code3, 0, report3.get("__stderr"))
+            self.assertEqual(report3["status"], "unchanged")
+            self.assertEqual(
+                (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8"), deployment_after
+            )
+
+    def test_upgrading_adjacent_unguarded_items_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            datasources = [
+                datasource(),
+                datasource(id="orders-mongodb-service", type="mongodb"),
+            ]
+            claims = [claim(), claim(datasourceId="orders-mongodb-service")]
+
+            code, report = run_migration(
+                repo, plan(repo, datasources=datasources, claims=claims), "apply", tmp
+            )
+            self.assertEqual(code, 0, report.get("__stderr"))
+
+            guarded_plan = plan(
+                repo,
+                datasources=datasources,
+                claims=claims,
+                capabilityGuard=self.GUARD,
+                operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"},
+                outputSha256=sha256(repo / "chart/templates/dbaas-mounted-secret-resources.yaml"),
+            )
+            code2, report2 = run_migration(repo, guarded_plan, "apply", tmp)
+            self.assertEqual(code2, 0, report2.get("__stderr"))
+            names = {entry["name"]: entry for entry in report2["validation"]}
+            self.assertEqual(names["validate-operator-absent-fallback"]["status"], "passed")
+
+            deployment_after = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            guard_open = f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}'
+            # One guard wraps both adjacent mounts, one wraps both adjacent
+            # volumes, and one wraps the operator-mode environment entry.
+            self.assertEqual(deployment_after.count(guard_open), 3)
+
+            repeated_plan = plan(
+                repo,
+                datasources=datasources,
+                claims=claims,
+                capabilityGuard=self.GUARD,
+                operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"},
+            )
+            code3, report3 = run_migration(repo, repeated_plan, "apply", tmp)
+            self.assertEqual(code3, 0, report3.get("__stderr"))
+            self.assertEqual(report3["status"], "unchanged")
+            self.assertEqual(
+                (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8"), deployment_after
+            )
+
+    def test_operator_mode_environment_requires_capability_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"})
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertTrue(any("capabilityGuard" in e for e in report.get("blocking", [])))
+
+
+class GeneratedManifestValidationTest(unittest.TestCase):
+    def run_validator(self, value: str) -> subprocess.CompletedProcess[str]:
+        manifest = (
+            "apiVersion: apps/v1\n"
+            "kind: Deployment\n"
+            "metadata:\n"
+            "  name: orders\n"
+            "spec:\n"
+            "  template:\n"
+            "    spec:\n"
+            "      containers:\n"
+            "        - name: orders\n"
+            "          image: orders:latest\n"
+            "          env:\n"
+            "            - name: DBAAS_OPERATOR_ENABLED\n"
+            f"              value: {value}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / "deployment.yaml"
+            manifest_path.write_text(manifest, encoding="utf-8")
+
+            return subprocess.run(
+                [sys.executable, str(VALIDATOR), str(manifest_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    def test_environment_value_must_be_a_string(self) -> None:
+        proc = self.run_validator("true")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(
+            "Deployment/default/orders container orders: env 'DBAAS_OPERATOR_ENABLED' value must be a string, got bool",
+            proc.stderr,
+        )
+
+    def test_null_environment_value_is_treated_as_empty(self) -> None:
+        proc = self.run_validator("")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+@unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
 class HelmApplyTest(unittest.TestCase):
+    def test_quoted_templated_workload_and_resource_names_are_idempotent(self) -> None:
+        deployment = DEPLOYMENT.replace(
+            "  name: orders\n", "  name: '{{ .Values.SERVICE_NAME }}'\n"
+        ).replace(
+            "        - name: orders\n", "        - name: '{{ .Values.SERVICE_NAME }}'\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, deployment=deployment)
+            templated_datasource = datasource(
+                classifier={
+                    "microserviceName": "{{ .Values.SERVICE_NAME }}",
+                    "scope": "service",
+                },
+                resourceName="{{ .Release.Name }}-postgresql-service",
+            )
+            templated_claim = claim(
+                workloadName="{{ .Values.SERVICE_NAME }}",
+                containers=["{{ .Values.SERVICE_NAME }}"],
+            )
+            the_plan = plan(
+                repo,
+                datasources=[templated_datasource],
+                claims=[templated_claim],
+                capabilityGuard="dbaas.netcracker.com/v1",
+            )
+
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(report["status"], "changed")
+
+            repeated_plan = plan(
+                repo,
+                datasources=[templated_datasource],
+                claims=[templated_claim],
+                capabilityGuard="dbaas.netcracker.com/v1",
+            )
+            code2, report2 = run_migration(repo, repeated_plan, "apply", tmp)
+            self.assertEqual(code2, 0, report2.get("__stderr"))
+            self.assertEqual(report2["status"], "unchanged")
+
     def test_apply_generates_resources_and_mount_then_repeated_apply_is_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -210,11 +494,12 @@ class HelmApplyTest(unittest.TestCase):
             self.assertTrue(mount["readOnly"])
             self.assertEqual(mount["mountPath"], "/etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials")
 
-            values_text = (repo / "chart/values.yaml").read_text(encoding="utf-8")
-            self.assertIn('DBAAS_OPERATOR_NAMESPACE: ""', values_text)
-            schema = json.loads((repo / "chart/values.schema.json").read_text(encoding="utf-8"))
-            self.assertNotIn("DBAAS_OPERATOR_NAMESPACE", schema.get("required", []))
-            self.assertEqual(schema["properties"]["DBAAS_OPERATOR_NAMESPACE"], {"type": "string"})
+            # The writer never touches values.yaml / values.schema.json -- operatorNamespace
+            # must already be a concrete, verified value or Helm expression in the plan.
+            self.assertEqual((repo / "chart/values.yaml").read_text(encoding="utf-8"), VALUES)
+            self.assertEqual(
+                (repo / "chart/values.schema.json").read_text(encoding="utf-8"), SCHEMA
+            )
 
             # Repeated apply with refreshed source hashes must be a no-op.
             plan2 = plan(repo)
@@ -509,185 +794,48 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(code, 4, report.get("__stderr"))
             self.assertIn("resourceName", "".join(report.get("blocking", [])))
 
-    def test_missing_values_schema_is_valid_and_untouched(self) -> None:
+    def test_writer_never_touches_values_files_regardless_of_operator_namespace(self) -> None:
+        # Issue #776 phase 5: the writer no longer registers any default for
+        # DBAAS_OPERATOR_NAMESPACE (or any other value key) in values.yaml /
+        # values.schema.json -- operatorNamespace must already be a concrete,
+        # verified value or Helm expression when the plan is built.
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
             (repo / "chart" / "values.schema.json").unlink()
-            code, report = run_migration(repo, plan(repo), "apply", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
-            self.assertFalse((repo / "chart" / "values.schema.json").exists())
-            self.assertIn('DBAAS_OPERATOR_NAMESPACE: ""', (repo / "chart" / "values.yaml").read_text(encoding="utf-8"))
-
-    def test_schema_edits_preserve_unrelated_bytes_across_representative_shapes(self) -> None:
-        # (name, before, expected exact result, expected blocking-message substring).
-        # Exactly one of (expected, expected_error) is set per row.
-        cases = [
-            (
-                "pretty, property missing",
-                "{\n"
-                '  "$schema": "https://json-schema.org/draft-07/schema#",\n'
-                '  "type": "object",\n'
-                '  "properties": {\n'
-                '    "NAMESPACE": {\n'
-                '      "type": "string",\n'
-                '      "description": "target namespace"\n'
-                "    }\n"
-                "  },\n"
-                '  "required": [\n'
-                '    "NAMESPACE"\n'
-                "  ]\n"
-                "}\n",
-                "{\n"
-                '  "$schema": "https://json-schema.org/draft-07/schema#",\n'
-                '  "type": "object",\n'
-                '  "properties": {\n'
-                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"},\n'
-                '    "NAMESPACE": {\n'
-                '      "type": "string",\n'
-                '      "description": "target namespace"\n'
-                "    }\n"
-                "  },\n"
-                '  "required": [\n'
-                '    "NAMESPACE"\n'
-                "  ]\n"
-                "}\n",
-                None,
-            ),
-            (
-                "compact one-liner, property missing",
-                '{"type":"object","properties":{"NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
-                '{"type":"object","properties":{"DBAAS_OPERATOR_NAMESPACE": {"type": "string"},'
-                '"NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
-                None,
-            ),
-            (
-                "required removal leaves other entries and properties untouched",
-                "{\n"
-                '  "type": "object",\n'
-                '  "properties": {\n'
-                '    "NAMESPACE": {"type": "string"},\n'
-                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"}\n'
-                "  },\n"
-                '  "required": [\n'
-                '    "NAMESPACE",\n'
-                '    "DBAAS_OPERATOR_NAMESPACE"\n'
-                "  ]\n"
-                "}\n",
-                "{\n"
-                '  "type": "object",\n'
-                '  "properties": {\n'
-                '    "NAMESPACE": {"type": "string"},\n'
-                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"}\n'
-                "  },\n"
-                '  "required": [\n'
-                '    "NAMESPACE"\n'
-                "  ]\n"
-                "}\n",
-                None,
-            ),
-            (
-                "already correct is left completely unchanged",
-                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
-                '"DBAAS_OPERATOR_NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
-                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
-                '"DBAAS_OPERATOR_NAMESPACE":{"type":"string"}},"required":["NAMESPACE"]}',
-                None,
-            ),
-            (
-                "CRLF and missing final newline are preserved",
-                "{\r\n"
-                '  "type": "object",\r\n'
-                '  "properties": {\r\n'
-                '    "NAMESPACE": {"type": "string"}\r\n'
-                "  }\r\n"
-                "}",  # deliberately no trailing newline
-                "{\r\n"
-                '  "type": "object",\r\n'
-                '  "properties": {\r\n'
-                '    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"},\r\n'
-                '    "NAMESPACE": {"type": "string"}\r\n'
-                "  }\r\n"
-                "}",
-                None,
-            ),
-            (
-                "wrong existing property value is replaced",
-                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
-                '"DBAAS_OPERATOR_NAMESPACE":{"type":"integer"}},"required":[]}',
-                '{"type":"object","properties":{"NAMESPACE":{"type":"string"},'
-                '"DBAAS_OPERATOR_NAMESPACE":{"type": "string"}},"required":[]}',
-                None,
-            ),
-            (
-                "empty pretty properties gets a properly indented insertion, not a compact one",
-                '{\n  "type": "object",\n  "properties": {\n  }\n}\n',
-                '{\n  "type": "object",\n  "properties": {\n    "DBAAS_OPERATOR_NAMESPACE": {"type": "string"}\n  }\n}\n',
-                None,
-            ),
-            (
-                "mixed line endings are rejected instead of being rewritten",
-                '{"type":"object",\r\n"properties":{"NAMESPACE":{"type":"string"}}}\n',
-                None,
-                "mixed line endings",
-            ),
-            (
-                "a tab in otherwise-valid JSON is reported as unsupported, not invalid",
-                '{"type":"object","properties":\t{"NAMESPACE":{"type":"string"}}}',
-                None,
-                "valid JSON layout is unsupported",
-            ),
-        ]
-
-        for name, before, expected, expected_error in cases:
-            with self.subTest(name):
-                with tempfile.TemporaryDirectory() as directory:
-                    tmp = Path(directory)
-                    repo = scaffold(tmp)
-                    schema_path = repo / "chart" / "values.schema.json"
-                    schema_path.write_bytes(before.encode("utf-8"))
-                    code, report = run_migration(repo, plan(repo), "apply", tmp)
-                    if expected_error is not None:
-                        self.assertEqual(code, 4, report.get("__stderr"))
-                        self.assertIn(expected_error, "".join(report.get("blocking", [])))
-                        continue
-                    self.assertEqual(code, 0, report.get("__stderr"))
-                    after = schema_path.read_bytes().decode("utf-8")
-                    self.assertEqual(after, expected)
-
-    def test_literal_operator_namespace_does_not_touch_values(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            tmp = Path(directory)
-            repo = scaffold(tmp)
+            values_before = (repo / "chart" / "values.yaml").read_bytes()
             the_plan = plan(repo, operatorNamespace="dbaas-system")
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            self.assertNotIn("DBAAS_OPERATOR_NAMESPACE", (repo / "chart" / "values.yaml").read_text(encoding="utf-8"))
+            self.assertFalse((repo / "chart" / "values.schema.json").exists())
+            self.assertEqual((repo / "chart" / "values.yaml").read_bytes(), values_before)
 
-    def test_crlf_values_yaml_is_preserved(self) -> None:
-        # Path.read_text() performs universal-newline translation -- every "\r\n" in the
-        # file would silently become "\n" before it is echoed back as the unchanged
-        # prefix, rewriting a CRLF values.yaml's every existing line as LF.
+    def test_chart_pinned_empty_operator_namespace_value_fails_validation(self) -> None:
+        # A chart that explicitly chose DBAAS_OPERATOR_NAMESPACE (or any other
+        # values.yaml key the plan's operatorNamespace resolves through) with an
+        # empty value must fail spec.operatorNamespace's required-non-empty
+        # check -- the writer must never synthesize a clean pilot value that
+        # would mask the real, broken pinned value.
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
-            crlf_values = VALUES.replace("\n", "\r\n")
-            (repo / "chart" / "values.yaml").write_bytes(crlf_values.encode("utf-8"))
-            the_plan = plan(repo)
-            code, report = run_migration(repo, the_plan, "apply", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
-            result = (repo / "chart" / "values.yaml").read_bytes()
-            self.assertIn(b"NAMESPACE: orders-ns\r\n", result)
-            self.assertIn(b"SERVICE_NAME: orders\r\n", result)
-            self.assertIn(b'DBAAS_OPERATOR_NAMESPACE: ""\r\n', result)
-            self.assertEqual(result.count(b"\n"), result.count(b"\r\n"))  # no bare LF introduced
+            values_path = repo / "chart" / "values.yaml"
+            values_path.write_text(
+                values_path.read_text(encoding="utf-8") + 'DBAAS_OPERATOR_NAMESPACE: ""\n',
+                encoding="utf-8",
+            )
+            the_plan = plan(repo, operatorNamespace="{{ .Values.DBAAS_OPERATOR_NAMESPACE }}")
+            code, report = run_migration(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 5, report.get("__stderr"))
+            names = {entry["name"]: entry for entry in report["validation"]}
+            self.assertEqual(names["validate-rendered"]["status"], "failed")
+            self.assertIn("required and must be non-empty", names["validate-rendered"]["details"])
 
     def test_chart_pinned_invalid_operator_namespace_is_caught(self) -> None:
-        # A pilot value must not stand in for DBAAS_OPERATOR_NAMESPACE when
-        # the chart's own values.yaml already pins a real (here, invalid)
-        # one -- rendering with a synthesized clean value regardless would
-        # make the expected-vs-rendered comparison compare a substitution
-        # against itself and never see the real, broken pinned value.
+        # Same guarantee as above for an invalid (not empty) pinned value --
+        # rendering with a synthesized clean value regardless would make the
+        # expected-vs-rendered comparison compare a substitution against
+        # itself and never see the real, broken pinned value.
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
@@ -726,17 +874,211 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(code, 4, report.get("__stderr"))
             self.assertTrue(any("empty mapping" in e for e in report.get("blocking", [])))
 
-    def test_standalone_helm_block_action_in_workload_blocks(self) -> None:
+    def test_unrelated_if_block_elsewhere_in_deployment_succeeds(self) -> None:
+        # Issue #776: a standalone Helm block action is no longer rejected
+        # outright -- one that sits nowhere near the volumes/mounts this
+        # writer edits must not block the run at all.
+        deployment = DEPLOYMENT.replace(
+            "          image: orders:latest\n",
+            "          image: orders:latest\n"
+            "          {{- if .Values.extra }}\n"
+            "          env:\n"
+            "            - name: EXTRA\n"
+            "              value: \"1\"\n"
+            "          {{- end }}\n",
+        )
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
-            deployment = DEPLOYMENT.replace(
-                "      volumes:\n",
-                "      {{- if .Values.extra }}\n      volumes:\n",
-            ).replace("            name: orders-config\n", "            name: orders-config\n      {{- end }}\n")
+            repo = scaffold(tmp, deployment=deployment)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            patched = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            self.assertIn("{{- if .Values.extra }}", patched)
+            self.assertIn("{{- end }}", patched)
+            self.assertIn("mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials", patched)
+
+    def test_conditional_volume_entry_alongside_an_unconditional_new_insertion(self) -> None:
+        # The "volumes:" key itself is unconditional (always renders); one
+        # pre-existing item under it is conditionally included. The writer's
+        # own new item is appended after every existing item -- including the
+        # conditional one -- and stays unconditional itself, since it is
+        # positioned after the guard closes, not inside it.
+        deployment = DEPLOYMENT.replace(
+            "      volumes:\n        - name: config\n          configMap:\n            name: orders-config\n",
+            "      volumes:\n"
+            "        - name: config\n"
+            "          configMap:\n"
+            "            name: orders-config\n"
+            "        {{- if .Values.extra }}\n"
+            "        - name: extra\n"
+            "          configMap:\n"
+            "            name: extra-config\n"
+            "        {{- end }}\n",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, deployment=deployment)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            patched = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            self.assertIn("{{- if .Values.extra }}", patched)
+            self.assertIn("{{- end }}", patched)
+            # The new volume is the last entry, after the guard closes -- not
+            # spliced in between the conditional item and its own {{- end }}.
+            self.assertIn(
+                "{{- end }}\n        - name: orders-postgresql-service-default-secret", patched
+            )
+
+    def test_conditional_mount_entry_alongside_an_unconditional_new_insertion(self) -> None:
+        deployment = DEPLOYMENT.replace(
+            "          image: orders:latest\n"
+            "          # keep this comment exactly where it is\n",
+            "          image: orders:latest\n"
+            "          volumeMounts:\n"
+            "            - name: config\n"
+            "              mountPath: /etc/config\n"
+            "          {{- if .Values.extra }}\n"
+            "            - name: extra\n"
+            "              mountPath: /etc/extra\n"
+            "          {{- end }}\n"
+            "          # keep this comment exactly where it is\n",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, deployment=deployment)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            patched = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            self.assertIn(
+                "{{- end }}\n            - name: orders-postgresql-service-default-secret", patched
+            )
+
+    def test_unrelated_range_and_variable_assignment_elsewhere_do_not_block(self) -> None:
+        # A topology range and a "{{- $x := ... }}" assignment, unrelated to
+        # the volumes/mounts this writer edits, must not block the run.
+        deployment = DEPLOYMENT.replace(
+            "apiVersion: apps/v1\n",
+            "apiVersion: apps/v1\n"
+            "{{- $unused := \"noop\" }}\n",
+        ).replace(
+            "      volumes:\n        - name: config\n          configMap:\n            name: orders-config\n",
+            "      volumes:\n"
+            "        - name: config\n"
+            "          configMap:\n"
+            "            name: orders-config\n"
+            "      {{- range .Values.topologyVolumes }}\n"
+            "        - name: {{ .name }}\n"
+            "          configMap:\n"
+            "            name: {{ .configMap }}\n"
+            "      {{- end }}\n",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, deployment=deployment)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            patched = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
+            self.assertIn('{{- $unused := "noop" }}', patched)
+            self.assertIn("{{- range .Values.topologyVolumes }}", patched)
+            self.assertIn(
+                "mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials", patched
+            )
+
+    def test_repeated_apply_with_helm_constructs_is_unchanged(self) -> None:
+        deployment = DEPLOYMENT.replace(
+            "          image: orders:latest\n",
+            "          image: orders:latest\n"
+            "          {{- if .Values.extra }}\n"
+            "          env:\n"
+            "            - name: EXTRA\n"
+            "              value: \"1\"\n"
+            "          {{- end }}\n",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, deployment=deployment)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            first = (repo / "chart/templates/deployment.yaml").read_bytes()
+            code2, report2 = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code2, 0, report2.get("__stderr"))
+            self.assertEqual(report2["status"], "unchanged")
+            self.assertEqual((repo / "chart/templates/deployment.yaml").read_bytes(), first)
+
+    def test_source_lines_remain_byte_identical_outside_inserted_spans(self) -> None:
+        # Every original line -- Helm actions included -- must still appear,
+        # in order and byte-identical, as a subsequence of the patched output;
+        # only genuinely new lines may be interleaved between them.
+        deployment = DEPLOYMENT.replace(
+            "          image: orders:latest\n",
+            "          image: orders:latest\n"
+            "          {{- if .Values.extra }}\n"
+            "          env:\n"
+            "            - name: EXTRA\n"
+            "              value: \"1\"\n"
+            "          {{- end }}\n",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, deployment=deployment)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            patched_lines = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8").splitlines()
+            original_lines = deployment.splitlines()
+            position = 0
+            for original in original_lines:
+                try:
+                    position = patched_lines.index(original, position) + 1
+                except ValueError:
+                    self.fail(f"original line not found, in order, in patched output: {original!r}")
+
+    def test_range_generating_the_entire_target_container_list_blocks(self) -> None:
+        # No static container entry named "orders" exists at all -- every
+        # container comes from a range. Masking makes the file parse, but the
+        # target container genuinely cannot be found: an actionable error,
+        # not a silent no-op or a corrupted insertion.
+        deployment = (
+            "apiVersion: apps/v1\n"
+            "kind: Deployment\n"
+            "metadata:\n"
+            "  name: orders\n"
+            "  namespace: '{{ .Values.NAMESPACE }}'\n"
+            "spec:\n"
+            "  template:\n"
+            "    spec:\n"
+            "      containers:\n"
+            "      {{- range .Values.containers }}\n"
+            "        - name: {{ .name }}\n"
+            "          image: {{ .image }}\n"
+            "      {{- end }}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
             repo = scaffold(tmp, deployment=deployment)
             code, report = run_migration(repo, plan(repo), "apply", tmp)
             self.assertEqual(code, 4, report.get("__stderr"))
-            self.assertTrue(any("block action" in e for e in report.get("blocking", [])))
+            self.assertTrue(any("orders" in e and "not found" in e for e in report.get("blocking", [])))
+
+    def test_target_list_entirely_wrapped_in_a_conditional_blocks(self) -> None:
+        # The whole "volumes:" key -- not merely one item under it -- lives
+        # inside a conditional with no static (always-rendering) insertion
+        # point: real Helm strips "volumes:" (and anything spliced after the
+        # masked-transparent {{- end }}) whenever .Values.extra is falsy,
+        # leaving the container's volumeMount with nothing to consume. This
+        # is caught downstream by the real helm-render/validate-rendered
+        # pass, not silently accepted -- never a "changed"/"unchanged" status.
+        deployment = DEPLOYMENT.replace(
+            "      volumes:\n",
+            "      {{- if .Values.extra }}\n      volumes:\n",
+        ).replace("            name: orders-config\n", "            name: orders-config\n      {{- end }}\n")
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, deployment=deployment)
+            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            self.assertEqual(code, 5, report.get("__stderr"))
+            self.assertEqual(report["status"], "blocked")
+            names = {entry["name"]: entry for entry in report["validation"]}
+            self.assertEqual(names["validate-rendered"]["status"], "failed")
 
     def test_mixed_line_ending_workload_blocks(self) -> None:
         # "\r\n" appears (so a blanket "uses_crlf" check would say CRLF) but most lines
@@ -893,15 +1235,42 @@ class HelmApplyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
+            # Two YAML documents: the first is spliced out by supersededDeclarations
+            # (documentIndex: 1), the second survives -- this is a content
+            # *modification* of an already-existing file (verify_superseded's
+            # changes.set_content path), not a delete, matching what the real
+            # commit() must do: mkstemp() a replacement in the file's own parent
+            # directory. Lives directly under "chart/", not "chart/templates/",
+            # and sorts after "templates" alphabetically ("t" < "z").
+            declaration_text = (
+                "kind: DatabaseDeclaration\n"
+                "declarations:\n"
+                "  - classifierConfig:\n"
+                "      classifier: {microserviceName: orders, scope: service}\n"
+                "    type: postgresql\n"
+                "---\n"
+                "apiVersion: v1\n"
+                "kind: ConfigMap\n"
+                "metadata:\n"
+                "  name: unrelated\n"
+            )
+            declaration_path = repo / "chart/zz-dbaas-declaration.yaml"
+            declaration_path.write_text(declaration_text, encoding="utf-8")
             the_plan = plan(repo)
-            values_before = (repo / "chart/values.yaml").read_bytes()
+            the_plan["roots"][0]["supersededDeclarations"] = [
+                {"path": "zz-dbaas-declaration.yaml", "documentIndex": 1}
+            ]
+            the_plan["roots"][0]["sourceHashes"]["zz-dbaas-declaration.yaml"] = sha256(declaration_path)
+
+            declaration_before = declaration_path.read_bytes()
             deployment_before = (repo / "chart/templates/deployment.yaml").read_bytes()
             output_before_exists = (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").exists()
             # sorted(changes.files) writes both chart/templates/* entries before
-            # chart/values.yaml (alphabetically "templates" < "values"), so making
-            # only "chart" itself (not "chart/templates") read-only lets the two
-            # templates/* writes succeed first and fails on values.yaml -- proving
-            # the already-applied templates/* files get rolled back.
+            # chart/zz-dbaas-declaration.yaml (alphabetically "templates" < "zz-..."),
+            # so making only "chart" itself (not "chart/templates") read-only lets
+            # the two templates/* writes succeed first and fails replacing the
+            # declaration -- proving the already-applied templates/* files get
+            # rolled back.
             chart_dir = repo / "chart"
             mode = chart_dir.stat().st_mode
             try:
@@ -910,7 +1279,7 @@ class HelmApplyTest(unittest.TestCase):
             finally:
                 os.chmod(chart_dir, mode)
             self.assertEqual(code, 4, report.get("__stderr"))
-            self.assertEqual((repo / "chart/values.yaml").read_bytes(), values_before)
+            self.assertEqual(declaration_path.read_bytes(), declaration_before)
             self.assertEqual((repo / "chart/templates/deployment.yaml").read_bytes(), deployment_before)
             self.assertEqual((repo / "chart/templates/dbaas-mounted-secret-resources.yaml").exists(), output_before_exists)
 
@@ -1266,6 +1635,67 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(claim_doc["metadata"]["labels"]["app.kubernetes.io/name"], "Orders.API_v1")
 
 
+OPERATOR_NAMESPACE_FROM_API_DBAAS_ADDRESS = (
+    '{{ (index (splitList "." (first (splitList ":" '
+    '(last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}'
+)
+
+
+@unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
+class OperatorNamespaceFromApiDbaasAddressTest(unittest.TestCase):
+    """Issue #776 phase 5: render tests for the documented Helm expression that
+    derives operatorNamespace from a namespaced Kubernetes service address in
+    API_DBAAS_ADDRESS (see references/contracts.md)."""
+
+    def render(self, tmp: Path, api_dbaas_address: str) -> subprocess.CompletedProcess[str]:
+        chart = tmp / "probe-chart"
+        (chart / "templates").mkdir(parents=True)
+        (chart / "Chart.yaml").write_text("apiVersion: v2\nname: probe\nversion: 0.1.0\n", encoding="utf-8")
+        (chart / "templates" / "resource.yaml").write_text(
+            "apiVersion: dbaas.netcracker.com/v1\n"
+            "kind: InternalDatabase\n"
+            "metadata:\n"
+            "  name: probe\n"
+            "spec:\n"
+            f"  operatorNamespace: {OPERATOR_NAMESPACE_FROM_API_DBAAS_ADDRESS}\n",
+            encoding="utf-8",
+        )
+        values_file = tmp / "values.yaml"
+        values_file.write_text(
+            yaml.safe_dump({"API_DBAAS_ADDRESS": api_dbaas_address}), encoding="utf-8"
+        )
+        return subprocess.run(
+            ["helm", "template", "probe-release", str(chart), "--values", str(values_file)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_short_cluster_service_address_produces_second_dns_label(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proc = self.render(Path(directory), "http://dbaas-aggregator.dbaas:8080")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            resource = yaml.safe_load(proc.stdout)
+            self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas")
+
+    def test_longer_cluster_dns_name_produces_second_dns_label(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proc = self.render(
+                Path(directory), "http://dbaas-aggregator.dbaas-operator.svc.cluster.local:8080"
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            resource = yaml.safe_load(proc.stdout)
+            self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas-operator")
+
+    def test_empty_address_fails_to_render(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proc = self.render(Path(directory), "")
+            self.assertNotEqual(proc.returncode, 0)
+
+    def test_single_label_address_fails_to_render(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proc = self.render(Path(directory), "http://dbaas-aggregator:8080")
+            self.assertNotEqual(proc.returncode, 0)
+
+
 class PlainApplyTest(unittest.TestCase):
     def test_plain_namespace_less_workload_validates(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1449,6 +1879,52 @@ class LoadPlanTest(unittest.TestCase):
                 [sys.executable, str(RUNNER), "--help"], capture_output=True, text=True, check=False, env=env,
             )
             self.assertEqual(help_result.returncode, 0, help_result.stderr)
+
+
+class MaskForReadingTrailingCommentTest(unittest.TestCase):
+    """Issue #776: _mask_for_reading (the verification-only quoting mask)
+    must never capture a trailing YAML comment into the quoted value -- the
+    same defect found and fixed in the declaration writer's identical,
+    package-local _mask_for_value."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if str(SCRIPTS) not in sys.path:
+            sys.path.insert(0, str(SCRIPTS))
+        import apply_migration as am  # noqa: PLC0415
+
+        cls.am = am
+
+    @unittest.skipIf(yaml is None, "PyYAML is required")
+    def test_trailing_comment_after_unquoted_expression_is_not_captured(self) -> None:
+        text = "name: {{ .Values.SERVICE_NAME }} # trailing comment\n"
+        masked = self.am._mask_for_reading(text)
+        loaded = yaml.safe_load(masked)
+        self.assertEqual(loaded["name"], "{{ .Values.SERVICE_NAME }}")
+
+    def test_split_trailing_comment_leaves_expression_only_value(self) -> None:
+        value, comment = self.am._split_trailing_comment("{{ .Values.SERVICE_NAME }} # trailing comment")
+        self.assertEqual(value, "{{ .Values.SERVICE_NAME }}")
+        self.assertEqual(comment, "# trailing comment")
+
+    def test_split_trailing_comment_ignores_hash_with_no_preceding_whitespace(self) -> None:
+        # A "#" glued directly onto the expression's own closing "}}" (no
+        # whitespace before it) is not a YAML comment marker at all here.
+        value, comment = self.am._split_trailing_comment("{{ .Values.SERVICE_NAME }}#not-a-comment")
+        self.assertEqual(value, "{{ .Values.SERVICE_NAME }}#not-a-comment")
+        self.assertEqual(comment, "")
+
+    @unittest.skipIf(yaml is None, "PyYAML is required")
+    def test_quoted_expression_preserves_literal_hash_and_external_comment(self) -> None:
+        cases = {
+            'name: "{{ .Values.SERVICE_NAME }} # literal"\n': "{{ .Values.SERVICE_NAME }} # literal",
+            "name: '{{ .Values.SERVICE_NAME }} # literal'\n": "{{ .Values.SERVICE_NAME }} # literal",
+            'name: "{{ .Values.SERVICE_NAME }}" # trailing comment\n': "{{ .Values.SERVICE_NAME }}",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                masked = self.am._mask_for_reading(text)
+                self.assertEqual(yaml.safe_load(masked)["name"], expected)
 
 
 if __name__ == "__main__":
