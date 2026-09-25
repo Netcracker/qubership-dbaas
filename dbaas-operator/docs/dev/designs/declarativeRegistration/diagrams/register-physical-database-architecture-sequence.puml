@@ -1,0 +1,67 @@
+@startuml
+title Physical database registration
+
+participant "DBaaS Adapter" as Adapter
+participant "DBaaS Aggregator" as Aggregator
+database "DBaaS Registry" as Registry
+
+Adapter -> Aggregator: register physical database\nPUT /api/v3/dbaas/{type}/physical_databases/{phydbid}\n(adapter address, credentials, supported roles, features)
+note right of Aggregator
+  A malformed adapter address is rejected
+  with 400 Bad Request (CORE-DBAAS-4045).
+end note
+
+opt adapter reports status "run"
+  Aggregator -> Adapter: check which physical database the adapter serves\nGET {adapterAddress}/api/v2/dbaas/adapter/{type}/physical_database
+  Adapter --> Aggregator: served physical database id, or error
+  alt adapter answers with a non-200 status
+    Aggregator --> Adapter: 502 Bad Gateway (CORE-DBAAS-4017): adapter is unavailable
+  else adapter answers with another physical database id
+    Aggregator --> Adapter: 409 Conflict (CORE-DBAAS-4011): physical database id mismatch
+  end
+end
+
+Aggregator -> Registry: find physical database by {phydbid}
+Registry --> Aggregator: physical database registered with {phydbid}, if any
+Aggregator -> Registry: find physical database by adapter address
+Registry --> Aggregator: physical database registered with the adapter address, if any
+
+alt physical database is registered
+  alt adapter address or {phydbid} does not match the registration
+    note right of Aggregator
+      {phydbid} is registered with another adapter address,
+      or adapter address is registered with another {phydbid}.
+      Changing only the address protocol (HTTP or HTTPS) is allowed.
+    end note
+    Aggregator --> Adapter: 409 Conflict (CORE-DBAAS-4011): registration conflicts with an existing one
+
+  else adapter address and {phydbid} match the registration
+    alt supported roles changed, features.multiusers is true, some logical databases lack users for the new roles
+      alt adapter status is "running" and API version is v2
+        Aggregator -> Registry: save role migration plan,\nor resume the plan in progress
+        Aggregator --> Adapter: 202 Accepted: portion of logical databases\nthat need users for new roles
+        ref over Adapter, Registry: Additional roles migration
+      else adapter status is not "running", or API version is not v2
+        Aggregator --> Adapter: 400 Bad Request (no error code): adapter cannot run role migration
+      end
+
+    else supported roles are unchanged, features.multiusers is false,\nor no logical databases need users for the new roles
+      opt registration data changed
+        Aggregator -> Registry: update physical database\n(address, credentials, roles, features, labels)
+      end
+      Aggregator --> Adapter: 200 OK: registration is up to date
+    end
+  end
+
+else physical database is not registered
+  Aggregator -> Registry: save new physical database\n(the first one of its type becomes the default)
+  Aggregator --> Adapter: 201 Created: physical database registered
+end
+
+legend bottom right
+  Solid arrow: synchronous request. Dashed arrow: response.
+  Every step runs inside the adapter's registration request.
+  Registry write acknowledgements are omitted.
+endlegend
+@enduml
+

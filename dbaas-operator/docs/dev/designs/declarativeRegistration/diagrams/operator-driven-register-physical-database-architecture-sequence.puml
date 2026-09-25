@@ -1,0 +1,85 @@
+@startuml
+title Operator-driven physical database registration
+
+participant "Kubernetes API" as K8s
+participant "DBaaS Operator" as Operator
+participant "DBaaS Adapter" as Adapter
+participant "DBaaS Aggregator" as Aggregator
+database "DBaaS Registry" as Registry
+
+K8s -> Operator: reconcile PhysicalDatabaseRegistration\n(created, spec changed, refresh annotation, or periodic re-sync)
+
+opt spec.operatorNamespace belongs to another operator instance
+  Operator --> K8s: skip the resource, write no status
+end
+
+opt another PhysicalDatabaseRegistration claims the same\nphysicalDatabaseId or the same adapter.address
+  Operator -> K8s: phase InvalidConfiguration, Ready=False, Stalled=True (RegistrationConflict);\nstop the reconcile
+  note right of Operator
+    The older claimant wins, by creationTimestamp and then by UID.
+  end note
+end
+
+Operator -> K8s: read the adapter credentials Secret\n(spec.adapter.credentialsSecretRef)
+K8s --> Operator: user name and password, or error
+opt Secret is absent, a key is missing or empty, or RBAC denies the read
+  Operator -> K8s: phase BackingOff, Ready=False, Stalled=False (SecretError);\nstop the reconcile
+end
+
+Operator -> Adapter: check which physical database the adapter serves\nGET {adapter.address}/api/v2/dbaas/adapter/{type}/physical_database
+Adapter --> Operator: served physical database id, or error
+note right of Operator
+  The operator sends status "running", so the aggregator skips
+  its own handshake. This probe takes the place of it.
+end note
+
+opt probe did not answer 200 with the expected physical database id
+  alt adapter is unreachable, or answers a status other than 200, 401 or 403
+    Operator -> K8s: phase BackingOff, Ready=False, Stalled=False (AdapterUnavailable);\nstop the reconcile
+  else adapter answers 401 or 403
+    Operator -> K8s: phase BackingOff, Ready=False, Stalled=False (AdapterUnauthorized);\nstop the reconcile
+  else adapter answers with another physical database id
+    Operator -> K8s: phase InvalidConfiguration, Ready=False, Stalled=True (AdapterIdentityMismatch);\nstop the reconcile
+  end
+end
+
+Operator -> Aggregator: register physical database\nPUT /api/v3/dbaas/{type}/physical_databases/{phydbid}\n(adapter address, credentials, supported roles, features,\nstatus "running", API version v2)
+ref over Aggregator, Registry: Physical database registration
+
+alt 201 Created, or 200 OK
+  Aggregator --> Operator: physical database registered, or already up to date
+  Operator -> K8s: phase Succeeded, Ready=True, Stalled=False (AdapterRegistered)
+
+else 202 Accepted
+  Aggregator --> Operator: instruction id and the first portion of logical databases\nthat need users for the new roles
+  Operator -> K8s: phase WaitingForDependency, Ready=False, Stalled=False (RoleMigrationStarted);\nstore the instruction id and the migration generation
+  ref over Operator, Registry: Operator-driven additional roles migration
+  note right of Operator
+    Nothing is written to the physical database on this path.
+    The registration request stays parked in the migration plan
+    until the migration completes.
+  end note
+
+else 400 Bad Request, 403 Forbidden, or 409 Conflict
+  Aggregator --> Operator: the request conflicts with a registration, or is malformed
+  Operator -> K8s: phase InvalidConfiguration, Ready=False, Stalled=True (AggregatorRejected)
+
+else 401 Unauthorized
+  Aggregator --> Operator: operator credentials are rejected
+  Operator -> K8s: phase BackingOff, Ready=False, Stalled=False (Unauthorized)
+
+else 500 Internal Server Error, network failure, or timeout
+  Aggregator --> Operator: the request failed
+  Operator -> K8s: phase BackingOff, Ready=False, Stalled=False (AggregatorError)
+end
+
+Operator -> K8s: requeue after the re-sync interval
+
+legend bottom right
+  Solid arrow: synchronous request. Dashed arrow: response.
+  Every step runs inside one reconcile of the custom resource.
+  Every status line reads: phase, conditions, (Reason).
+  The aggregator's own branch logic is drawn in Physical database registration.
+endlegend
+@enduml
+
