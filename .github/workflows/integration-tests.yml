@@ -118,7 +118,7 @@ jobs:
             name: test-minio
             namespace: minio
           spec:
-            image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+            image: ghcr.io/netcracker/qubership-minio:RELEASE.2026-04-03-T08-21-58Z
             buckets:
               - name: dbaas-backup-restore-test
             configuration:
