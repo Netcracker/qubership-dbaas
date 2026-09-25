@@ -1,7 +1,3 @@
-# go-test-app-service values for the transition test. Routed to DBaaS through API_DBAAS_ADDRESS only
-# — the test only exercises /postgres/ping, which resolves through the service-scoped datasource, so
-# INTERNAL_DATABASES is restricted to that one entry and SECRET_CLAIMS stays empty (MOUNT_SECRETS is
-# false, so no Secret would be mounted from a claim anyway).
 IMAGE_REPOSITORY: {{ requiredEnv "GO_IMAGE_REPOSITORY" | quote }}
 TAG: {{ requiredEnv "GO_IMAGE_TAG" | quote }}
 IMAGE_PULL_POLICY: Never

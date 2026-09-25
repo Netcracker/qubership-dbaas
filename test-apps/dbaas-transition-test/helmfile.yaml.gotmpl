@@ -1,31 +1,9 @@
-# Provisions the DBaaS aggregator upgrade/downgrade availability test's environment as Helm releases,
-# values, and dependencies — not as shell hooks or a reimplementation of bootstrap/Makefile. KUTTL no
-# longer owns any of this: it starts from an already-provisioned environment (see
-# cases/transition/00-environment-ready) and contains only the test itself — the preflight check, the
-# continuous probe, the transition, and evaluation.
-#
-# Two invocations of this same file cover the whole test:
-#   - The workflow runs a full `helmfile sync` once, with AGGREGATOR_CHART_DIR=$INITIAL_DIR and
-#     AGGREGATOR_TAG=$INITIAL_TAG, before KUTTL starts at all.
-#   - cases/transition/04-transition runs `helmfile -l component=aggregator sync` (no
-#     --include-needs), with AGGREGATOR_CHART_DIR=$TARGET_DIR and AGGREGATOR_TAG=$TARGET_TAG, to
-#     perform the transition itself — the only release that changes during measurement.
-#
-# Dependency order (see `needs:` below, verified with `helmfile show-dag`):
-#
-#   transition-prerequisites ─┐
-#   patroni-core ─────────────┼─> dbaas-aggregator
-#                             └─> dbaas-operator
-#   patroni-core + aggregator ──> patroni-services
-#   operator + patroni-services ─> go-test-app-service
 helmDefaults:
   wait: true
-  # Up to 10 minutes for the slowest release (aggregator/operator pod readiness). Releases with
-  # operator-managed custom resources use explicit readiness checks below.
+  # Operator-managed resources use explicit waits below.
   timeout: 600
   createNamespace: true
-  # No --atomic and no cleanup-on-fail: a failed release must stay up, not roll back or get deleted —
-  # its state is the diagnostics evidence the workflow uploads on failure.
+  # Preserve failed releases for diagnostics.
   atomic: false
   cleanupOnFail: false
 
@@ -39,8 +17,7 @@ releases:
   - name: patroni-core
     namespace: {{ requiredEnv "PG_NAMESPACE" }}
     chart: {{ requiredEnv "REPOS_DIR" }}/pgskipper-operator/operator/charts/patroni-core
-    # Helm 4 cannot determine when the operator-managed PatroniCore resource is ready. Wait for the
-    # resulting primary pod instead, which is the readiness boundary required by dependent releases.
+    # Helm cannot wait for PatroniCore, so wait for the primary pod.
     wait: false
     values:
       - testdata/values/patroni-core.yaml.gotmpl
@@ -60,7 +37,6 @@ releases:
     labels:
       component: patroni-core
 
-  # The only release the transition step (04-transition) targets by itself, via -l component=aggregator.
   - name: dbaas-aggregator
     namespace: {{ requiredEnv "DBAAS_NAMESPACE" }}
     chart: {{ requiredEnv "AGGREGATOR_CHART_DIR" }}/helm-templates/dbaas-aggregator
@@ -86,8 +62,7 @@ releases:
   - name: patroni-services
     namespace: {{ requiredEnv "PG_NAMESPACE" }}
     chart: {{ requiredEnv "REPOS_DIR" }}/pgskipper-operator/operator/charts/patroni-services
-    # Helm 4 cannot determine when the operator-managed PatroniServices resource is ready. Wait for
-    # the resulting adapter Deployment instead; database provisioning below verifies registration.
+    # Helm cannot wait for PatroniServices, so wait for the adapter Deployment.
     wait: false
     values:
       - testdata/values/patroni-services.yaml.gotmpl
@@ -111,8 +86,7 @@ releases:
   - name: go-test-app-service
     namespace: {{ requiredEnv "DBAAS_NAMESPACE" }}
     chart: {{ requiredEnv "HARNESS_DIR" }}/test-apps/go-test-app-service/helm-templates/go-test-app-service
-    # The chart includes an operator-managed InternalDatabase resource, so use explicit readiness
-    # checks for both the service and its database instead of Helm's generic resource wait.
+    # Helm cannot wait for InternalDatabase, so wait for it explicitly.
     wait: false
     values:
       - testdata/values/sample-service.yaml.gotmpl

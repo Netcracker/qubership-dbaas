@@ -1,14 +1,8 @@
-# Pre-transition prerequisite: both aggregator pods and the sample-service path must be healthy and
-# stable before the measured baseline starts. The initial release can report a cached PROBLEM
-# status briefly after startup — checking this before probeStart classifies that as a setup failure
-# instead of transition downtime.
-# KUTTL runs commands from cases/transition, so manifests is two levels above this working directory.
+# Run preflight before the baseline so startup health failures are not counted as transition downtime.
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
-  # Exactly two Ready, non-terminating aggregator pods (excludes a pod mid-termination during a
-  # rolling update). Records name/IP/UID/restart-count for both the Job below and the post-preflight
-  # stability comparison.
+  # Select two ready, non-terminating aggregator pods for preflight.
   - script: |
       kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
         | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' \
@@ -28,9 +22,7 @@ commands:
         exit 1
       fi
     timeout: 250
-  # Both pods must still be the same pods, with the same restart count, as before the preflight
-  # check ran — a container that crashed and restarted in place is a stability failure, not just a
-  # changed pod identity.
+  # Reject pod replacement or restart during preflight.
   - script: |
       kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
         | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' \
