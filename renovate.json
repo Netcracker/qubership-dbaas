@@ -1,9 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "assignAutomerge": true,
+  "assignAutomerge": false,
   "assigneesFromCodeOwners": true,
   "reviewersFromCodeOwners": true,
   "minimumReleaseAge": null,
+  "automerge": false,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "ignoreTests": false,
   "extends": [
     "github>Netcracker/qubership-core-infra:renovate-core-config",
     ":semanticCommitTypeAll(chore)"
@@ -27,6 +31,26 @@
       "groupName": "quarkus",
       "separateMajorMinor": true,
       "separateMinorPatch": true
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["type:major"],
+      "automerge": false
+    },
+    {
+      "matchUpdateTypes": ["minor"],
+      "addLabels": ["type:minor"],
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": ["patch"],
+      "addLabels": ["type:patch"],
+      "automerge": true
+    },
+    {
+      "matchPackageNames": ["/quarkus/i"],
+      "addLabels": ["group:quarkus"],
+      "automerge": false
     }
   ]
 }
