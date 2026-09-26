@@ -1,0 +1,16 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+# Covers two 180-second stability windows plus the database creation request.
+timeout: 420
+resourceRefs:
+  - apiVersion: batch/v1
+    kind: Job
+    namespace: dbaas
+    name: dbaas-fixture-preflight
+    ref: job
+collectors:
+  - type: pod
+    selector: app.kubernetes.io/name=dbaas-fixture-preflight
+    namespace: dbaas
+assertAll:
+  - celExpr: "has(job.status.succeeded) && job.status.succeeded == 1"

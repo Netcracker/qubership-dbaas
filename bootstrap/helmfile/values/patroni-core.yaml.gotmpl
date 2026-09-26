@@ -1,4 +1,4 @@
-# Disable fixture integration tests because they restart Patroni during availability checks.
+# Chart tests restart Patroni, so they are disabled.
 postgresPassword: {{ requiredEnv "POSTGRES_PASSWORD" | quote }}
 
 patroni:

@@ -1,0 +1,87 @@
+{{- $dbaasNamespace := env "DBAAS_NAMESPACE" | default "dbaas" }}
+{{- $pgNamespace := env "PG_NAMESPACE" | default "postgres" }}
+
+helmDefaults:
+  wait: true
+  # Operator-managed resources use explicit waits below.
+  timeout: 600
+  createNamespace: true
+  # Preserve failed releases for diagnostics.
+  atomic: false
+  cleanupOnFail: false
+
+releases:
+  - name: dbaas-prerequisites
+    namespace: {{ $dbaasNamespace }}
+    chart: ./charts/dbaas-prerequisites
+    labels:
+      component: prerequisites
+
+  - name: patroni-core
+    namespace: {{ $pgNamespace }}
+    chart: {{ requiredEnv "PGSKIPPER_DIR" }}/operator/charts/patroni-core
+    # Helm cannot wait for PatroniCore, so wait for the primary pod.
+    wait: false
+    values:
+      - values/patroni-core.yaml.gotmpl
+    hooks:
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "wait"
+          - "--namespace={{ $pgNamespace }}"
+          - "pod"
+          - "--selector=app=patroni"
+          - "--for=create"
+          - "--for=condition=Ready"
+          - "--for=jsonpath={.metadata.labels.pgtype}=primary"
+          - "--timeout=600s"
+    labels:
+      component: patroni-core
+
+  - name: dbaas-aggregator
+    namespace: {{ $dbaasNamespace }}
+    chart: {{ requiredEnv "AGGREGATOR_CHART_DIR" }}/helm-templates/dbaas-aggregator
+    values:
+      - values/dbaas.yaml.gotmpl
+    needs:
+      - {{ $dbaasNamespace }}/dbaas-prerequisites
+      - {{ $pgNamespace }}/patroni-core
+    labels:
+      component: aggregator
+
+  - name: dbaas-operator
+    namespace: {{ $dbaasNamespace }}
+    chart: {{ requiredEnv "OPERATOR_CHART_DIR" }}/dbaas-operator/helm-templates/dbaas-operator
+    values:
+      - values/operator.yaml.gotmpl
+      - {{ requiredEnv "OPERATOR_CHART_DIR" }}/dbaas-operator/helm-templates/dbaas-operator/resource-profiles/dev.yaml
+    needs:
+      - {{ $pgNamespace }}/patroni-core
+    labels:
+      component: operator
+
+  - name: patroni-services
+    namespace: {{ $pgNamespace }}
+    chart: {{ requiredEnv "PGSKIPPER_DIR" }}/operator/charts/patroni-services
+    # Helm cannot wait for PatroniServices, so wait for the adapter Deployment.
+    wait: false
+    values:
+      - values/patroni-services.yaml.gotmpl
+    needs:
+      - {{ $pgNamespace }}/patroni-core
+      - {{ $dbaasNamespace }}/dbaas-aggregator
+    hooks:
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "wait"
+          - "--namespace={{ $pgNamespace }}"
+          - "deployment/dbaas-postgres-adapter"
+          - "--for=create"
+          - "--for=condition=Available"
+          - "--timeout=600s"
+    labels:
+      component: patroni-services

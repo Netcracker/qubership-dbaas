@@ -88,21 +88,21 @@ func TestEvaluate_HealthProblemFails(t *testing.T) {
 	assertReasonContains(t, result, "aggregator-health")
 }
 
-func TestEvaluate_FailedPostgresPingFails(t *testing.T) {
+func TestEvaluate_FailedDatabaseGetFails(t *testing.T) {
 	records := cleanRun()
 	records = append(records, Record{
 		Timestamp: evalTransitionStart.Add(2 * time.Second).Format(TimestampLayout),
-		Probe:     SamplePostgresPing,
+		Probe:     AggregatorDatabaseGet,
 		Success:   false,
-		HTTPCode:  200,
-		Error:     "unexpected ping payload status=ok result=0",
+		HTTPCode:  404,
+		Error:     "unexpected status 404",
 	})
 
 	result := Evaluate(records, baseParams())
 	if result.Passed() {
-		t.Fatalf("expected a failed ping sample to fail the run")
+		t.Fatalf("expected a failed database-get sample to fail the run")
 	}
-	assertReasonContains(t, result, "sample-postgres-ping")
+	assertReasonContains(t, result, "aggregator-database-get")
 }
 
 func TestEvaluate_MissingProbeKindFails(t *testing.T) {
@@ -110,10 +110,10 @@ func TestEvaluate_MissingProbeKindFails(t *testing.T) {
 
 	result := Evaluate(records, baseParams())
 	if result.Passed() {
-		t.Fatalf("expected a run missing sample-postgres-ping entirely to fail")
+		t.Fatalf("expected a run missing aggregator-database-get entirely to fail")
 	}
-	if len(result.MissingProbes) != 1 || result.MissingProbes[0] != SamplePostgresPing {
-		t.Fatalf("expected sample-postgres-ping to be reported missing, got %v", result.MissingProbes)
+	if len(result.MissingProbes) != 1 || result.MissingProbes[0] != AggregatorDatabaseGet {
+		t.Fatalf("expected aggregator-database-get to be reported missing, got %v", result.MissingProbes)
 	}
 }
 
@@ -271,7 +271,7 @@ func TestResult_Summary_FailReportsEveryReason(t *testing.T) {
 	if !strings.HasPrefix(summary, "FAIL:") {
 		t.Fatalf("expected a FAIL summary, got: %s", summary)
 	}
-	if !strings.Contains(summary, SamplePostgresPing) {
+	if !strings.Contains(summary, AggregatorDatabaseGet) {
 		t.Fatalf("expected the summary to name the missing probe kind, got: %s", summary)
 	}
 }

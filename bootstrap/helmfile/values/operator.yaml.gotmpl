@@ -2,9 +2,9 @@ NODE_SELECTOR_DBAAS_KEY: {{ requiredEnv "NODE_SELECTOR_DBAAS_KEY" | quote }}
 REGION_DBAAS: {{ requiredEnv "REGION_DBAAS" | quote }}
 
 IMAGE_REPOSITORY: ghcr.io/netcracker/qubership-dbaas-operator
-TAG: {{ requiredEnv "FIXTURE_TAG" | quote }}
+TAG: {{ requiredEnv "OPERATOR_TAG" | quote }}
 
-NAMESPACE: {{ requiredEnv "DBAAS_NAMESPACE" | quote }}
+NAMESPACE: {{ env "DBAAS_NAMESPACE" | default "dbaas" | quote }}
 
 restrictedEnvironment: false
 

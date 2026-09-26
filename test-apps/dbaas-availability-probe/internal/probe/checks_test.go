@@ -279,50 +279,6 @@ func TestLoopContinuesAfterFailure(t *testing.T) {
 	}
 }
 
-func TestCheckSamplePing_UnexpectedPayloadFails(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","result":0}`))
-	}))
-	defer srv.Close()
-
-	var buf strings.Builder
-	var mu sync.Mutex
-	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, SamplePostgresPing, CheckSamplePing(client, srv.URL))
-
-	if res.Success {
-		t.Fatalf("expected failure when result != 1")
-	}
-
-	results := decodeResults(t, &buf)
-	if len(results) != 1 || results[0].Probe != SamplePostgresPing {
-		t.Fatalf("expected exactly one sample-postgres-ping result line, got %v", results)
-	}
-}
-
-func TestCheckSamplePing_ExtraResponseFieldsAreIgnored(t *testing.T) {
-	// /postgres/ping also returns "url", "username", and "role" — none of that should ever
-	// surface, and it must not break decoding of the two fields this probe actually checks.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","url":"jdbc:postgresql://host/db","username":"app","role":"master","result":1}`))
-	}))
-	defer srv.Close()
-
-	var buf strings.Builder
-	var mu sync.Mutex
-	client := &http.Client{Timeout: time.Second}
-	res := runProbe(context.Background(), &buf, &mu, SamplePostgresPing, CheckSamplePing(client, srv.URL))
-
-	if !res.Success {
-		t.Fatalf("expected success, got error=%q", res.Error)
-	}
-	if strings.Contains(buf.String(), "jdbc:postgresql") {
-		t.Fatalf("probe output must never contain the raw ping response body, got: %s", buf.String())
-	}
-}
-
 // --- RunPreflight (pre-transition prerequisite) ---
 
 func healthyPodServer(t *testing.T) *httptest.Server {
@@ -402,10 +358,7 @@ func TestRunPreflight_ResetsConsecutiveCountOnFailure(t *testing.T) {
 	}
 }
 
-func TestRunPreflight_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
-	// A pod pinned by IP that stops answering — because it was replaced — must fail the same way
-	// any other unreachable pod does; there is no separate "pod changed" code path to test
-	// independently.
+func TestRunPreflight_UnreachableTargetFails(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("reserve a local port: %v", err)
@@ -418,7 +371,7 @@ func TestRunPreflight_UnreachablePodFailsLikeAReplacedPod(t *testing.T) {
 
 	waitErr := RunPreflight(context.Background(), targets, 50*time.Millisecond, time.Millisecond, 3, 20*time.Millisecond)
 	if waitErr == nil {
-		t.Fatalf("expected an error when the pinned pod is unreachable")
+		t.Fatalf("expected an error when the target is unreachable")
 	}
 	if !strings.Contains(waitErr.Error(), "pod-gone") {
 		t.Fatalf("expected the error to name the unreachable pod, got: %v", waitErr)

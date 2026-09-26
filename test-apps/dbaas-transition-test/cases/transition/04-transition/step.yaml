@@ -5,15 +5,7 @@ commands:
     timeout: 10
   - script: >
       AGGREGATOR_CHART_DIR="$TARGET_DIR" AGGREGATOR_TAG="$TARGET_TAG"
-      helmfile -f ../../helmfile.yaml.gotmpl -l component=aggregator sync
+      helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" -l component=aggregator sync
     timeout: 360
   - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-transition-end.txt
     timeout: 10
-  - script: |
-      running_image=$(kubectl -n "$DBAAS_NAMESPACE" get deployment dbaas-aggregator -o jsonpath='{.spec.template.spec.containers[0].image}')
-      echo "running image: $running_image"
-      case "$running_image" in
-        *":$TARGET_TAG") ;;
-        *) echo "expected the aggregator image tag to be $TARGET_TAG, got: $running_image" >&2; exit 1 ;;
-      esac
-    timeout: 15

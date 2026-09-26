@@ -1,4 +1,0 @@
-apiVersion: v2
-name: transition-prerequisites
-description: Test-only prerequisites for the DBaaS aggregator transition availability test.
-version: 0.0.1

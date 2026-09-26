@@ -40,26 +40,26 @@ jobs:
     env:
       KIND_CLUSTER: kind
       HARNESS_DIR: ${{ github.workspace }}/harness
-      REPOS_DIR: ${{ github.workspace }}/repos
       INITIAL_DIR: ${{ github.workspace }}/repos/qubership-dbaas-initial
       TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
-      FIXTURE_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
+      OPERATOR_CHART_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
+      PGSKIPPER_DIR: ${{ github.workspace }}/repos/pgskipper-operator
       PG_NAMESPACE: postgres
       DBAAS_NAMESPACE: dbaas
       DBAAS_SERVICE_NAME: dbaas-aggregator
       REGION_DBAAS: database
       NODE_SELECTOR_DBAAS_KEY: region
-      GO_IMAGE_REPOSITORY: go-test-app-service
-      GO_IMAGE_TAG: it
+      # A rolling update needs a second replica to stay available.
+      AGGREGATOR_REPLICAS: "2"
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
       # Release inputs omit the "v" prefix used by Git tags and images.
       INITIAL_TAG: v${{ inputs.initial-version }}
       TARGET_TAG: v${{ inputs.target-version }}
-      FIXTURE_TAG: v${{ inputs.fixture-version }}
+      OPERATOR_TAG: v${{ inputs.fixture-version }}
 
     steps:
-      - name: Checkout harness (current branch — the transition test module, sample-service chart/image)
+      - name: Checkout harness (Helmfile, probe, and KUTTL test)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: harness
@@ -85,7 +85,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Netcracker/qubership-dbaas
-          ref: ${{ env.FIXTURE_TAG }}
+          ref: ${{ env.OPERATOR_TAG }}
           path: repos/qubership-dbaas-fixture
           persist-credentials: false
 
@@ -137,15 +137,9 @@ jobs:
           echo "$RUNNER_TEMP/helmfile-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/helmfile-bin/helmfile" version
 
-      - name: Build go-test-app-service image from harness source and load into kind
-        run: |
-          docker build -t go-test-app-service:it harness/test-apps/go-test-app-service
-          kind load docker-image go-test-app-service:it --name "$KIND_CLUSTER"
-
       - name: Build dbaas-availability-probe image and load into kind
         run: |
-          docker build -f harness/test-apps/dbaas-transition-test/Dockerfile.probe \
-            -t dbaas-availability-probe:it harness/test-apps/dbaas-transition-test
+          docker build -t dbaas-availability-probe:it harness/test-apps/dbaas-availability-probe
           kind load docker-image dbaas-availability-probe:it --name "$KIND_CLUSTER"
 
       - name: Generate and mask test credentials
@@ -159,11 +153,10 @@ jobs:
           done
 
       - name: Provision transition environment
-        working-directory: harness/test-apps/dbaas-transition-test
         env:
           AGGREGATOR_CHART_DIR: ${{ env.INITIAL_DIR }}
           AGGREGATOR_TAG: ${{ env.INITIAL_TAG }}
-        run: helmfile sync
+        run: helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" sync
 
       - name: Run DBaaS transition availability test
         working-directory: harness/test-apps/dbaas-transition-test
@@ -171,49 +164,21 @@ jobs:
 
       - name: Collect diagnostics
         if: always()
+        env:
+          OUT_DIR: ${{ github.workspace }}/diagnostics
+          EXTRA_DEPLOYMENTS: dbaas-availability-probe:${{ env.DBAAS_NAMESPACE }}
+          AGGREGATOR_LOG_MODE: health-only
         run: |
           set -uo pipefail
-          OUT="$GITHUB_WORKSPACE/diagnostics"
-          mkdir -p "$OUT"
+          bash harness/.github/scripts/collect-dbaas-logs.sh || true
 
-          kubectl get pods,deployments,replicasets,endpoints -A -o wide > "$OUT/all-resources.txt" 2>&1 || true
-          kubectl -n "$DBAAS_NAMESPACE" get events --sort-by=.lastTimestamp > "$OUT/events-dbaas.txt" 2>&1 || true
-          kubectl -n "$PG_NAMESPACE" get events --sort-by=.lastTimestamp > "$OUT/events-postgres.txt" 2>&1 || true
-
-          helm -n "$DBAAS_NAMESPACE" status dbaas-aggregator > "$OUT/helm-status-dbaas-aggregator.txt" 2>&1 || true
-          helm -n "$DBAAS_NAMESPACE" history dbaas-aggregator > "$OUT/helm-history-dbaas-aggregator.txt" 2>&1 || true
+          helm -n "$DBAAS_NAMESPACE" status dbaas-aggregator > "$OUT_DIR/helm-status-dbaas-aggregator.txt" 2>&1 || true
+          helm -n "$DBAAS_NAMESPACE" history dbaas-aggregator > "$OUT_DIR/helm-history-dbaas-aggregator.txt" 2>&1 || true
           # Redact credentials before uploading Helm values.
           helm -n "$DBAAS_NAMESPACE" get values dbaas-aggregator -o yaml 2>/dev/null \
             | sed -E 's/^(.*(PASSWORD|CREDENTIALS)[A-Za-z_]*:).*/\1 "***REDACTED***"/' \
-            > "$OUT/helm-values-dbaas-aggregator.sanitized.yaml" || true
-
-          # Full aggregator logs can contain encrypted passwords, so capture only health warnings.
-          HEALTH_PATTERN='\[class=AdapterHealthCheck\] [A-Za-z0-9_-]+ [A-Za-z0-9_.:-]+ has problem\. Status: (PROBLEM|UNKNOWN|DOWN)$|\[class=AbstractDbaasAdapterRESTClient\] Failed to get health of adapter of type [A-Za-z0-9_-]+$|\[class=DbaasPostgresConnectHealthCheck\] Postgres connection is lost$'
-          for pod in $(kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o name 2>/dev/null); do
-            {
-              echo "--- ${pod#pod/} current ---"
-              kubectl -n "$DBAAS_NAMESPACE" logs "$pod" --tail=5000 2>/dev/null | grep -E "$HEALTH_PATTERN" || true
-              echo "--- ${pod#pod/} previous ---"
-              kubectl -n "$DBAAS_NAMESPACE" logs "$pod" --previous --tail=5000 2>/dev/null | grep -E "$HEALTH_PATTERN" || true
-            } >> "$OUT/dbaas-aggregator.health-evidence.txt"
-          done
-
-          for pair in "dbaas-operator:$DBAAS_NAMESPACE" "go-test-app-service:$DBAAS_NAMESPACE" \
-                      "dbaas-availability-probe:$DBAAS_NAMESPACE" "dbaas-postgres-adapter:$PG_NAMESPACE"; do
-            deploy="${pair%%:*}"; ns="${pair##*:}"
-            selector=$(kubectl get deploy "$deploy" -n "$ns" \
-              -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{printf "%s=%s\n" $k $v}}{{end}}' 2>/dev/null | paste -sd, -) \
-              || selector=""
-            [ -z "$selector" ] && continue
-            for pod in $(kubectl -n "$ns" get pods -l "$selector" -o name 2>/dev/null); do
-              name=${pod#pod/}
-              kubectl -n "$ns" logs "$pod" --tail=2000 > "$OUT/$name.log" 2>&1 || true
-              kubectl -n "$ns" logs "$pod" --previous --tail=2000 > "$OUT/$name.previous.log" 2>&1 || true
-            done
-          done
-
-          kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-preflight --all-containers=true > "$OUT/job-dbaas-fixture-preflight.log" 2>&1 || true
-          cp /tmp/dbaas-transition-*.txt /tmp/dbaas-transition-probe.jsonl "$OUT/" 2>/dev/null || true
+            > "$OUT_DIR/helm-values-dbaas-aggregator.sanitized.yaml" || true
+          cp /tmp/dbaas-transition-*.txt /tmp/dbaas-transition-probe.jsonl "$OUT_DIR/" 2>/dev/null || true
 
       - name: Upload diagnostics
         if: always()
