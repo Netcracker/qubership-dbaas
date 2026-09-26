@@ -38,7 +38,7 @@ jobs:
     if: ${{ github.event.inputs.direction == 'both' || github.event.inputs.direction == 'upgrade' }}
     permissions:
       contents: read
-    uses: ./.github/workflows/re-dbaas-transition.yml
+    uses: ./.github/workflows/dbaas-transition-worker.yml
     with:
       direction: upgrade
       initial-version: ${{ github.event.inputs.older-version }}
@@ -50,7 +50,7 @@ jobs:
     if: ${{ github.event.inputs.direction == 'both' || github.event.inputs.direction == 'downgrade' }}
     permissions:
       contents: read
-    uses: ./.github/workflows/re-dbaas-transition.yml
+    uses: ./.github/workflows/dbaas-transition-worker.yml
     with:
       direction: downgrade
       initial-version: ${{ github.event.inputs.newer-version }}
