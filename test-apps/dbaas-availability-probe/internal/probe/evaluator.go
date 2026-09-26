@@ -8,9 +8,7 @@ import (
 	"time"
 )
 
-// ParseRecords parses one JSON Record per non-empty line, as captured from the probe container's
-// stdout. A line that fails to parse is never silently dropped — it is returned in parseErrors so
-// Evaluate can surface it as a run failure instead of quietly under-counting samples.
+// ParseRecords returns valid JSONL records and reports each invalid line.
 func ParseRecords(logs []byte) (records []Record, parseErrors []string) {
 	for _, line := range strings.Split(string(logs), "\n") {
 		line = strings.TrimSpace(line)
@@ -31,9 +29,7 @@ func ParseRecords(logs []byte) (records []Record, parseErrors []string) {
 	return records, parseErrors
 }
 
-// EvalParams describes the measured run the evaluator judges: the four window boundaries, which
-// probe kinds must appear, the interval samples are expected at, the maximum tolerated gap between
-// samples, and whether the probe container itself ever restarted.
+// EvalParams defines the measured windows and availability limits.
 type EvalParams struct {
 	ProbeStart      time.Time
 	TransitionStart time.Time
@@ -46,17 +42,13 @@ type EvalParams struct {
 
 	ContainerRestarted bool
 
-	// MinSamplesPerWindow is the minimum recorded samples required per probe kind in the baseline
-	// and post windows (not the transition window, whose duration depends on how long the Helm
-	// upgrade actually took and so gets no fixed sample-count floor).
+	// MinSamplesPerWindow applies to the baseline and post-transition windows.
 	MinSamplesPerWindow int
 
-	// ParseErrors carries any log lines that failed to parse as a Record before reaching Evaluate
-	// (malformed JSON) — surfaced as a failure rather than silently dropped.
+	// ParseErrors contains log lines that could not be parsed as records.
 	ParseErrors []string
 }
 
-// windowCounts holds one probe kind's sample/failure counts within one window.
 type windowCounts struct {
 	total int
 	fail  int
@@ -86,15 +78,12 @@ type Result struct {
 	ParseErrors        []string
 }
 
-// Passed reports whether the run satisfies the availability contract: zero recorded failures,
-// every expected probe kind present with enough baseline/post samples, no gap exceeding the
-// configured limit, no probe container restart, and no unparseable log line.
+// Passed reports whether the run satisfies the availability contract.
 func (r Result) Passed() bool {
 	return len(r.FailureReasons()) == 0
 }
 
-// FailureReasons reports every detected problem, not just the first — so a failing run is
-// diagnosable from a single report instead of a bisection across re-runs.
+// FailureReasons reports every availability contract violation.
 func (r Result) FailureReasons() []string {
 	var reasons []string
 	if len(r.ParseErrors) > 0 {
@@ -124,11 +113,7 @@ func (r Result) FailureReasons() []string {
 	return reasons
 }
 
-// Evaluate applies the pass/fail rules to a captured run: strict zero-failure acceptance, a
-// bounded gap between samples and the measurement boundaries, and a minimum sample count in the
-// fixed-duration baseline and post-transition windows. The transition window gets no sample-count
-// floor — its duration is whatever the Helm upgrade actually took, and a fast rollout might not
-// contain a single sample at a one-second interval.
+// Evaluate applies the availability contract to the captured probe records.
 func Evaluate(records []Record, params EvalParams) Result {
 	result := Result{
 		ContainerRestarted: params.ContainerRestarted,
@@ -181,9 +166,7 @@ func summarize(kind string, recs []Record, params EvalParams) ProbeSummary {
 				s.Post.fail++
 			}
 		}
-		// Bounded to the full measured window: a sample recorded outside [probeStart,
-		// measurementEnd] while the logs are being collected is fixture activity,
-		// not part of what this evaluator measures, and must not distort the gap calculation.
+		// Ignore samples emitted before measurement starts or while logs are collected.
 		if !ts.Before(params.ProbeStart) && !ts.After(params.MeasurementEnd) {
 			timestamps = append(timestamps, ts)
 		}
@@ -193,9 +176,7 @@ func summarize(kind string, recs []Record, params EvalParams) ProbeSummary {
 	return s
 }
 
-// maxGap returns the largest interval between consecutive samples, including the boundary
-// intervals from probeStart to the first sample and from the last sample to measurementEnd — a
-// probe that starts late or stops early cannot pass.
+// maxGap includes the intervals between each measurement boundary and its nearest sample.
 func maxGap(timestamps []time.Time, probeStart, measurementEnd time.Time) time.Duration {
 	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i].Before(timestamps[j]) })
 	all := make([]time.Time, 0, len(timestamps)+2)
@@ -212,8 +193,7 @@ func maxGap(timestamps []time.Time, probeStart, measurementEnd time.Time) time.D
 	return max
 }
 
-// Summary renders a human-readable verdict: PASS with the per-probe sample counts, or FAIL with
-// every detected failure reason — the textual report the evaluate CLI mode prints.
+// Summary renders the availability verdict and probe counts.
 func (r Result) Summary() string {
 	if r.Passed() {
 		var lines []string

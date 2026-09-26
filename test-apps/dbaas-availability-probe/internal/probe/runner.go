@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// Probe kind names. These are the exact "probe" field values every Record carries, and must match
-// the evaluator's expected-kind list.
 const (
 	AggregatorReady       = "aggregator-ready"
 	AggregatorHealth      = "aggregator-health"
@@ -30,9 +28,7 @@ type ContinuousConfig struct {
 	RequestTimeout time.Duration
 }
 
-// RunContinuous schedules the three probe kinds on independent tickers and returns only when ctx
-// is done. A failed sample is recorded and probing continues (see runLoop) so the final log
-// captures the complete outage window instead of stopping at the first failure.
+// RunContinuous runs each probe independently until the context is canceled.
 func RunContinuous(ctx context.Context, out io.Writer, cfg ContinuousConfig) {
 	client := &http.Client{Timeout: cfg.RequestTimeout}
 	var mu sync.Mutex
@@ -54,10 +50,7 @@ func RunContinuous(ctx context.Context, out io.Writer, cfg ContinuousConfig) {
 	wg.Wait()
 }
 
-// runLoop fires fn once per tick until ctx is done. Each call gets its own bounded sub-context so
-// one hung request cannot delay the next tick indefinitely. A panic inside fn (there should never
-// be one, but a probe process going silent mid-transition is worse than a logged failure) is
-// recovered and recorded as a failed sample rather than crashing the whole probe.
+// runLoop records request timeouts and panics instead of stopping the probe process.
 func runLoop(ctx context.Context, out io.Writer, mu *sync.Mutex, name string, fn CheckFunc, interval, timeout time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -95,7 +88,6 @@ type PreflightTarget struct {
 	Check CheckFunc
 }
 
-// checkAllTargetsOnce runs each target's check and reports every failure from that poll.
 func checkAllTargetsOnce(ctx context.Context, targets []PreflightTarget, requestTimeout time.Duration) (bool, string) {
 	var failures []string
 	for _, target := range targets {
@@ -112,9 +104,7 @@ func checkAllTargetsOnce(ctx context.Context, targets []PreflightTarget, request
 	return false, strings.Join(failures, "; ")
 }
 
-// RunPreflight requires every target to pass for stableConsecutive consecutive polls, within
-// overallTimeout. It runs before the measured baseline starts, so a cached PROBLEM status from the
-// initial release is classified as a setup failure instead of transition downtime.
+// RunPreflight requires each target to pass for the configured number of consecutive polls.
 func RunPreflight(ctx context.Context, targets []PreflightTarget, requestTimeout, pollInterval time.Duration, stableConsecutive int, overallTimeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, overallTimeout)
 	defer cancel()

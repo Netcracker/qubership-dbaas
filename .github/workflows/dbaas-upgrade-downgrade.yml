@@ -4,20 +4,8 @@ run-name: >
   DBaaS aggregator ${{ github.event.inputs.direction }}
   ${{ github.event.inputs.older-version }} <-> ${{ github.event.inputs.newer-version }}
 
-# Proves the DBaaS aggregator stays available while its Helm release is upgraded or downgraded, with
-# PostgreSQL, the pgskipper adapter, and the dbaas-operator all held fixed. The operator is fixed at
-# the newer of the two versions for both directions (fixture-version below) — it already supports
-# both the initial and target aggregator's CR contract, so neither direction needs
-# operator-version-specific setup. Each direction runs in its own fresh Kind cluster via the reusable
-# worker workflow — see re-dbaas-transition.yml, which provisions the initial environment with
-# bootstrap/helmfile, then runs the KUTTL suite in test-apps/dbaas-transition-test while
-# test-apps/dbaas-availability-probe checks the aggregator every second. A full operator/CRD upgrade
-# is a separate, future test and is intentionally out of scope here.
-#
-# No concurrency block here deliberately: re-dbaas-transition.yml's own job-level concurrency group is
-# keyed by direction, so upgrade and downgrade run in parallel within one dispatch while repeated
-# dispatches of the same direction still serialize. A workflow-level group here, keyed only by ref,
-# would serialize the two directions against each other too and make that inner grouping pointless.
+# Each direction runs in a separate Kind cluster with the operator fixed at the newer version.
+# Job-level concurrency lets upgrade and downgrade run in parallel while serializing repeated runs.
 
 on:
   workflow_dispatch:
@@ -69,9 +57,7 @@ jobs:
       target-version: ${{ github.event.inputs.older-version }}
       fixture-version: ${{ github.event.inputs.newer-version }}
 
-  # Single stable check name for branch protection, independent of which direction(s) were selected.
-  # Succeeds only when every selected direction succeeded; a direction that was not selected (skipped)
-  # does not count against it.
+  # Keep one branch-protection check name for all direction selections.
   gate:
     name: DBaaS Upgrade/Downgrade Gate
     if: always()

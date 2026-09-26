@@ -1,6 +1,4 @@
-// Package probe implements the in-cluster availability checks the DBaaS transition test runs
-// against the aggregator, the continuous and preflight run loops around them, and the evaluator
-// that turns a captured run into a pass/fail verdict.
+// Package probe implements aggregator availability checks and result evaluation.
 package probe
 
 import (
@@ -15,13 +13,10 @@ import (
 	"time"
 )
 
-// TimestampLayout keeps probe timestamps in the same fixed-width format as the measurement
-// boundaries recorded by the test steps.
+// TimestampLayout is the fixed-width format used by probe records and measurement boundaries.
 const TimestampLayout = "2006-01-02T15:04:05.000000000Z07:00"
 
-// Record is the single JSON object each probe cycle writes to stdout — one line per probe kind
-// per cycle, so the evaluator can reconstruct the full timeline (baseline / transition / post)
-// from captured pod logs alone.
+// Record is one JSONL probe result.
 type Record struct {
 	Timestamp string `json:"timestamp"`
 	Probe     string `json:"probe"`
@@ -31,17 +26,9 @@ type Record struct {
 	Error     string `json:"error"`
 }
 
-// CheckFunc performs one probe attempt and reports the HTTP status observed (0 if no response was
-// received at all, e.g. a timeout or connection refusal) and a non-nil error on any failure. It
-// must never panic and must never include a raw response body in the returned error — only status
-// codes, decoded scalar fields, and Go's own network-error text, none of which can carry
-// credentials.
+// CheckFunc returns status 0 when no HTTP response is received.
 type CheckFunc func(ctx context.Context) (httpCode int, err error)
 
-// runProbe times fn, builds the result line, and writes it to out under mu. Any error from fn
-// (network failure, non-200 status, JSON decode failure, an unexpected decoded value) is recorded
-// as a failed probe — it never propagates and never stops the caller from scheduling the next
-// cycle.
 func runProbe(ctx context.Context, out io.Writer, mu *sync.Mutex, name string, fn CheckFunc) Record {
 	start := time.Now()
 	httpCode, err := fn(ctx)
@@ -62,7 +49,6 @@ func runProbe(ctx context.Context, out io.Writer, mu *sync.Mutex, name string, f
 func writeResult(out io.Writer, mu *sync.Mutex, res Record) {
 	line, err := json.Marshal(res)
 	if err != nil {
-		// Record always marshals; guard anyway rather than ever panicking the probe loop.
 		return
 	}
 	line = append(line, '\n')
@@ -78,8 +64,7 @@ func drainAndClose(resp *http.Response) {
 	_ = resp.Body.Close()
 }
 
-// CheckReady requires HTTP 200 from GET {aggregatorURL}/probes/ready. No body is decoded —
-// readiness carries no payload worth inspecting.
+// CheckReady requires HTTP 200 from the aggregator readiness endpoint.
 func CheckReady(client *http.Client, aggregatorURL string) CheckFunc {
 	url := aggregatorURL + "/probes/ready"
 	return func(ctx context.Context) (int, error) {
@@ -99,25 +84,16 @@ func CheckReady(client *http.Client, aggregatorURL string) CheckFunc {
 	}
 }
 
-// healthComponent is the subset of the aggregator's per-component health entry this probe ever
-// decodes. The real entry also carries a "details" field (arbitrary key/value diagnostic data,
-// which for the adapter-access indicator can include connection-related information) — that field
-// has no matching tag here, so encoding/json drops it during Decode and this process never holds
-// it in any variable that could reach a log line.
+// healthComponent omits details so connection data cannot reach probe output.
 type healthComponent struct {
 	Status string `json:"status"`
 }
 
-// healthResponse mirrors AggregatedHealthResponse's JSON shape: a top-level status plus a
-// "components" map keyed by component name (e.g. "adaptersAccessIndicator"), each with its own
-// status.
 type healthResponse struct {
 	Status     string                     `json:"status"`
 	Components map[string]healthComponent `json:"components"`
 }
 
-// failingComponents returns "name:status" for every component not reporting UP, sorted for a
-// deterministic, testable error message. Never includes a component's details.
 func (h healthResponse) failingComponents() []string {
 	var failing []string
 	for name, c := range h.Components {
@@ -129,12 +105,8 @@ func (h healthResponse) failingComponents() []string {
 	return failing
 }
 
-// CheckHealth requires HTTP 200 AND a decoded body with status == "UP" from GET
-// {aggregatorURL}/health. The aggregator also returns HTTP 200 for a "PROBLEM" status, so the
-// status code alone proves nothing — the body must be decoded and checked on every cycle. On a
-// non-UP status the returned error names the failing component(s) and their status (e.g.
-// "adaptersAccessIndicator:PROBLEM") so a recorded failure is actionable — but never a component's
-// details or the raw response body, either of which can carry connection information.
+// CheckHealth requires HTTP 200 and a response status of UP.
+// Failure messages include component statuses but exclude component details.
 func CheckHealth(client *http.Client, aggregatorURL string) CheckFunc {
 	url := aggregatorURL + "/health"
 	return func(ctx context.Context) (int, error) {

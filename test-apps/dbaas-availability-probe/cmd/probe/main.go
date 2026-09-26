@@ -1,12 +1,4 @@
-// Command dbaas-availability-probe continuously checks dbaas-aggregator from inside the Kind
-// cluster while its Helm release is upgraded or downgraded. It calls the in-cluster Service DNS
-// name, never kubectl port-forward, whose own interruptions would look like DBaaS downtime.
-//
-// PROBE_MODE=verify-preflight waits for stable aggregator health, creates the probe database once,
-// and then requires stable health and database retrieval before the measured baseline starts.
-//
-// The evaluate subcommand runs once on the test runner host and judges a captured probe log
-// against the availability contract: see runEvaluate.
+// Command dbaas-availability-probe checks aggregator availability during a Helm transition.
 package main
 
 import (
@@ -79,8 +71,6 @@ const (
 	probeServiceName = "dbaas-transition-probe"
 )
 
-// runVerifyPreflight waits for stable aggregator health, creates the probe database once, and then
-// requires stable health and database retrieval before returning.
 func runVerifyPreflight(database probe.DatabaseConfig, requestTimeout time.Duration) {
 	const pollInterval = time.Second
 	const stableConsecutiveSeconds = 10
@@ -113,10 +103,7 @@ func fixtureError(format string, args ...any) {
 	os.Exit(1)
 }
 
-// runEvaluate judges a captured continuous-probe log against the availability contract: zero
-// recorded failures, every expected probe kind present with enough baseline/post samples, no gap
-// beyond -max-gap, no probe container restart, and no unparseable log line. It prints a textual
-// summary and exits 1 if the contract was violated — the KUTTL evaluate step's own exit code.
+// runEvaluate exits with an error when the captured probe log violates the availability contract.
 func runEvaluate(args []string) {
 	fs := flag.NewFlagSet("evaluate", flag.ExitOnError)
 	logsPath := fs.String("logs", "", "path to the captured probe JSONL log (current+previous container logs concatenated)")

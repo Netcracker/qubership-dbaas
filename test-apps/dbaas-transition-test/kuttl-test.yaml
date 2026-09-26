@@ -4,5 +4,4 @@ testDirs:
   - cases
 parallel: 1
 timeout: 60
-# Preserve test resources for failure diagnostics.
 delete: none

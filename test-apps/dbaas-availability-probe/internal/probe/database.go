@@ -11,16 +11,12 @@ import (
 	"strings"
 )
 
-// maxDecodeBytes bounds every decoded response body so a misbehaving endpoint cannot make the
-// probe buffer an unbounded payload.
 const maxDecodeBytes = 1 << 20 // 1 MiB
 
 // PostgresType is the database type the probe creates and retrieves.
 const PostgresType = "postgresql"
 
-// DatabaseConfig identifies the probe's own PostgreSQL database and how to authenticate to the
-// aggregator. The classifier namespace must match the ServiceAccount token's namespace because
-// the aggregator enforces namespace isolation.
+// DatabaseConfig identifies the probe database and its aggregator authentication.
 type DatabaseConfig struct {
 	AggregatorURL    string
 	TokenPath        string
@@ -55,8 +51,7 @@ type createDatabaseRequest struct {
 	UserRole      string     `json:"userRole"`
 }
 
-// databaseResponse decodes only the fields the probe validates. connectionProperties has no
-// matching field, so encoding/json discards it during decoding.
+// databaseResponse omits connection properties so they cannot reach probe output.
 type databaseResponse struct {
 	Name       string     `json:"name"`
 	Namespace  string     `json:"namespace"`
@@ -77,8 +72,7 @@ func readToken(path string) (string, error) {
 	return token, nil
 }
 
-// doJSON sends body with the bearer token and returns the response. The caller closes the body.
-// Errors never include the token or a response body.
+// doJSON excludes tokens and response bodies from returned errors.
 func doJSON(ctx context.Context, client *http.Client, cfg DatabaseConfig, method, url string, body any) (*http.Response, error) {
 	token, err := readToken(cfg.TokenPath)
 	if err != nil {
@@ -98,7 +92,6 @@ func doJSON(ctx context.Context, client *http.Client, cfg DatabaseConfig, method
 	return client.Do(req)
 }
 
-// validate checks the decoded response against the requested classifier.
 func (r databaseResponse) validate(want classifier) error {
 	switch {
 	case r.Namespace != want.Namespace:
@@ -114,8 +107,7 @@ func (r databaseResponse) validate(want classifier) error {
 	return nil
 }
 
-// CheckDatabaseGet requires the aggregator to return the probe's PostgreSQL database by
-// classifier with HTTP 200 and matching identity fields.
+// CheckDatabaseGet verifies retrieval of the probe database by classifier.
 func CheckDatabaseGet(client *http.Client, cfg DatabaseConfig) CheckFunc {
 	url := cfg.databasesURL() + "/get-by-classifier/" + PostgresType
 	body := getByClassifierRequest{
@@ -143,8 +135,7 @@ func CheckDatabaseGet(client *http.Client, cfg DatabaseConfig) CheckFunc {
 	}
 }
 
-// CreateDatabase sends one synchronous get-or-create request for the probe's PostgreSQL
-// database. It accepts HTTP 201 (created) and HTTP 200 (already exists).
+// CreateDatabase creates the probe database or accepts an existing one.
 func CreateDatabase(ctx context.Context, client *http.Client, cfg DatabaseConfig) (int, error) {
 	body := createDatabaseRequest{
 		Classifier:    cfg.classifier(),

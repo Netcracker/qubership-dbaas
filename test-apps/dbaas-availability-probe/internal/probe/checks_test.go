@@ -13,13 +13,11 @@ import (
 	"time"
 )
 
-// Recorded timestamps use the same fixed-width fractional-second field as the measurement
-// boundaries.
 var fixedWidthTimestamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$`)
 
 func TestRunProbe_TimestampIsFixedWidth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK) // a round second, worst case for trailing-zero stripping
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
@@ -70,10 +68,6 @@ func TestCheckHealth_UpSucceeds(t *testing.T) {
 }
 
 func TestCheckHealth_ProblemWithHTTP200Fails(t *testing.T) {
-	// The aggregator returns HTTP 200 even when its own reported status is "PROBLEM" — the status
-	// code alone must never be treated as success. The error must name the failing component and
-	// its status (v6.15.0's cached adapters-access indicator is exactly this shape) so a recorded
-	// failure is actionable instead of just "health status=PROBLEM".
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"PROBLEM","components":{"adaptersAccessIndicator":{"status":"PROBLEM"},"other":{"status":"UP"}}}`))
@@ -212,7 +206,6 @@ func TestCheckReady_TimeoutIsRecorded(t *testing.T) {
 }
 
 func TestCheckReady_ConnectionRefusedIsRecorded(t *testing.T) {
-	// Bind a listener and close it immediately to obtain a port nothing is listening on.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("reserve a local port: %v", err)
@@ -236,9 +229,6 @@ func TestCheckReady_ConnectionRefusedIsRecorded(t *testing.T) {
 	}
 }
 
-// TestLoopContinuesAfterFailure drives runLoop against a server that fails every other request and
-// asserts the loop keeps producing samples past the first failure — a failed probe must never stop
-// sampling, or the final report would show a gap instead of the true outage window.
 func TestLoopContinuesAfterFailure(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -278,8 +268,6 @@ func TestLoopContinuesAfterFailure(t *testing.T) {
 		t.Fatalf("expected both successes and failures across the loop, got sawSuccess=%v sawFailure=%v", sawSuccess, sawFailure)
 	}
 }
-
-// --- RunPreflight (pre-transition prerequisite) ---
 
 func healthyPodServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -332,8 +320,6 @@ func TestRunPreflight_OnePodNeverHealthyTimesOutNamingThePod(t *testing.T) {
 }
 
 func TestRunPreflight_ResetsConsecutiveCountOnFailure(t *testing.T) {
-	// Fails on the 3rd call, then recovers — with stableConsecutive=3, this must never pass on the
-	// strength of the first two calls alone; it needs 3 in a row after the failure.
 	var calls int
 	pod := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
