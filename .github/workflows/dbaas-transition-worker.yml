@@ -1,4 +1,4 @@
-name: DBaaS Transition (reusable)
+name: DBaaS Transition Worker
 
 on:
   workflow_call:
