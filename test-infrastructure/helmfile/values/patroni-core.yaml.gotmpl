@@ -1,0 +1,13 @@
+# Chart tests restart Patroni, so they are disabled.
+postgresPassword: {{ requiredEnv "POSTGRES_PASSWORD" | quote }}
+
+patroni:
+  affinity:
+    podAntiAffinity: {}
+  replicas: 1
+  storage:
+    storageClass: standard
+    size: 2Gi
+
+tests:
+  install: false

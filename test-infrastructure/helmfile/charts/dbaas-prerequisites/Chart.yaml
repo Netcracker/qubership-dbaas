@@ -1,0 +1,4 @@
+apiVersion: v2
+name: dbaas-prerequisites
+description: Cluster prerequisites for a DBaaS deployment with Kubernetes M2M enabled.
+version: 0.0.1

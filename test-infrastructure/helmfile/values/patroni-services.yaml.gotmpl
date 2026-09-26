@@ -1,0 +1,19 @@
+# Chart tests restart Patroni, so they are disabled.
+postgresPassword: {{ requiredEnv "POSTGRES_PASSWORD" | quote }}
+
+backupDaemon:
+  install: false
+  storage:
+    storageClass: standard
+    type: pv
+    size: 2Gi
+
+dbaas:
+  install: true
+  aggregator:
+    registrationAddress: {{ printf "http://%s.%s.svc.cluster.local:8080" (env "DBAAS_SERVICE_NAME" | default "dbaas-aggregator") (env "DBAAS_NAMESPACE" | default "dbaas") | quote }}
+    registrationUsername: cluster-dba
+    registrationPassword: {{ requiredEnv "DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD" | quote }}
+
+tests:
+  install: false

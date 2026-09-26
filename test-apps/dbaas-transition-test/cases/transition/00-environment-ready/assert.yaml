@@ -1,0 +1,36 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 60
+resourceRefs:
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: dbaas
+    name: dbaas-aggregator
+    ref: aggregator
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: dbaas
+    name: dbaas-operator
+    ref: operator
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: postgres
+    name: dbaas-postgres-adapter
+    ref: adapter
+collectors:
+  - type: pod
+    selector: name=dbaas-aggregator
+    namespace: dbaas
+    tail: 200
+  - type: command
+    command: kubectl -n dbaas describe deployment dbaas-aggregator
+  - type: command
+    command: kubectl -n dbaas describe deployment dbaas-operator
+  - type: command
+    command: kubectl -n postgres describe deployment dbaas-postgres-adapter
+assertAll:
+  - celExpr: "aggregator.spec.replicas == 2"
+  - celExpr: "aggregator.status.readyReplicas == 2"
+  - celExpr: "aggregator.spec.strategy.type == 'RollingUpdate'"
+  - celExpr: "operator.status.readyReplicas >= 1"
+  - celExpr: "adapter.status.readyReplicas >= 1"

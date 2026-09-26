@@ -1,0 +1,24 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-measurement-end.txt
+    timeout: 10
+  - script: |
+      pod=$(kubectl -n "$DBAAS_NAMESPACE" get pods -l app.kubernetes.io/name=dbaas-availability-probe -o jsonpath='{.items[0].metadata.name}')
+      echo "$pod" > /tmp/dbaas-transition-probe-pod.txt
+      kubectl -n "$DBAAS_NAMESPACE" logs "$pod" > /tmp/dbaas-transition-probe.jsonl
+      kubectl -n "$DBAAS_NAMESPACE" logs "$pod" --previous >> /tmp/dbaas-transition-probe.jsonl 2>/dev/null || true
+      kubectl -n "$DBAAS_NAMESPACE" get pod "$pod" -o jsonpath='{.status.containerStatuses[0].restartCount}' > /tmp/dbaas-transition-restart-count.txt
+    timeout: 30
+  - script: |
+      restarted=false
+      [ "$(cat /tmp/dbaas-transition-restart-count.txt)" != "0" ] && restarted=true
+      docker run --rm --entrypoint /app/dbaas-availability-probe -v /tmp:/data \
+        "$PROBE_IMAGE_REPOSITORY:$PROBE_IMAGE_TAG" evaluate \
+        -logs /data/dbaas-transition-probe.jsonl \
+        -probe-start "$(cat /tmp/dbaas-transition-probe-start.txt)" \
+        -transition-start "$(cat /tmp/dbaas-transition-transition-start.txt)" \
+        -transition-end "$(cat /tmp/dbaas-transition-transition-end.txt)" \
+        -measurement-end "$(cat /tmp/dbaas-transition-measurement-end.txt)" \
+        -restarted="$restarted"
+    timeout: 30

@@ -1,0 +1,7 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-probe-start.txt
+    timeout: 10
+  - command: sleep 40
+    timeout: 50

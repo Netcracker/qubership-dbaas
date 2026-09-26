@@ -1,0 +1,11 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-transition-start.txt
+    timeout: 10
+  - script: >
+      AGGREGATOR_CHART_DIR="$TARGET_DIR" AGGREGATOR_TAG="$TARGET_TAG"
+      helmfile -f "$HARNESS_DIR/test-infrastructure/helmfile/helmfile.yaml.gotmpl" -l component=aggregator sync
+    timeout: 360
+  - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-transition-end.txt
+    timeout: 10

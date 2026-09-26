@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dbaas-fixture-preflight
+  namespace: dbaas
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dbaas-fixture-preflight
+    spec:
+      serviceAccountName: dbaas-transition-probe
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      volumes:
+        - name: dbaas-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: dbaas
+                  expirationSeconds: 3600
+                  path: token
+      containers:
+        - name: verify-preflight
+          image: dbaas-availability-probe:it
+          imagePullPolicy: Never
+          env:
+            - name: PROBE_MODE
+              value: verify-preflight
+            - name: API_DBAAS_ADDRESS
+              value: http://dbaas-aggregator.dbaas:8080
+          volumeMounts:
+            - name: dbaas-token
+              mountPath: /var/run/secrets/tokens/dbaas
+              readOnly: true
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: [ALL]
