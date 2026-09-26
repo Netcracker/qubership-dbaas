@@ -1,4 +1,4 @@
-# Test-only access for in-cluster OIDC issuer discovery.
+# Lets the aggregator discover the in-cluster OIDC issuer for Kubernetes M2M tokens.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:

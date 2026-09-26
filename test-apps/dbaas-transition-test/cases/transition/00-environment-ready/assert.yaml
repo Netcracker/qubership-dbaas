@@ -17,11 +17,6 @@ resourceRefs:
     namespace: postgres
     name: dbaas-postgres-adapter
     ref: adapter
-  - apiVersion: dbaas.netcracker.com/v1
-    kind: InternalDatabase
-    namespace: dbaas
-    name: go-test-app-service-postgres
-    ref: idb
 collectors:
   - type: pod
     selector: name=dbaas-aggregator
@@ -33,14 +28,9 @@ collectors:
     command: kubectl -n dbaas describe deployment dbaas-operator
   - type: command
     command: kubectl -n postgres describe deployment dbaas-postgres-adapter
-  - type: command
-    command: kubectl -n dbaas get internaldatabase go-test-app-service-postgres -o yaml
-  - type: command
-    command: kubectl -n dbaas logs deploy/dbaas-operator --all-containers=true --tail=500
 assertAll:
   - celExpr: "aggregator.spec.replicas == 2"
   - celExpr: "aggregator.status.readyReplicas == 2"
-  - celExpr: "aggregator.spec.strategy.type != 'Recreate'"
+  - celExpr: "aggregator.spec.strategy.type == 'RollingUpdate'"
   - celExpr: "operator.status.readyReplicas >= 1"
   - celExpr: "adapter.status.readyReplicas >= 1"
-  - celExpr: "idb.status.phase == 'Succeeded'"

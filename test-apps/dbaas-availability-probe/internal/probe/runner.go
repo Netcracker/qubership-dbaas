@@ -13,22 +13,21 @@ import (
 // Probe kind names. These are the exact "probe" field values every Record carries, and must match
 // the evaluator's expected-kind list.
 const (
-	AggregatorReady    = "aggregator-ready"
-	AggregatorHealth   = "aggregator-health"
-	SamplePostgresPing = "sample-postgres-ping"
+	AggregatorReady       = "aggregator-ready"
+	AggregatorHealth      = "aggregator-health"
+	AggregatorDatabaseGet = "aggregator-database-get"
 )
 
 // ExpectedKinds returns every probe kind the continuous run must produce.
 func ExpectedKinds() []string {
-	return []string{AggregatorReady, AggregatorHealth, SamplePostgresPing}
+	return []string{AggregatorReady, AggregatorHealth, AggregatorDatabaseGet}
 }
 
 // ContinuousConfig configures the continuous, in-cluster availability run.
 type ContinuousConfig struct {
-	AggregatorURL    string
-	SampleServiceURL string
-	Interval         time.Duration
-	RequestTimeout   time.Duration
+	Database       DatabaseConfig
+	Interval       time.Duration
+	RequestTimeout time.Duration
 }
 
 // RunContinuous schedules the three probe kinds on independent tickers and returns only when ctx
@@ -39,9 +38,9 @@ func RunContinuous(ctx context.Context, out io.Writer, cfg ContinuousConfig) {
 	var mu sync.Mutex
 
 	checks := map[string]CheckFunc{
-		AggregatorReady:    CheckReady(client, cfg.AggregatorURL),
-		AggregatorHealth:   CheckHealth(client, cfg.AggregatorURL),
-		SamplePostgresPing: CheckSamplePing(client, cfg.SampleServiceURL),
+		AggregatorReady:       CheckReady(client, cfg.Database.AggregatorURL),
+		AggregatorHealth:      CheckHealth(client, cfg.Database.AggregatorURL),
+		AggregatorDatabaseGet: CheckDatabaseGet(client, cfg.Database),
 	}
 
 	var wg sync.WaitGroup
@@ -114,10 +113,8 @@ func checkAllTargetsOnce(ctx context.Context, targets []PreflightTarget, request
 }
 
 // RunPreflight requires every target to pass for stableConsecutive consecutive polls, within
-// overallTimeout. It is the pre-transition prerequisite: both aggregator pods and the
-// sample-service path must be healthy before the measured baseline starts, so a cached
-// PROBLEM status from the initial release is classified as a setup failure instead of transition
-// downtime.
+// overallTimeout. It runs before the measured baseline starts, so a cached PROBLEM status from the
+// initial release is classified as a setup failure instead of transition downtime.
 func RunPreflight(ctx context.Context, targets []PreflightTarget, requestTimeout, pollInterval time.Duration, stableConsecutive int, overallTimeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, overallTimeout)
 	defer cancel()

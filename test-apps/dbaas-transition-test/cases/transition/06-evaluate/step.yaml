@@ -1,6 +1,8 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
+  - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-measurement-end.txt
+    timeout: 10
   - script: |
       pod=$(kubectl -n "$DBAAS_NAMESPACE" get pods -l app.kubernetes.io/name=dbaas-availability-probe -o jsonpath='{.items[0].metadata.name}')
       echo "$pod" > /tmp/dbaas-transition-probe-pod.txt

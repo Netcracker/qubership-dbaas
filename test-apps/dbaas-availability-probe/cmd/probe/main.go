@@ -1,18 +1,12 @@
-// Command dbaas-transition-probe continuously exercises dbaas-aggregator from inside the target
-// Kind cluster while its Helm release is upgraded or downgraded, so an availability regression
-// during the transition shows up as a recorded probe failure instead of a silent gap. It talks to
-// in-cluster Service DNS only — never through kubectl port-forward, whose own interruptions would
-// otherwise look indistinguishable from a real DBaaS outage.
+// Command dbaas-availability-probe continuously checks dbaas-aggregator from inside the Kind
+// cluster while its Helm release is upgraded or downgraded. It calls the in-cluster Service DNS
+// name, never kubectl port-forward, whose own interruptions would look like DBaaS downtime.
 //
-// In PROBE_MODE=verify-preflight it instead runs the pre-transition prerequisite: both pinned
-// aggregator pod URLs and the sample-service path must report healthy for ten consecutive
-// one-second checks before the harness starts the measured baseline.
+// PROBE_MODE=verify-preflight waits for stable aggregator health, creates the probe database once,
+// and then requires stable health and database retrieval before the measured baseline starts.
 //
-// Run as `dbaas-availability-probe evaluate ...` (a discrete subcommand, not a PROBE_MODE — this
-// one runs once on the test runner host, not continuously in a Pod) it instead judges a captured
-// probe log against the availability contract: see runEvaluate. This is the only Go logic that
-// runs outside the cluster; every Helm/kubectl/Kind/secret-generation step lives in the KUTTL test
-// steps and the workflow that invokes them, not in this binary.
+// The evaluate subcommand runs once on the test runner host and judges a captured probe log
+// against the availability contract: see runEvaluate.
 package main
 
 import (
@@ -26,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/netcracker/qubership-dbaas/test-apps/dbaas-transition-test/internal/probe"
+	"github.com/netcracker/qubership-dbaas/test-apps/dbaas-availability-probe/internal/probe"
 )
 
 func getenv(key, def string) string {
@@ -56,53 +50,67 @@ func main() {
 	}
 
 	mode := getenv("PROBE_MODE", "probe")
-	aggregatorURL := getenv("AGGREGATOR_URL", "http://dbaas-aggregator:8080")
-	sampleServiceURL := getenv("SAMPLE_SERVICE_URL", "http://go-test-app-service:8080")
 	interval := getenvMillis("PROBE_INTERVAL_MS", time.Second)
 	requestTimeout := getenvMillis("PROBE_REQUEST_TIMEOUT_MS", 5000*time.Millisecond)
+	database := probe.DatabaseConfig{
+		AggregatorURL:    getenv("API_DBAAS_ADDRESS", "http://dbaas-aggregator.dbaas:8080"),
+		TokenPath:        tokenPath,
+		Namespace:        probeNamespace,
+		MicroserviceName: probeServiceName,
+	}
 
 	switch mode {
 	case "verify-preflight":
-		runVerifyPreflight(sampleServiceURL, requestTimeout)
+		runVerifyPreflight(database, requestTimeout)
 	default:
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		probe.RunContinuous(ctx, os.Stdout, probe.ContinuousConfig{
-			AggregatorURL:    aggregatorURL,
-			SampleServiceURL: sampleServiceURL,
-			Interval:         interval,
-			RequestTimeout:   requestTimeout,
+			Database:       database,
+			Interval:       interval,
+			RequestTimeout: requestTimeout,
 		})
 	}
 }
 
-// runVerifyPreflight requires sustained health from both pinned aggregator pods and the
-// sample-service path before returning. Pod 1/2 name and URL come from
-// AGGREGATOR_POD_{1,2}_{NAME,URL}, set by the harness for each run.
-func runVerifyPreflight(sampleServiceURL string, requestTimeout time.Duration) {
-	pod1Name, pod1URL := os.Getenv("AGGREGATOR_POD_1_NAME"), os.Getenv("AGGREGATOR_POD_1_URL")
-	pod2Name, pod2URL := os.Getenv("AGGREGATOR_POD_2_NAME"), os.Getenv("AGGREGATOR_POD_2_URL")
-	if pod1Name == "" || pod1URL == "" || pod2Name == "" || pod2URL == "" {
-		fmt.Fprintln(os.Stderr, "FIXTURE_ERROR: AGGREGATOR_POD_{1,2}_{NAME,URL} must all be set")
-		os.Exit(1)
-	}
+const (
+	tokenPath        = "/var/run/secrets/tokens/dbaas/token"
+	probeNamespace   = "dbaas"
+	probeServiceName = "dbaas-transition-probe"
+)
 
-	client := &http.Client{Timeout: requestTimeout}
-	targets := []probe.PreflightTarget{
-		{Name: pod1Name, Check: probe.CheckHealth(client, pod1URL)},
-		{Name: pod2Name, Check: probe.CheckHealth(client, pod2URL)},
-		{Name: "sample-service", Check: probe.CheckSamplePing(client, sampleServiceURL)},
-	}
-
+// runVerifyPreflight waits for stable aggregator health, creates the probe database once, and then
+// requires stable health and database retrieval before returning.
+func runVerifyPreflight(database probe.DatabaseConfig, requestTimeout time.Duration) {
 	const pollInterval = time.Second
 	const stableConsecutiveSeconds = 10
 	const overallTimeout = 180 * time.Second
 
-	if err := probe.RunPreflight(context.Background(), targets, requestTimeout, pollInterval, stableConsecutiveSeconds, overallTimeout); err != nil {
-		fmt.Fprintf(os.Stderr, "FIXTURE_ERROR: pre-transition checks did not stabilize: %v\n", err)
-		os.Exit(1)
+	client := &http.Client{Timeout: requestTimeout}
+	health := probe.PreflightTarget{Name: probe.AggregatorHealth, Check: probe.CheckHealth(client, database.AggregatorURL)}
+	databaseGet := probe.PreflightTarget{Name: probe.AggregatorDatabaseGet, Check: probe.CheckDatabaseGet(client, database)}
+
+	if err := probe.RunPreflight(context.Background(), []probe.PreflightTarget{health}, requestTimeout, pollInterval, stableConsecutiveSeconds, overallTimeout); err != nil {
+		fixtureError("aggregator health did not stabilize: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	status, err := probe.CreateDatabase(ctx, client, database)
+	cancel()
+	if err != nil {
+		fixtureError("create the probe database: %v", err)
+	}
+	fmt.Fprintf(os.Stdout, "PROBE_DATABASE_READY status=%d\n", status)
+
+	if err := probe.RunPreflight(context.Background(), []probe.PreflightTarget{health, databaseGet}, requestTimeout, pollInterval, stableConsecutiveSeconds, overallTimeout); err != nil {
+		fixtureError("pre-transition checks did not stabilize: %v", err)
 	}
 	fmt.Fprintln(os.Stdout, "PRE_TRANSITION_CHECKS_STABLE")
+}
+
+func fixtureError(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "FIXTURE_ERROR: "+format+"\n", args...)
+	os.Exit(1)
 }
 
 // runEvaluate judges a captured continuous-probe log against the availability contract: zero

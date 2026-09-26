@@ -16,7 +16,16 @@ spec:
       labels:
         app.kubernetes.io/name: dbaas-availability-probe
     spec:
+      serviceAccountName: dbaas-transition-probe
       automountServiceAccountToken: false
+      volumes:
+        - name: dbaas-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: dbaas
+                  expirationSeconds: 3600
+                  path: token
       containers:
         - name: dbaas-availability-probe
           image: dbaas-availability-probe:it
@@ -24,14 +33,16 @@ spec:
           env:
             - name: PROBE_MODE
               value: probe
-            - name: AGGREGATOR_URL
+            - name: API_DBAAS_ADDRESS
               value: http://dbaas-aggregator.dbaas:8080
-            - name: SAMPLE_SERVICE_URL
-              value: http://go-test-app-service.dbaas:8080
             - name: PROBE_INTERVAL_MS
               value: "1000"
             - name: PROBE_REQUEST_TIMEOUT_MS
               value: "5000"
+          volumeMounts:
+            - name: dbaas-token
+              mountPath: /var/run/secrets/tokens/dbaas
+              readOnly: true
           securityContext:
             readOnlyRootFilesystem: true
             runAsNonRoot: true

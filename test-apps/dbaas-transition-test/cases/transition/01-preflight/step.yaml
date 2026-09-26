@@ -1,31 +1,5 @@
 # Run preflight before the baseline so startup health failures are not counted as transition downtime.
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
-commands:
-  # Select two ready, non-terminating aggregator pods for preflight.
-  - script: |
-      kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
-        | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' \
-        | sort > /tmp/dbaas-transition-pods-before.txt
-      [ "$(wc -l < /tmp/dbaas-transition-pods-before.txt)" -eq 2 ] || { echo "expected exactly 2 ready dbaas-aggregator pods" >&2; cat /tmp/dbaas-transition-pods-before.txt >&2; exit 1; }
-      awk 'NR==1{print "AGGREGATOR_POD_1_NAME="$1; print "AGGREGATOR_POD_1_IP="$2} NR==2{print "AGGREGATOR_POD_2_NAME="$1; print "AGGREGATOR_POD_2_IP="$2}' \
-        /tmp/dbaas-transition-pods-before.txt > /tmp/dbaas-transition-pods-before.env
-    timeout: 30
-  - script: |
-      kubectl -n "$DBAAS_NAMESPACE" delete job dbaas-fixture-preflight --ignore-not-found
-      set -a; . /tmp/dbaas-transition-pods-before.env; set +a
-      envsubst < ../../manifests/preflight-job.yaml | kubectl apply -f -
-    timeout: 30
-  - script: |
-      if ! kubectl -n "$DBAAS_NAMESPACE" wait --for=condition=complete job/dbaas-fixture-preflight --timeout=240s; then
-        kubectl -n "$DBAAS_NAMESPACE" logs job/dbaas-fixture-preflight --all-containers=true >&2 || true
-        exit 1
-      fi
-    timeout: 250
-  # Reject pod replacement or restart during preflight.
-  - script: |
-      kubectl -n "$DBAAS_NAMESPACE" get pods -l name=dbaas-aggregator -o json \
-        | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | select(.status.conditions[]? | .type=="Ready" and .status=="True") | "\(.metadata.name) \(.status.podIP) \(.metadata.uid) \(.status.containerStatuses[0].restartCount)"' \
-        | sort > /tmp/dbaas-transition-pods-after.txt
-      diff /tmp/dbaas-transition-pods-before.txt /tmp/dbaas-transition-pods-after.txt || { echo "aggregator pods changed or restarted during the pre-transition checks" >&2; exit 1; }
-    timeout: 30
+apply:
+  - ../../../dbaas-availability-probe/manifests/preflight-job.yaml
