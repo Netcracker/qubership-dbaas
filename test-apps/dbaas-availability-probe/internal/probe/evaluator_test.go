@@ -26,8 +26,6 @@ func baseParams() EvalParams {
 	}
 }
 
-// everySecond returns one successful record per kind, once per second, from start (inclusive) to
-// end (inclusive).
 func everySecond(kinds []string, start, end time.Time) []Record {
 	var out []Record
 	for t := start; !t.After(end); t = t.Add(time.Second) {
@@ -119,7 +117,6 @@ func TestEvaluate_MissingProbeKindFails(t *testing.T) {
 
 func TestEvaluate_GapGreaterThanLimitFails(t *testing.T) {
 	records := cleanRun()
-	// Remove every sample of one kind in a 5-second stretch inside the baseline window.
 	gapStart := evalProbeStart.Add(10 * time.Second)
 	gapEnd := gapStart.Add(5 * time.Second)
 	var filtered []Record
@@ -139,7 +136,6 @@ func TestEvaluate_GapGreaterThanLimitFails(t *testing.T) {
 }
 
 func TestEvaluate_StartBoundaryGapFails(t *testing.T) {
-	// The first aggregator-ready sample doesn't appear until 5s after probeStart.
 	records := cleanRun()
 	var filtered []Record
 	for _, rec := range records {
@@ -157,7 +153,6 @@ func TestEvaluate_StartBoundaryGapFails(t *testing.T) {
 }
 
 func TestEvaluate_EndBoundaryGapFails(t *testing.T) {
-	// The last aggregator-ready sample is 5s before measurementEnd.
 	records := cleanRun()
 	var filtered []Record
 	for _, rec := range records {
@@ -175,8 +170,6 @@ func TestEvaluate_EndBoundaryGapFails(t *testing.T) {
 }
 
 func TestEvaluate_EmptyTransitionWindowFromFastRolloutPasses(t *testing.T) {
-	// transitionStart == transitionEnd: a Helm upgrade that completed in under a second between two
-	// probe samples. No sample-count floor applies to the transition window.
 	params := baseParams()
 	params.TransitionEnd = params.TransitionStart
 
@@ -200,9 +193,6 @@ func TestEvaluate_ContainerRestartFails(t *testing.T) {
 
 func TestEvaluate_RecordsOutsideMeasuredWindowDoNotCountTowardSamplesOrGap(t *testing.T) {
 	records := cleanRun()
-	// Add a burst of samples well after measurementEnd, as if log collection were delayed. These
-	// must not paper over a real gap inside the window or
-	// inflate the post-window sample count.
 	for t := evalMeasurementEnd.Add(time.Minute); t.Before(evalMeasurementEnd.Add(2 * time.Minute)); t = t.Add(time.Second) {
 		records = append(records, Record{
 			Timestamp: t.Format(TimestampLayout),

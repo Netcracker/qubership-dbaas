@@ -1,7 +1,5 @@
 name: DBaaS Transition (reusable)
 
-# Helmfile provisions the environment, and KUTTL runs one transition test in an isolated Kind cluster.
-
 on:
   workflow_call:
     inputs:
@@ -49,11 +47,9 @@ jobs:
       DBAAS_SERVICE_NAME: dbaas-aggregator
       REGION_DBAAS: database
       NODE_SELECTOR_DBAAS_KEY: region
-      # A rolling update needs a second replica to stay available.
       AGGREGATOR_REPLICAS: "2"
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
-      # Release inputs omit the "v" prefix used by Git tags and images.
       INITIAL_TAG: v${{ inputs.initial-version }}
       TARGET_TAG: v${{ inputs.target-version }}
       OPERATOR_TAG: v${{ inputs.fixture-version }}
@@ -156,7 +152,7 @@ jobs:
         env:
           AGGREGATOR_CHART_DIR: ${{ env.INITIAL_DIR }}
           AGGREGATOR_TAG: ${{ env.INITIAL_TAG }}
-        run: helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" sync
+        run: helmfile -f "$HARNESS_DIR/test-infrastructure/helmfile/helmfile.yaml.gotmpl" sync
 
       - name: Run DBaaS transition availability test
         working-directory: harness/test-apps/dbaas-transition-test
