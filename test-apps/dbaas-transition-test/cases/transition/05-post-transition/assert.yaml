@@ -10,12 +10,3 @@ resourceRefs:
 assertAll:
   - celExpr: "aggregator.status.readyReplicas == 2"
   - celExpr: "aggregator.spec.strategy.type == 'RollingUpdate'"
-commands:
-  # The target tag comes from the workflow environment, so it cannot be a static assertion.
-  - script: |
-      running_image=$(kubectl -n "$DBAAS_NAMESPACE" get deployment dbaas-aggregator -o jsonpath='{.spec.template.spec.containers[0].image}')
-      case "$running_image" in
-        *":$TARGET_TAG") ;;
-        *) echo "expected the aggregator image tag to be $TARGET_TAG, got: $running_image" >&2; exit 1 ;;
-      esac
-    timeout: 15

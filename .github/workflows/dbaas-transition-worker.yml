@@ -41,12 +41,8 @@ jobs:
       INITIAL_DIR: ${{ github.workspace }}/repos/qubership-dbaas-initial
       TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
       OPERATOR_CHART_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
-      PGSKIPPER_DIR: ${{ github.workspace }}/repos/pgskipper-operator
       PG_NAMESPACE: postgres
       DBAAS_NAMESPACE: dbaas
-      DBAAS_SERVICE_NAME: dbaas-aggregator
-      REGION_DBAAS: database
-      NODE_SELECTOR_DBAAS_KEY: region
       AGGREGATOR_REPLICAS: "2"
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
@@ -85,21 +81,12 @@ jobs:
           path: repos/qubership-dbaas-fixture
           persist-credentials: false
 
-      - name: Checkout pgskipper-operator (pinned commit)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: Netcracker/pgskipper-operator
-          # Version 1.55.0 includes the Patroni leader-label fix required by this test.
-          ref: e05bed81afa7e81a59d4724a2d7f228fd7a72232 # tag: 1.55.0
-          path: repos/pgskipper-operator
-          persist-credentials: false
-
       - name: Set up Kind
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           version: v0.32.0
           cluster_name: kind
-          config: harness/test-apps/dbaas-transition-test/testdata/kind.yaml
+          config: harness/bootstrap/helmfile/kind.yaml
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
