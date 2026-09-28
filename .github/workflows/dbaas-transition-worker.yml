@@ -152,7 +152,7 @@ jobs:
         env:
           AGGREGATOR_CHART_DIR: ${{ env.INITIAL_DIR }}
           AGGREGATOR_TAG: ${{ env.INITIAL_TAG }}
-        run: helmfile -f "$HARNESS_DIR/test-infrastructure/helmfile/helmfile.yaml.gotmpl" sync
+        run: helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" sync
 
       - name: Run DBaaS transition availability test
         working-directory: harness/test-apps/dbaas-transition-test
