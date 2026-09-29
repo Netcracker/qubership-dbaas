@@ -128,12 +128,15 @@ jobs:
           docker build -t dbaas-availability-probe:it harness/test-apps/dbaas-availability-probe
           kind load docker-image dbaas-availability-probe:it --name "$KIND_CLUSTER"
 
-      - name: Render probe manifests
+      - name: Render test manifests
         run: |
           set -euo pipefail
           export API_DBAAS_ADDRESS="http://dbaas-aggregator.${DBAAS_NAMESPACE}:8080"
-          for manifest in "$HARNESS_DIR"/test-apps/dbaas-availability-probe/manifests/*.yaml; do
-            envsubst '${DBAAS_NAMESPACE} ${API_DBAAS_ADDRESS}' < "$manifest" > "${manifest}.rendered"
+          for manifest in \
+            "$HARNESS_DIR"/test-apps/dbaas-availability-probe/manifests/*.yaml \
+            "$HARNESS_DIR"/test-apps/dbaas-transition-test/cases/transition/*/*.yaml; do
+            envsubst '${DBAAS_NAMESPACE} ${PG_NAMESPACE} ${API_DBAAS_ADDRESS}' \
+              < "$manifest" > "${manifest}.rendered"
             mv "${manifest}.rendered" "$manifest"
           done
 
@@ -159,10 +162,8 @@ jobs:
 
           helm -n "$DBAAS_NAMESPACE" status dbaas-aggregator > "$OUT_DIR/helm-status-dbaas-aggregator.txt" 2>&1 || true
           helm -n "$DBAAS_NAMESPACE" history dbaas-aggregator > "$OUT_DIR/helm-history-dbaas-aggregator.txt" 2>&1 || true
-          # Redact credentials before uploading Helm values.
-          helm -n "$DBAAS_NAMESPACE" get values dbaas-aggregator -o yaml 2>/dev/null \
-            | sed -E 's/^(.*(PASSWORD|CREDENTIALS)[A-Za-z_]*:).*/\1 "***REDACTED***"/' \
-            > "$OUT_DIR/helm-values-dbaas-aggregator.sanitized.yaml" || true
+          helm -n "$DBAAS_NAMESPACE" get values dbaas-aggregator -o yaml \
+            > "$OUT_DIR/helm-values-dbaas-aggregator.yaml" 2>&1 || true
           cp /tmp/dbaas-transition-*.txt /tmp/dbaas-transition-probe.jsonl "$OUT_DIR/" 2>/dev/null || true
 
       - name: Upload diagnostics

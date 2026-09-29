@@ -5,12 +5,12 @@ timeout: 420
 resourceRefs:
   - apiVersion: batch/v1
     kind: Job
-    namespace: dbaas
+    namespace: ${DBAAS_NAMESPACE}
     name: dbaas-fixture-preflight
     ref: job
 collectors:
   - type: pod
     selector: app.kubernetes.io/name=dbaas-fixture-preflight
-    namespace: dbaas
+    namespace: ${DBAAS_NAMESPACE}
 assertAll:
   - celExpr: "has(job.status.succeeded) && job.status.succeeded == 1"

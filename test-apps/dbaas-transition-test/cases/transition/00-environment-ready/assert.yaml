@@ -4,30 +4,30 @@ timeout: 60
 resourceRefs:
   - apiVersion: apps/v1
     kind: Deployment
-    namespace: dbaas
+    namespace: ${DBAAS_NAMESPACE}
     name: dbaas-aggregator
     ref: aggregator
   - apiVersion: apps/v1
     kind: Deployment
-    namespace: dbaas
+    namespace: ${DBAAS_NAMESPACE}
     name: dbaas-operator
     ref: operator
   - apiVersion: apps/v1
     kind: Deployment
-    namespace: postgres
+    namespace: ${PG_NAMESPACE}
     name: dbaas-postgres-adapter
     ref: adapter
 collectors:
   - type: pod
     selector: name=dbaas-aggregator
-    namespace: dbaas
+    namespace: ${DBAAS_NAMESPACE}
     tail: 200
   - type: command
-    command: kubectl -n dbaas describe deployment dbaas-aggregator
+    command: kubectl -n ${DBAAS_NAMESPACE} describe deployment dbaas-aggregator
   - type: command
-    command: kubectl -n dbaas describe deployment dbaas-operator
+    command: kubectl -n ${DBAAS_NAMESPACE} describe deployment dbaas-operator
   - type: command
-    command: kubectl -n postgres describe deployment dbaas-postgres-adapter
+    command: kubectl -n ${PG_NAMESPACE} describe deployment dbaas-postgres-adapter
 assertAll:
   - celExpr: "aggregator.spec.replicas == 2"
   - celExpr: "aggregator.status.readyReplicas == 2"
