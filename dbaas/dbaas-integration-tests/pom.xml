@@ -24,7 +24,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.junit.cloudcore</groupId>
             <artifactId>cloud-core-extension</artifactId>
-            <version>8.11.0</version>
+            <version>8.11.1</version>
         </dependency>
 
         <dependency>
@@ -172,7 +172,7 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>4.3.3</version>
+            <version>4.3.4</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>
