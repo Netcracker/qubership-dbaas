@@ -4,7 +4,7 @@ commands:
   - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-transition-start.txt
     timeout: 10
   - script: >
-      AGGREGATOR_CHART_DIR="$TARGET_DIR" AGGREGATOR_TAG="$TARGET_TAG" DBAAS_RECREATE_DEPLOYMENT_STRATEGY=true
+      AGGREGATOR_CHART_DIR="$TARGET_DIR" AGGREGATOR_TAG="$TARGET_TAG"
       helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" -l component=aggregator sync
     timeout: 360
   - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-transition-end.txt
