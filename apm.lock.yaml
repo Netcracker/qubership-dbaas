@@ -1,11 +1,11 @@
 lockfile_version: '1'
-apm_version: 0.31.0
+apm_version: 0.32.0
 dependencies:
 - repo_url: netcracker/qubership-ai-packages
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: qubership-essentials
   host: github.com
-  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
+  resolved_commit: af5f9b88ba22b8851b4525559c54499598551548
   version: 1.1.0
   virtual_path: agent-packages/qubership-essentials
   is_virtual: true
@@ -15,7 +15,7 @@ dependencies:
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: apm-authoring
   host: github.com
-  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
+  resolved_commit: af5f9b88ba22b8851b4525559c54499598551548
   version: 1.1.0
   virtual_path: agent-packages/apm-authoring
   is_virtual: true
@@ -36,7 +36,7 @@ dependencies:
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: codex-review
   host: github.com
-  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
+  resolved_commit: af5f9b88ba22b8851b4525559c54499598551548
   version: 1.0.0
   virtual_path: agent-packages/codex-review
   is_virtual: true
@@ -56,7 +56,7 @@ dependencies:
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: english-us-developer-style
   host: github.com
-  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
+  resolved_commit: af5f9b88ba22b8851b4525559c54499598551548
   version: 2.1.0
   virtual_path: agent-packages/english-us-developer-style
   is_virtual: true
@@ -77,7 +77,7 @@ dependencies:
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: markdown-line-length-120
   host: github.com
-  resolved_commit: da23824cf722b6f2afbd5607a30dd6eaf7a22d1a
+  resolved_commit: af5f9b88ba22b8851b4525559c54499598551548
   version: 1.0.1
   virtual_path: agent-packages/markdown-line-length-120
   is_virtual: true
