@@ -8,17 +8,17 @@ on:
         required: true
         type: string
       initial-version:
-        description: dbaas-aggregator version the environment starts on (e.g. 6.14.1, no leading "v").
+        description: dbaas-aggregator version the environment starts on (for example, 6.14.1 or main).
         required: true
         type: string
       target-version:
-        description: dbaas-aggregator version the Helm release is transitioned to (e.g. 6.15.0).
+        description: dbaas-aggregator version the Helm release is transitioned to (for example, 6.15.0 or main).
         required: true
         type: string
       fixture-version:
         description: >-
-          dbaas-operator version held fixed for the whole run, both directions (e.g. 6.15.0, no
-          leading "v") — always the newer of the two versions under test.
+          dbaas-operator version held fixed for the whole run, both directions; always the newer
+          of the two versions under test.
         required: true
         type: string
 
@@ -46,9 +46,12 @@ jobs:
       AGGREGATOR_REPLICAS: "2"
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
-      INITIAL_TAG: v${{ inputs.initial-version }}
-      TARGET_TAG: v${{ inputs.target-version }}
-      OPERATOR_TAG: v${{ inputs.fixture-version }}
+      INITIAL_REF: ${{ inputs.initial-version == 'main' && 'main' || format('v{0}', inputs.initial-version) }}
+      TARGET_REF: ${{ inputs.target-version == 'main' && 'main' || format('v{0}', inputs.target-version) }}
+      OPERATOR_REF: ${{ inputs.fixture-version == 'main' && 'main' || format('v{0}', inputs.fixture-version) }}
+      INITIAL_TAG: ${{ inputs.initial-version == 'main' && 'latest' || format('v{0}', inputs.initial-version) }}
+      TARGET_TAG: ${{ inputs.target-version == 'main' && 'latest' || format('v{0}', inputs.target-version) }}
+      OPERATOR_TAG: ${{ inputs.fixture-version == 'main' && 'latest' || format('v{0}', inputs.fixture-version) }}
 
     steps:
       - name: Checkout harness (Helmfile, probe, and KUTTL test)
@@ -61,7 +64,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Netcracker/qubership-dbaas
-          ref: ${{ env.INITIAL_TAG }}
+          ref: ${{ env.INITIAL_REF }}
           path: repos/qubership-dbaas-initial
           persist-credentials: false
 
@@ -69,7 +72,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Netcracker/qubership-dbaas
-          ref: ${{ env.TARGET_TAG }}
+          ref: ${{ env.TARGET_REF }}
           path: repos/qubership-dbaas-target
           persist-credentials: false
 
@@ -77,7 +80,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Netcracker/qubership-dbaas
-          ref: ${{ env.OPERATOR_TAG }}
+          ref: ${{ env.OPERATOR_REF }}
           path: repos/qubership-dbaas-fixture
           persist-credentials: false
 
@@ -125,14 +128,13 @@ jobs:
           docker build -t dbaas-availability-probe:it harness/test-apps/dbaas-availability-probe
           kind load docker-image dbaas-availability-probe:it --name "$KIND_CLUSTER"
 
-      - name: Generate and mask test credentials
+      - name: Render probe manifests
         run: |
           set -euo pipefail
-          for var in POSTGRES_PASSWORD DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD DBAAS_TENANT_PASSWORD \
-                     DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD DISCR_TOOL_USER_PASSWORD BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD; do
-            value="$(openssl rand -hex 20)"
-            echo "::add-mask::$value"
-            echo "$var=$value" >> "$GITHUB_ENV"
+          export API_DBAAS_ADDRESS="http://dbaas-aggregator.${DBAAS_NAMESPACE}:8080"
+          for manifest in "$HARNESS_DIR"/test-apps/dbaas-availability-probe/manifests/*.yaml; do
+            envsubst '${DBAAS_NAMESPACE} ${API_DBAAS_ADDRESS}' < "$manifest" > "${manifest}.rendered"
+            mv "${manifest}.rendered" "$manifest"
           done
 
       - name: Provision transition environment

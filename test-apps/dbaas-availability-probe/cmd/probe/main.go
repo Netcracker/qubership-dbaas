@@ -44,10 +44,11 @@ func main() {
 	mode := getenv("PROBE_MODE", "probe")
 	interval := getenvMillis("PROBE_INTERVAL_MS", time.Second)
 	requestTimeout := getenvMillis("PROBE_REQUEST_TIMEOUT_MS", 5000*time.Millisecond)
+	namespace := getenv("DBAAS_NAMESPACE", "dbaas")
 	database := probe.DatabaseConfig{
-		AggregatorURL:    getenv("API_DBAAS_ADDRESS", "http://dbaas-aggregator.dbaas:8080"),
+		AggregatorURL:    getenv("API_DBAAS_ADDRESS", fmt.Sprintf("http://dbaas-aggregator.%s:8080", namespace)),
 		TokenPath:        tokenPath,
-		Namespace:        probeNamespace,
+		Namespace:        namespace,
 		MicroserviceName: probeServiceName,
 	}
 
@@ -67,7 +68,6 @@ func main() {
 
 const (
 	tokenPath        = "/var/run/secrets/tokens/dbaas/token"
-	probeNamespace   = "dbaas"
 	probeServiceName = "dbaas-transition-probe"
 )
 

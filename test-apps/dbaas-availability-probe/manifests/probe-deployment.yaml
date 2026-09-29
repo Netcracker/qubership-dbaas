@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dbaas-availability-probe
-  namespace: dbaas
+  namespace: ${DBAAS_NAMESPACE}
   labels:
     app.kubernetes.io/name: dbaas-availability-probe
     app.kubernetes.io/component: test-fixture
@@ -33,8 +33,10 @@ spec:
           env:
             - name: PROBE_MODE
               value: probe
+            - name: DBAAS_NAMESPACE
+              value: ${DBAAS_NAMESPACE}
             - name: API_DBAAS_ADDRESS
-              value: http://dbaas-aggregator.dbaas:8080
+              value: ${API_DBAAS_ADDRESS}
             - name: PROBE_INTERVAL_MS
               value: "1000"
             - name: PROBE_REQUEST_TIMEOUT_MS

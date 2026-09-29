@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: dbaas-fixture-preflight
-  namespace: dbaas
+  namespace: ${DBAAS_NAMESPACE}
 spec:
   backoffLimit: 0
   template:
@@ -28,8 +28,10 @@ spec:
           env:
             - name: PROBE_MODE
               value: verify-preflight
+            - name: DBAAS_NAMESPACE
+              value: ${DBAAS_NAMESPACE}
             - name: API_DBAAS_ADDRESS
-              value: http://dbaas-aggregator.dbaas:8080
+              value: ${API_DBAAS_ADDRESS}
           volumeMounts:
             - name: dbaas-token
               mountPath: /var/run/secrets/tokens/dbaas

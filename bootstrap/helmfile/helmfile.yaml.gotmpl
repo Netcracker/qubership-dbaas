@@ -1,5 +1,6 @@
 {{- $dbaasNamespace := env "DBAAS_NAMESPACE" | default "dbaas" }}
 {{- $pgNamespace := env "PG_NAMESPACE" | default "postgres" }}
+{{- $pgskipperRef := env "PGSKIPPER_REF" | default "main" }}
 
 helmDefaults:
   wait: true
@@ -18,7 +19,7 @@ releases:
 
   - name: patroni-core
     namespace: {{ $pgNamespace }}
-    chart: git::https://github.com/Netcracker/pgskipper-operator.git@operator/charts/patroni-core?ref=e05bed81afa7e81a59d4724a2d7f228fd7a72232
+    chart: git::https://github.com/Netcracker/pgskipper-operator.git@operator/charts/patroni-core?ref={{ $pgskipperRef }}
     forceGoGetter: true
     # Helm cannot wait for PatroniCore, so wait for the primary pod.
     wait: false
@@ -65,7 +66,7 @@ releases:
 
   - name: patroni-services
     namespace: {{ $pgNamespace }}
-    chart: git::https://github.com/Netcracker/pgskipper-operator.git@operator/charts/patroni-services?ref=e05bed81afa7e81a59d4724a2d7f228fd7a72232
+    chart: git::https://github.com/Netcracker/pgskipper-operator.git@operator/charts/patroni-services?ref={{ $pgskipperRef }}
     forceGoGetter: true
     # Helm cannot wait for PatroniServices, so wait for the adapter Deployment.
     wait: false

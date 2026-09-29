@@ -1,5 +1,5 @@
 # Chart tests restart Patroni, so they are disabled.
-postgresPassword: {{ requiredEnv "POSTGRES_PASSWORD" | quote }}
+postgresPassword: password
 
 patroni:
   affinity:
