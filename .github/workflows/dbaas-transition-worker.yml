@@ -44,6 +44,7 @@ jobs:
       PG_NAMESPACE: postgres
       DBAAS_NAMESPACE: dbaas
       AGGREGATOR_REPLICAS: "2"
+      DBAAS_RECREATE_DEPLOYMENT_STRATEGY: ${{ inputs.direction == 'upgrade' && 'true' || 'false' }}
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
       INITIAL_REF: ${{ inputs.initial-version == 'main' && 'main' || format('v{0}', inputs.initial-version) }}
@@ -144,6 +145,7 @@ jobs:
         env:
           AGGREGATOR_CHART_DIR: ${{ env.INITIAL_DIR }}
           AGGREGATOR_TAG: ${{ env.INITIAL_TAG }}
+          DBAAS_RECREATE_DEPLOYMENT_STRATEGY: "false"
         run: helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" sync
 
       - name: Run DBaaS transition availability test

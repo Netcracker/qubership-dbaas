@@ -9,4 +9,3 @@ resourceRefs:
     ref: aggregator
 assertAll:
   - celExpr: "aggregator.status.readyReplicas == 2"
-  - celExpr: "aggregator.spec.strategy.type == 'RollingUpdate'"
