@@ -22,6 +22,9 @@ public class DbaasAdapterRESTClientFactory {
     @ConfigProperty(name = "dbaas.security.k8s.m2m.enabled")
     boolean m2mEnabled;
 
+    @ConfigProperty(name = "dbaas.adapter.client.timeout-seconds", defaultValue = "180")
+    long adapterTimeoutSeconds;
+
     @Inject
     TimeMeasurementManager timeMeasurementManager;
 
@@ -31,8 +34,8 @@ public class DbaasAdapterRESTClientFactory {
         DbaasAdapterRestClient restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
                 .register(authFilter)
                 .register(new AdapterResponseExceptionMapper())
-                .connectTimeout(3, TimeUnit.MINUTES)
-                .readTimeout(3, TimeUnit.MINUTES)
+                .connectTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
                 .build(DbaasAdapterRestClient.class);
         return (DbaasAdapter) Proxy.newProxyInstance(DbaasAdapter.class.getClassLoader(), new Class[]{DbaasAdapter.class},
                 timeMeasurementManager.provideTimeMeasurementInvocationHandler(new DbaasAdapterRESTClient(adapterAddress, type, restClient, identifier, tracker)));
@@ -51,8 +54,8 @@ public class DbaasAdapterRESTClientFactory {
                 .register(dynamicAuthFilter, Priorities.AUTHENTICATION)
                 .register(new DbaasAdapterRestClientLoggingFilter())
                 .register(new AdapterResponseExceptionMapper())
-                .connectTimeout(3, TimeUnit.MINUTES)
-                .readTimeout(3, TimeUnit.MINUTES)
+                .connectTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
                 .build(DbaasAdapterRestClientV2.class);
 
         SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, m2mEnabled);

@@ -13,9 +13,12 @@ import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
 import com.netcracker.cloud.dbaas.dto.userrestore.RestoreUsersRequest;
 import com.netcracker.cloud.dbaas.dto.userrestore.RestoreUsersResponse;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
+import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
@@ -39,6 +42,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.NotAllowedException;
 import jakarta.ws.rs.Priorities;
+import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.junit.jupiter.api.AfterEach;
@@ -52,8 +56,13 @@ import java.util.TreeMap;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.*;
+import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @QuarkusTest
@@ -75,6 +84,8 @@ class AdapterErrorHandlingTest {
     MigrationService migrationService;
     @InjectMock
     PhysicalDatabasesService physicalDatabasesService;
+    @InjectMock
+    BalancingRulesService balancingRulesService;
     @Inject
     DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     @Inject
@@ -483,6 +494,101 @@ class AdapterErrorHandlingTest {
                 "A 5xx from the adapter is a transient error: the backup must be marked IN_PROGRESS for retry");
         assertTrue(response.getErrorMessage().contains("Internal Server Error"),
                 "The error message must propagate from AdapterException.getErrorMessage() via RestClientExceptionUtil");
+    }
+
+    @Test
+    void testCreateOrUpdateDatabase_adapterSettingsError_propagatesErrorMessageInHttpResponse() {
+        Database database = new DatabaseBuilder().registry().build();
+        databaseRegistryDbaasRepository.saveInternalDatabase(database.getDatabaseRegistry().getFirst());
+
+        DbaasAdapter wiremockAdapter = createWireMockAdapter();
+        when(physicalDatabasesService.getAdapterById(POSTGRES_ADAPTER_ID)).thenReturn(wiremockAdapter);
+
+        WireMockResource.getServer().stubFor(
+                put(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/databases/.*/settings"))
+                        .willReturn(aResponse()
+                                .withStatus(422)
+                                .withHeader("Content-Type", "application/json")
+                                .withBody("""
+                                        {
+                                          "message": "Settings rejected by adapter"
+                                        }
+                                        """))
+        );
+
+        DatabaseCreateRequestV3 request = new DatabaseCreateRequestV3();
+        request.setClassifier(database.getDatabaseRegistry().getFirst().getClassifier());
+        request.setType(PG_TYPE);
+        request.setOriginService(TEST_MS);
+        request.setSettings(Map.of("max-connections", 100));
+
+        given()
+                .auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .when()
+                .put("/api/v3/dbaas/" + TEST_NS + "/databases")
+                .then()
+                .statusCode(422)
+                .body(containsString("Settings rejected by adapter"));
+    }
+
+    @Test
+    void testCreateDatabase_adapterProblem_propagateError() {
+        DbaasAdapter wiremockAdapter = createWireMockAdapter();
+        ExternalAdapterRegistrationEntry adapterEntry = new ExternalAdapterRegistrationEntry(
+                POSTGRES_ADAPTER_ID, wiremockAddress, null, null, null);
+        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
+        physicalDatabase.setPhysicalDatabaseIdentifier(POSTGRES_PHY_DB_ID);
+        physicalDatabase.setAdapter(adapterEntry);
+        when(balancingRulesService.applyBalancingRules(eq(PG_TYPE), eq(TEST_NS), any())).thenReturn(physicalDatabase);
+        when(physicalDatabasesService.getAdapterById(POSTGRES_ADAPTER_ID)).thenReturn(wiremockAdapter);
+
+        DatabaseCreateRequestV3 request = new DatabaseCreateRequestV3();
+        request.setClassifier(new TreeMap<>(Map.of(
+                "scope", "service",
+                "namespace", TEST_NS,
+                "microserviceName", "failed-test-ms"
+        )));
+        request.setType(PG_TYPE);
+        request.setOriginService("failed-test-ms");
+
+        WireMockResource.getServer().stubFor(
+                post(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/databases"))
+                        .willReturn(aResponse().withFixedDelay(3000))
+        );
+        given()
+                .auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(request)
+                .when()
+                .put("/api/v3/dbaas/" + TEST_NS + "/databases")
+                .then()
+                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
+                .body("code", equalTo("CORE-DBAAS-4056"))
+                .body(containsString("Read timed out"));
+
+        WireMockResource.getServer().stubFor(
+                post(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/databases"))
+                        .willReturn(aResponse()
+                                .withStatus(INTERNAL_SERVER_ERROR.getStatusCode())
+                                .withHeader("Content-Type", "application/json")
+                                .withBody("""
+                                        Some obscure adapter error
+                                        """))
+        );
+        given()
+                .auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(request)
+                .when()
+                .put("/api/v3/dbaas/" + TEST_NS + "/databases")
+                .then()
+                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
+                .body("code", equalTo("CORE-DBAAS-4056"))
+                .body(containsString("Some obscure adapter error"));
     }
 
     private DbaasAdapter createWireMockAdapter() {
