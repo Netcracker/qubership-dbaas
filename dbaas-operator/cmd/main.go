@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"flag"
 	"io"
 	"net/http"
@@ -41,13 +40,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	_ "github.com/netcracker/qubership-core-lib-go/v3/memlimit"
+	"github.com/netcracker/qubership-core-lib-go/v3/security"
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
-	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/poller"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/requestcontext"
@@ -116,28 +114,12 @@ func main() {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
 
-	// Authentication mode mirrors the aggregator's KUBERNETES_M2M_ENABLED flag:
-	//   true  → Kubernetes projected service-account token (Bearer / M2M);
-	//   false → HTTP Basic Auth with credentials from the mounted security Secret.
-	// The aggregator rejects a Bearer token outright when M2M is disabled, so the
-	// operator must match the cluster's setting. Defaults to false (Basic Auth).
-	m2mEnabled := strings.EqualFold(os.Getenv("KUBERNETES_M2M_ENABLED"), "true")
-	var aggregator *aggregatorclient.AggregatorClient
-	var credentialWatcher manager.Runnable
-	if m2mEnabled {
-		aggregator = aggregatorclient.NewAggregatorClient(aggregatorURL)
-		setupLog.Infof("dbaas-aggregator client configured url=%v auth=m2m-token", aggregatorURL)
-	} else {
-		// Basic Auth: read username/password from users.json in the aggregator-created
-		// dbaas-security-configuration-secret, mounted at securityDir.
-		username, password := loadAggregatorCredentials(setupLog, securityDir)
-		aggregator = aggregatorclient.NewBasicAuthClient(aggregatorURL, username, password)
-		// Reload credentials on Secret rotation without a pod restart.
-		credentialWatcher = manager.RunnableFunc(func(ctx context.Context) error {
-			return watchCredentials(ctx, logging.GetLogger("dbaas-operator"), securityDir, aggregator)
-		})
-		setupLog.Infof("dbaas-aggregator client configured url=%v auth=basic username=%v", aggregatorURL, username)
+	m2mAuthMode, err := security.ReadM2MAuthMode()
+	if err != nil {
+		setupLog.Errorf("%v", err)
+		os.Exit(1)
 	}
+	aggregator, credentialWatcher := newAggregatorClient(setupLog, m2mAuthMode, aggregatorURL, securityDir)
 
 	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
 	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)

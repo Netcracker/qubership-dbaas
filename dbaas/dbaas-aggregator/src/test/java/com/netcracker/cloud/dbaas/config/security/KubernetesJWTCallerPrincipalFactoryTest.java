@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.config.security;
 
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesTokenVerificationException;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesTokenVerifier;
+import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import io.smallrye.jwt.auth.principal.ParseException;
 import org.jose4j.jwt.JwtClaims;
 import org.junit.jupiter.api.Test;
@@ -28,8 +29,8 @@ class KubernetesJWTCallerPrincipalFactoryTest {
     }
 
     @Test
-    void parseWhenM2mDisabled_shouldThrowParseException() {
-        factory = new KubernetesJWTCallerPrincipalFactory(false, "unused-audience");
+    void parseWhenModeIsLegacy_shouldThrowParseException() {
+        factory = new KubernetesJWTCallerPrincipalFactory(M2MAuthMode.LEGACY, "unused-audience");
         assertThrows(ParseException.class, () -> factory.parse("some.bearer.token", null));
     }
 }

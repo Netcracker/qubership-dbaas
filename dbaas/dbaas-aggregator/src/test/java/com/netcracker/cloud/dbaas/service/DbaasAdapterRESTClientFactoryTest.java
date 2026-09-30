@@ -5,10 +5,13 @@ import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.DynamicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
+import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -34,15 +37,16 @@ class DbaasAdapterRESTClientFactoryTest {
     DbaasAdapterRESTClientFactory factory;
 
     @Test
-    void clientV2StartsWithBasicAuthWhenKubernetesM2MIsDisabled() {
-        factory.m2mEnabled = false;
+    void clientV2StartsWithBasicAuthInLegacyMode() {
+        factory.m2mAuthMode = M2MAuthMode.LEGACY;
 
         assertInstanceOf(BasicAuthFilter.class, initialAuthFilterOfClientV2());
     }
 
-    @Test
-    void clientV2StartsWithKubernetesTokenWhenKubernetesM2MIsEnabled() {
-        factory.m2mEnabled = true;
+    @ParameterizedTest
+    @EnumSource(value = M2MAuthMode.class, names = {"HYBRID", "K8S"})
+    void clientV2StartsWithKubernetesTokenInHybridAndK8sModes(M2MAuthMode mode) {
+        factory.m2mAuthMode = mode;
 
         assertInstanceOf(KubernetesTokenAuthFilter.class, initialAuthFilterOfClientV2());
     }

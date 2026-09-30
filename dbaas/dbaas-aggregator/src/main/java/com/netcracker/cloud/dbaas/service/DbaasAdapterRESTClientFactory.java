@@ -10,11 +10,11 @@ import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.security.filters.DynamicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
+import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import jakarta.ws.rs.Priorities;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 
 import java.lang.reflect.Proxy;
@@ -23,8 +23,8 @@ import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class DbaasAdapterRESTClientFactory {
-    @ConfigProperty(name = "dbaas.security.k8s.m2m.enabled")
-    boolean m2mEnabled;
+    @Inject
+    M2MAuthMode m2mAuthMode;
 
     @Inject
     TimeMeasurementManager timeMeasurementManager;
@@ -44,8 +44,12 @@ public class DbaasAdapterRESTClientFactory {
     public DbaasAdapter createDbaasAdapterClientV2(String username, String password, String adapterAddress, String type,
                                                    String identifier, AdapterActionTrackerClient tracker, ApiVersion apiVersions) {
         BasicAuthFilter basicAuthFilter = new BasicAuthFilter(username, password);
+        boolean useKubernetesToken = switch (m2mAuthMode) {
+            case LEGACY -> false;
+            case HYBRID, K8S -> true;
+        };
         KubernetesTokenAuthFilter kubernetesTokenAuthFilter = null;
-        if (m2mEnabled) {
+        if (useKubernetesToken) {
             kubernetesTokenAuthFilter = new KubernetesTokenAuthFilter(KubernetesServiceAccountToken::getToken);
         }
         DynamicAuthFilter dynamicAuthFilter = new DynamicAuthFilter(kubernetesTokenAuthFilter != null ? kubernetesTokenAuthFilter : basicAuthFilter);
@@ -57,7 +61,7 @@ public class DbaasAdapterRESTClientFactory {
                 .readTimeout(3, TimeUnit.MINUTES)
                 .build(DbaasAdapterRestClientV2.class);
 
-        SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, m2mEnabled);
+        SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, useKubernetesToken);
 
         return (DbaasAdapter) Proxy.newProxyInstance(DbaasAdapter.class.getClassLoader(), new Class[]{DbaasAdapter.class},
                 timeMeasurementManager.provideTimeMeasurementInvocationHandler(new DbaasAdapterRESTClientV2(adapterAddress, type, secureRestClient, identifier, tracker, apiVersions)));

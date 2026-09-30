@@ -24,7 +24,7 @@
         + [DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS](#dbaas_backup_restore_retry_delay_seconds)
         + [DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS](#dbaas_backup_restore_retry_attempts)
         + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
-        + [KUBERNETES_M2M_ENABLED](#kubernetes_m2m_enabled)
+        + [M2M_AUTH_MODE](#m2m_auth_mode)
         + [KUBERNETES_M2M_AUDIENCE](#kubernetes_m2m_audience)
         + [priorityClassName](#priorityClassName)
     * [CREDENTIALS](#credentials)
@@ -327,17 +327,26 @@ If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator w
 |---------|----------------------------------------------------------|
 | true    | Set to true if need to enable namespace isolation |
 
-#### KUBERNETES_M2M_ENABLED
+#### M2M_AUTH_MODE
 
-If KUBERNETES_M2M_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens for M2M authentication.
+M2M_AUTH_MODE selects which credentials dbaas-aggregator accepts and which it sends to adapters.
 
-| Default | Recommended                                              |
-|---------|----------------------------------------------------------|
-| false   | Set to true if need to enable kubernetes M2M      |
+| Value    | Incoming requests                                   | Requests to adapters on API v2                                                  |
+|----------|-----------------------------------------------------|---------------------------------------------------------------------------------|
+| `legacy` | Basic only; a request with a Bearer token is rejected | Basic                                                                         |
+| `hybrid` | Basic and Kubernetes service account tokens         | Kubernetes token; after a `401`, Basic, and the Kubernetes token again after 60 minutes |
+| `k8s`    | Same as `hybrid`                                    | Same as `hybrid`                                                                |
+
+Adapters on API v1 always get Basic. In `hybrid` and `k8s` the token audience must match [KUBERNETES_M2M_AUDIENCE](#kubernetes_m2m_audience).
+The value is matched case-insensitively, and an unset or empty variable means `legacy`. Any other value, `true` and `false` included, stops dbaas-aggregator at startup with `M2M_AUTH_MODE has unsupported value "<value>": set it to legacy, hybrid, or k8s`.
+
+| Default | Recommended                                                                                   |
+|---------|-----------------------------------------------------------------------------------------------|
+| legacy  | Set to hybrid or k8s to accept Kubernetes service account tokens; use the same mode in every component |
 
 #### KUBERNETES_M2M_AUDIENCE
 
-KUBERNETES_M2M_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected.
+KUBERNETES_M2M_AUDIENCE specifies the expected audience from Kubernetes tokens. Tokens with a different audience are rejected. It applies when [M2M_AUTH_MODE](#m2m_auth_mode) is hybrid or k8s.
 
 | Default | Recommended                                                               |
 |---------|---------------------------------------------------------------------------|

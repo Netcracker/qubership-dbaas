@@ -27,10 +27,10 @@ matches its `CLOUD_NAMESPACE`.
 
 ## Authentication
 
-The operator authenticates to dbaas-aggregator in one of two modes, selected by `KUBERNETES_M2M_ENABLED` and **must match the aggregator's setting**:
+The operator authenticates to dbaas-aggregator in one of two modes, selected by `M2M_AUTH_MODE`:
 
-- `false` (default) — HTTP Basic Auth, using the `dbaas-operator` entry of `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security`;
-- `true` — a Kubernetes projected service-account token (Bearer / M2M).
+- `legacy` (default) — HTTP Basic Auth, using the `dbaas-operator` entry of `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security`. Works against the aggregator in any mode;
+- `hybrid` or `k8s` — a Kubernetes projected service-account token (Bearer). The aggregator must be in `hybrid` or `k8s`: in `legacy` it rejects Bearer tokens.
 
 Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](docs/DBaaS%20Operator.md#configuration-parameters) for the full list.
 

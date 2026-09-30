@@ -28,7 +28,7 @@ import (
 )
 
 // securityDir is the fixed mount path of the dbaas-security-configuration-secret
-// (mounted in Basic Auth mode, KUBERNETES_M2M_ENABLED=false).
+// (mounted in Basic Auth mode, M2M_AUTH_MODE=legacy).
 const securityDir = "/etc/dbaas/security"
 
 const usersJSONFile = "users.json"

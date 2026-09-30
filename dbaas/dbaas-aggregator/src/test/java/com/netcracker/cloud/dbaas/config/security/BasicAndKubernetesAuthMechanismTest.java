@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.config.security;
 
+import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import io.quarkus.security.identity.IdentityProviderManager;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.request.AuthenticationRequest;
@@ -42,7 +43,7 @@ class BasicAndKubernetesAuthMechanismTest {
         when(basicAuth.getCredentialTypes()).thenReturn(basicTypes);
         when(jwtAuth.getCredentialTypes()).thenReturn(jwtTypes);
 
-        mechanism = new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, true);
+        mechanism = new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, M2MAuthMode.HYBRID);
 
         context = mock(RoutingContext.class);
         request = mock(HttpServerRequest.class);
@@ -153,9 +154,9 @@ class BasicAndKubernetesAuthMechanismTest {
     }
 
     @Test
-    void testAuthenticate_withBearerToken_whenM2mDisabled_returnsFailure() {
+    void testAuthenticate_withBearerToken_whenModeIsLegacy_returnsFailure() {
         BasicAndKubernetesAuthMechanism disabledMechanism =
-                new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, false);
+                new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, M2MAuthMode.LEGACY);
 
         when(request.getHeader("Authorization")).thenReturn("Bearer token");
 
@@ -166,5 +167,33 @@ class BasicAndKubernetesAuthMechanismTest {
         var subscriber = result.subscribe().withSubscriber(io.smallrye.mutiny.helpers.test.UniAssertSubscriber.create());
         subscriber.awaitFailure();
         assertInstanceOf(io.quarkus.security.AuthenticationFailedException.class, subscriber.getFailure());
+    }
+
+    @Test
+    void testAuthenticate_withBearerToken_whenModeIsK8s_usesJwt() {
+        BasicAndKubernetesAuthMechanism k8sMechanism =
+                new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, M2MAuthMode.K8S);
+        when(request.getHeader("Authorization")).thenReturn("Bearer token");
+        Uni<SecurityIdentity> expected = Uni.createFrom().nullItem();
+        when(jwtAuth.authenticate(any(), any())).thenReturn(expected);
+
+        Uni<SecurityIdentity> result = k8sMechanism.authenticate(context, idManager);
+
+        verify(basicAuth, never()).authenticate(any(), any());
+        assertEquals(expected, result);
+    }
+
+    @Test
+    void testAuthenticate_withBasicAuth_whenModeIsK8s_usesBasic() {
+        BasicAndKubernetesAuthMechanism k8sMechanism =
+                new BasicAndKubernetesAuthMechanism(basicAuth, jwtAuth, M2MAuthMode.K8S);
+        when(request.getHeader("Authorization")).thenReturn("Basic dXNlcjpwYXNz");
+        Uni<SecurityIdentity> expected = Uni.createFrom().nullItem();
+        when(basicAuth.authenticate(any(), any())).thenReturn(expected);
+
+        Uni<SecurityIdentity> result = k8sMechanism.authenticate(context, idManager);
+
+        verify(jwtAuth, never()).authenticate(any(), any());
+        assertEquals(expected, result);
     }
 }
