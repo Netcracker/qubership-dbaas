@@ -38,3 +38,17 @@ DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL: ""
 #           mounted at /etc/dbaas/security and the operator reads its credentials from
 #           the users.json it contains (hot-reloaded on rotation).
 KUBERNETES_M2M_ENABLED: false
+
+# ============== AGGREGATOR TRANSPORT ============================
+# Full dbaas-aggregator base URL. When empty, the chart selects https://dbaas-aggregator:8443
+# if INTERNAL_TLS_ENABLED is true; otherwise the operator uses its built-in default
+# http://dbaas-aggregator:8080. With INTERNAL_TLS_ENABLED true, an explicit value must start
+# with https://, or rendering fails.
+DBAAS_AGGREGATOR_URL: ""
+INTERNAL_TLS_ENABLED: false
+# Optional ConfigMap with a PEM CA bundle that signs the aggregator's serving certificate.
+# Only the selected key is mounted at /etc/dbaas/aggregator-tls/ca.crt. Leave the name empty
+# to rely on the image's system trust store. Never point this at the aggregator's
+# serving Secret: the operator must not receive the server private key.
+DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME: ""
+DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_KEY: ca.crt

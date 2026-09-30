@@ -20,9 +20,12 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"sync/atomic"
@@ -98,6 +101,46 @@ func NewBasicAuthClient(baseURL, username, password string) *AggregatorClient {
 // subsequent requests. Safe for concurrent use.
 func (c *AggregatorClient) SetCredentials(username, password string) {
 	c.creds.Store(&credentials{username: username, password: password})
+}
+
+// SetRootCA adds the PEM certificates in caFilePath to the roots the client
+// trusts when it verifies the aggregator's HTTPS certificate. The system roots
+// stay trusted, so a private CA extends rather than replaces them.
+//
+// Call it once during startup, before the client sends any request; it is not
+// safe for concurrent use with in-flight requests. It returns an error when the
+// file cannot be read or contains no parsable certificate.
+func (c *AggregatorClient) SetRootCA(caFilePath string) error {
+	pemData, err := os.ReadFile(caFilePath)
+	if err != nil {
+		return fmt.Errorf("read aggregator CA bundle %q: %w", caFilePath, err)
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pemData) {
+		return fmt.Errorf("aggregator CA bundle %q contains no valid PEM certificate", caFilePath)
+	}
+
+	// Resty's SetRootCertificate starts from an empty pool when RootCAs is nil,
+	// which would drop the system roots, so the transport is configured directly.
+	current, err := c.rc.Transport()
+	if err != nil {
+		return fmt.Errorf("get aggregator HTTP transport: %w", err)
+	}
+	transport := current.Clone()
+	var tlsConfig *tls.Config
+	if transport.TLSClientConfig != nil {
+		tlsConfig = transport.TLSClientConfig.Clone()
+	} else {
+		tlsConfig = &tls.Config{}
+	}
+	tlsConfig.RootCAs = pool
+	tlsConfig.MinVersion = tls.VersionTLS12
+	transport.TLSClientConfig = tlsConfig
+	c.rc.SetTransport(transport)
+	return nil
 }
 
 // newClient is the internal constructor used in package-level tests. A non-nil

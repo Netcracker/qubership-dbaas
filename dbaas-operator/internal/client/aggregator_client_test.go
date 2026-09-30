@@ -18,11 +18,14 @@ package client
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1234,5 +1237,130 @@ func TestCreateDatabase_StatusHandling(t *testing.T) {
 				t.Errorf("pending = %v, want %v", pending, tt.wantPending)
 			}
 		})
+	}
+}
+
+// ── TLS trust (SetRootCA) ─────────────────────────────────────────────────────
+
+// writeServerCA writes the TLS test server's certificate as a PEM file and
+// returns its path.
+func writeServerCA(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "ca.crt")
+	data := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("write CA file: %v", err)
+	}
+	return path
+}
+
+func TestSetRootCA_DefaultClientRejectsUntrustedCertificate(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("request with an untrusted certificate reached the server")
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	err := c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
+	var unknownAuthority x509.UnknownAuthorityError
+	if !errors.As(err, &unknownAuthority) {
+		t.Fatalf("error = %v, want x509.UnknownAuthorityError", err)
+	}
+}
+
+func TestSetRootCA_TrustedCertificatePreservesHeaders(t *testing.T) {
+	const requestID = "tls-request-id"
+	tests := []struct {
+		name           string
+		newClient      func(string) *AggregatorClient
+		wantAuthPrefix string
+	}{
+		{
+			name: "M2M",
+			newClient: func(baseURL string) *AggregatorClient {
+				return newClient(baseURL, staticToken("test-token"))
+			},
+			wantAuthPrefix: "Bearer ",
+		},
+		{
+			name: "BasicAuth",
+			newClient: func(baseURL string) *AggregatorClient {
+				return NewBasicAuthClient(baseURL, "dbaas-operator", "password")
+			},
+			wantAuthPrefix: "Basic ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotRequestID, gotAuthorization string
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotRequestID = r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME)
+				gotAuthorization = r.Header.Get("Authorization")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			c := tt.newClient(srv.URL)
+			if err := c.SetRootCA(writeServerCA(t, srv)); err != nil {
+				t.Fatalf("SetRootCA: %v", err)
+			}
+			if err := c.RegisterExternalDatabase(contextWithRequestID(requestID), "ns", minimalExtDBRequest()); err != nil {
+				t.Fatalf("RegisterExternalDatabase: %v", err)
+			}
+			if gotRequestID != requestID {
+				t.Errorf("%s header: got %q, want %q",
+					xrequestid.X_REQUEST_ID_HEADER_NAME, gotRequestID, requestID)
+			}
+			if !strings.HasPrefix(gotAuthorization, tt.wantAuthPrefix) {
+				t.Errorf("Authorization: got %q, want prefix %q", gotAuthorization, tt.wantAuthPrefix)
+			}
+		})
+	}
+}
+
+func TestSetRootCA_RejectsHostnameNotInCertificate(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("request with a mismatched hostname reached the server")
+	}))
+	defer srv.Close()
+
+	// The httptest certificate covers 127.0.0.1 and example.com, but not localhost.
+	c := newClient(strings.Replace(srv.URL, "127.0.0.1", "localhost", 1), staticToken("test-token"))
+	if err := c.SetRootCA(writeServerCA(t, srv)); err != nil {
+		t.Fatalf("SetRootCA: %v", err)
+	}
+	err := c.RegisterExternalDatabase(requestContext(), "ns", minimalExtDBRequest())
+	var hostnameErr x509.HostnameError
+	if !errors.As(err, &hostnameErr) {
+		t.Fatalf("error = %v, want x509.HostnameError", err)
+	}
+}
+
+func TestSetRootCA_MissingFileReturnsError(t *testing.T) {
+	t.Parallel()
+
+	c := newClient("https://dbaas-aggregator:8443", staticToken("test-token"))
+	err := c.SetRootCA(filepath.Join(t.TempDir(), "missing.crt"))
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestSetRootCA_NoCertificateReturnsError(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "ca.crt")
+	if err := os.WriteFile(path, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatalf("write CA file: %v", err)
+	}
+	c := newClient("https://dbaas-aggregator:8443", staticToken("test-token"))
+	err := c.SetRootCA(path)
+	if err == nil || !strings.Contains(err.Error(), "no valid PEM certificate") {
+		t.Fatalf("error = %v, want no valid PEM certificate error", err)
 	}
 }

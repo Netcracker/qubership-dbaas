@@ -210,12 +210,45 @@
       "$id": "#/properties/DBAAS_AGGREGATOR_URL",
       "type": "string",
       "title": "The DBAAS_AGGREGATOR_URL schema",
-      "description": "Base URL of dbaas-aggregator. Leave empty to use the operator's built-in default. Override only when the aggregator is not reachable at the default in-cluster service address (for example cross-cluster deployments).",
+      "description": "Base URL of dbaas-aggregator. When empty, the chart uses https://dbaas-aggregator:8443 if INTERNAL_TLS_ENABLED is true, otherwise the operator's built-in default http://dbaas-aggregator:8080. When INTERNAL_TLS_ENABLED is true, an explicit value must start with https://; any other scheme fails rendering.",
       "default": "",
       "examples": [
         "",
         "http://dbaas-aggregator:8080",
+        "https://dbaas-aggregator:8443",
         "http://dbaas-aggregator.other-namespace.svc.cluster.local:8080"
+      ]
+    },
+    "INTERNAL_TLS_ENABLED": {
+      "$id": "#/properties/INTERNAL_TLS_ENABLED",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The INTERNAL_TLS_ENABLED schema",
+      "description": "When true, the operator connects to dbaas-aggregator over HTTPS: at https://dbaas-aggregator:8443 when DBAAS_AGGREGATOR_URL is empty, or at an explicit https:// DBAAS_AGGREGATOR_URL. A non-HTTPS explicit URL fails rendering.",
+      "default": false,
+      "examples": [
+        false,
+        true
+      ]
+    },
+    "DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME": {
+      "$id": "#/properties/DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME",
+      "type": "string",
+      "title": "The DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME schema",
+      "description": "Optional ConfigMap with a PEM CA bundle that the operator trusts, in addition to the system roots, when it verifies the dbaas-aggregator HTTPS certificate. Leave empty to rely on the system trust store.",
+      "default": "",
+      "examples": [
+        "",
+        "dbaas-internal-roots"
+      ]
+    },
+    "DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_KEY": {
+      "$id": "#/properties/DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_KEY",
+      "type": "string",
+      "title": "The DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_KEY schema",
+      "description": "Key in DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME that holds the PEM CA bundle.",
+      "default": "ca.crt",
+      "examples": [
+        "ca.crt"
       ]
     },
     "DBAAS_OPERATOR_ENABLED": {

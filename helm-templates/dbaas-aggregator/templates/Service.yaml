@@ -12,5 +12,11 @@ spec:
         port: 8080
         targetPort: 8080
         protocol: TCP
+{{- if eq (lower (toString .Values.INTERNAL_TLS_ENABLED)) "true" }}
+    -   name: https
+        port: 8443
+        targetPort: https
+        protocol: TCP
+{{- end }}
     selector:
         name: '{{ .Values.SERVICE_NAME }}'

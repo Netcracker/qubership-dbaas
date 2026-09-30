@@ -31,3 +31,14 @@ MEMORY_LIMIT: "520Mi"
 CPU_LIMIT: "2"
 CPU_REQUEST: "100m"
 REPLICAS: 1
+
+# ============== INTERNAL TLS ============================
+# Enables the HTTPS listener on 8443 next to HTTP on 8080. Requires cert-manager and an existing
+# Issuer or ClusterIssuer; the chart creates only the Certificate.
+INTERNAL_TLS_ENABLED: false
+# Name of the externally managed issuer. Required when INTERNAL_TLS_ENABLED is true.
+ISSUER_NAME: ""
+ISSUER_KIND: ClusterIssuer
+ISSUER_GROUP: cert-manager.io
+# How often the aggregator rereads the renewed certificate files from the mounted Secret.
+TLS_CERTIFICATE_RELOAD_PERIOD: 1h

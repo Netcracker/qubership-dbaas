@@ -568,6 +568,52 @@
         "netcracker"
       ]
     },
+    "INTERNAL_TLS_ENABLED": {
+      "$id": "#/properties/INTERNAL_TLS_ENABLED",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The INTERNAL_TLS_ENABLED schema",
+      "description": "Enables the HTTPS listener on port 8443 in addition to HTTP on port 8080, and creates a cert-manager Certificate for it. Requires ISSUER_NAME.",
+      "default": false
+    },
+    "ISSUER_NAME": {
+      "$id": "#/properties/ISSUER_NAME",
+      "type": "string",
+      "title": "The ISSUER_NAME schema",
+      "description": "Name of the externally managed cert-manager Issuer or ClusterIssuer that signs the aggregator serving certificate. Required when INTERNAL_TLS_ENABLED is true.",
+      "default": "",
+      "examples": [
+        "dbaas-internal-ca"
+      ]
+    },
+    "ISSUER_KIND": {
+      "$id": "#/properties/ISSUER_KIND",
+      "type": "string",
+      "title": "The ISSUER_KIND schema",
+      "description": "Kind of the cert-manager issuer referenced by ISSUER_NAME.",
+      "enum": [
+        "Issuer",
+        "ClusterIssuer"
+      ],
+      "default": "ClusterIssuer"
+    },
+    "ISSUER_GROUP": {
+      "$id": "#/properties/ISSUER_GROUP",
+      "type": "string",
+      "title": "The ISSUER_GROUP schema",
+      "description": "API group of the issuer referenced by ISSUER_NAME.",
+      "default": "cert-manager.io"
+    },
+    "TLS_CERTIFICATE_RELOAD_PERIOD": {
+      "$id": "#/properties/TLS_CERTIFICATE_RELOAD_PERIOD",
+      "type": "string",
+      "title": "The TLS_CERTIFICATE_RELOAD_PERIOD schema",
+      "description": "Interval at which the aggregator reloads the renewed certificate files, in Quarkus duration format.",
+      "default": "1h",
+      "examples": [
+        "1h",
+        "30m"
+      ]
+    },
     "APPLICATION_NAME": {
       "$id": "#/properties/APPLICATION_NAME",
       "type": "string",

@@ -139,6 +139,16 @@ func main() {
 		setupLog.Infof("dbaas-aggregator client configured url=%v auth=basic username=%v", aggregatorURL, username)
 	}
 
+	// An explicitly configured CA bundle must load; falling back to system trust
+	// alone would hide a broken trust setup until the first HTTPS call fails.
+	if caPath := os.Getenv("DBAAS_AGGREGATOR_TLS_CA_CERT_PATH"); caPath != "" {
+		if err := aggregator.SetRootCA(caPath); err != nil {
+			setupLog.Errorf("Failed to load dbaas-aggregator CA bundle path=%v: %v", caPath, err)
+			os.Exit(1)
+		}
+		setupLog.Infof("DBaaS Aggregator client trusts additional CA bundle path=%v", caPath)
+	}
+
 	eventsEnabled := strings.EqualFold(os.Getenv("K8S_EVENTS_ENABLED"), "true")
 	setupLog.Infof("Kubernetes event recording enabled=%v", eventsEnabled)
 

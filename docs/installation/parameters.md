@@ -17,6 +17,7 @@
         + [DR_MANAGEABLE](#dr_manageable)
         + [PRODUCTION_MODE](#production_mode)
         + [INTERNAL_TLS_ENABLED](#internal_tls_enabled)
+        + [POSTGRES_TLS_ENABLED](#postgres_tls_enabled)
         + [READONLY_CONTAINER_FILE_SYSTEM_ENABLED](#readonly_container_file_system_enabled)
         + [DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT](#dbaas_backup_restore_check_lock_timeout)
         + [DBAAS_BACKUP_RESTORE_CHECK_INTERVAL](#dbaas_backup_restore_check_interval)
@@ -257,14 +258,105 @@ If PRODUCTION_MODE is set to true, dropping databases in DBaaS is not allowed.
 
 #### INTERNAL_TLS_ENABLED
 
-If INTERNAL_TLS_ENABLED is set to true, DBaaS Aggregator will work in TLS mode:
+If INTERNAL_TLS_ENABLED is set to true, DBaaS Aggregator serves its API over both HTTP and HTTPS:
 
-* two ports will be available: 8080(http) and 8443(https)
-* all connections via https proto will be secured
+* HTTP on port `8080` stays available for backward compatibility. Liveness and readiness probes keep using it.
+* HTTPS on port `8443` is added to the Pod and to the `dbaas-aggregator` Service as the `https` port.
 
-| Default | Recommended                                |
-|---------|--------------------------------------------|
-| false   | Set to true if need to enable TLS in DBaaS |
+This is server-side (one-way) TLS, not mutual TLS. The Aggregator presents a server certificate; clients verify it and
+send no client certificate. Basic and Kubernetes M2M authentication work unchanged inside the TLS connection.
+
+The value accepts both the Boolean `true` and the string `"true"`. It controls only the inbound HTTPS listener. The
+Aggregator's PostgreSQL connection uses `POSTGRES_TLS_ENABLED` and `POSTGRES_TLS_CA_CERT_PATH` instead; see
+[POSTGRES_TLS_ENABLED](#postgres_tls_enabled).
+
+| Default | Recommended                                                |
+|---------|------------------------------------------------------------|
+| false   | Set to true to serve the Aggregator API over HTTPS as well |
+
+**Prerequisites.** cert-manager must be installed in the cluster, and an `Issuer` or `ClusterIssuer` must be Ready. The
+chart creates only a cert-manager `Certificate` named `<SERVICE_NAME>-tls` (`dbaas-aggregator-tls` by default). It
+never creates or changes an issuer. cert-manager stores the key pair in a Secret of the same name, which the Aggregator
+mounts read-only at `/etc/tls`. The Pod stays Pending until that Secret exists.
+
+The certificate covers these DNS names:
+
+```text
+dbaas-aggregator
+dbaas-aggregator.<namespace>
+dbaas-aggregator.<namespace>.svc
+dbaas-aggregator.<namespace>.svc.cluster.local
+```
+
+Clients must connect through one of these names; an IP address or any other hostname fails certificate verification.
+
+Aggregator TLS parameters:
+
+| Parameter                       | Default           | Description                                                   |
+|---------------------------------|-------------------|---------------------------------------------------------------|
+| `ISSUER_NAME`                   | `""`              | Issuer that signs the certificate. Required when TLS is on.   |
+| `ISSUER_KIND`                   | `ClusterIssuer`   | `Issuer` or `ClusterIssuer`.                                  |
+| `ISSUER_GROUP`                  | `cert-manager.io` | API group of the issuer.                                      |
+| `TLS_CERTIFICATE_RELOAD_PERIOD` | `1h`              | How often the Aggregator rereads renewed certificate files.   |
+
+`ISSUER_NAME` has no universal default: issuers are environment-specific, so the deployer supplies it. Rendering the
+chart with TLS enabled and an empty `ISSUER_NAME` fails with
+`ISSUER_NAME is required when INTERNAL_TLS_ENABLED is true`.
+
+**DBaaS Operator.** The Operator chart accepts the same `INTERNAL_TLS_ENABLED` value and selects the Aggregator URL as
+follows. Both values are trimmed, and the scheme check ignores case.
+
+| `INTERNAL_TLS_ENABLED` | `DBAAS_AGGREGATOR_URL`            | Aggregator URL used by the Operator                  |
+|------------------------|-----------------------------------|------------------------------------------------------|
+| false                  | empty                             | Built-in default `http://dbaas-aggregator:8080`      |
+| false                  | nonempty                          | The explicit URL                                     |
+| true                   | empty                             | `https://dbaas-aggregator:8443`                      |
+| true                   | starts with `https://`            | The explicit URL                                     |
+| true                   | anything else, such as `http://…` | Rendering fails; see the message below               |
+
+With INTERNAL_TLS_ENABLED true, an explicit URL that does not start with `https://` fails with
+`DBAAS_AGGREGATOR_URL must use https:// when INTERNAL_TLS_ENABLED is true`. Use an explicit HTTPS URL, for example
+`https://dbaas-aggregator.dbaas.svc.cluster.local:8443`, when the Operator reaches the Aggregator through another name.
+
+The Operator verifies the Aggregator certificate against its image's system trust store. If the issuer uses a private
+CA, publish the CA bundle in a separate ConfigMap and point the Operator to it:
+
+| Parameter                                 | Default  | Description                                           |
+|-------------------------------------------|----------|-------------------------------------------------------|
+| `DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME` | `""`     | ConfigMap that holds the PEM CA bundle. Empty = none. |
+| `DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_KEY`  | `ca.crt` | Key in that ConfigMap that holds the bundle.          |
+
+The chart mounts only the selected key at `/etc/dbaas/aggregator-tls/ca.crt`. The Operator trusts those certificates in
+addition to the system roots. If the file cannot be read or holds no valid certificate, the Operator exits at startup
+instead of falling back to system trust alone. The CA ConfigMap works with any HTTPS `DBAAS_AGGREGATOR_URL`, even when
+INTERNAL_TLS_ENABLED is false. The ConfigMap can be managed by Argo CD, another deployment component, or trust-manager.
+
+Never give the Operator the Aggregator's serving Secret: it contains the server private key, and the Operator only needs
+the CA certificate.
+
+**Certificate renewal and CA rotation.** cert-manager renews the leaf certificate automatically. The Aggregator picks up
+the renewed files within `TLS_CERTIFICATE_RELOAD_PERIOD`, and the Operator needs no restart while the signing CA stays
+the same. The Operator reads the CA bundle only at startup, so to rotate the root CA:
+
+1. Publish a bundle that contains both the old and the new root, and roll out the Operator.
+2. Switch the issuer to the new CA and let cert-manager reissue the Aggregator certificate.
+3. Remove the old root from the bundle and roll out the Operator again.
+
+#### POSTGRES_TLS_ENABLED
+
+POSTGRES_TLS_ENABLED and POSTGRES_TLS_CA_CERT_PATH control TLS on the Aggregator's own JDBC connection to PostgreSQL.
+They are environment variables of the Aggregator process; this chart does not set them, so a deployment that needs
+PostgreSQL TLS adds them to the Aggregator container.
+
+| Variable                    | Default           | Description                                                          |
+|-----------------------------|-------------------|----------------------------------------------------------------------|
+| `POSTGRES_TLS_ENABLED`      | unset (`false`)   | `true` connects to PostgreSQL with TLS and verifies its certificate. |
+| `POSTGRES_TLS_CA_CERT_PATH` | `/etc/tls/ca.crt` | PEM CA certificate that signs the PostgreSQL server certificate.     |
+
+When POSTGRES_TLS_ENABLED is unset, the Aggregator falls back to an `INTERNAL_TLS_ENABLED` environment variable, if one
+is present, and logs a warning. Older deployments passed that variable to enable PostgreSQL TLS. This fallback is
+temporary; set POSTGRES_TLS_ENABLED explicitly. `POSTGRES_TLS_CA_CERT_PATH` defaults to `ca.crt` in
+`CERTIFICATE_FILE_PATH`, which is `/etc/tls` unless overridden.
 
 #### READONLY_CONTAINER_FILE_SYSTEM_ENABLED
 

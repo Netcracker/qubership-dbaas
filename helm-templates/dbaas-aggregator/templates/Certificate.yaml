@@ -1,0 +1,25 @@
+{{- if eq (lower (toString .Values.INTERNAL_TLS_ENABLED)) "true" }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+    name: '{{ .Values.SERVICE_NAME }}-tls'
+    labels:
+        app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
+        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+spec:
+    secretName: '{{ .Values.SERVICE_NAME }}-tls'
+    dnsNames:
+    -   '{{ .Values.SERVICE_NAME }}'
+    -   '{{ .Values.SERVICE_NAME }}.{{ .Release.Namespace }}'
+    -   '{{ .Values.SERVICE_NAME }}.{{ .Release.Namespace }}.svc'
+    -   '{{ .Values.SERVICE_NAME }}.{{ .Release.Namespace }}.svc.cluster.local'
+    usages:
+    -   digital signature
+    -   key encipherment
+    -   server auth
+    issuerRef:
+        name: '{{ required "ISSUER_NAME is required when INTERNAL_TLS_ENABLED is true" .Values.ISSUER_NAME }}'
+        kind: '{{ .Values.ISSUER_KIND }}'
+        group: '{{ .Values.ISSUER_GROUP }}'
+{{- end }}
