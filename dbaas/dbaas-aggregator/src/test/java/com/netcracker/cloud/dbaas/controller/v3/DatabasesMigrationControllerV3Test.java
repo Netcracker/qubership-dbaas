@@ -54,7 +54,6 @@ class DatabasesMigrationControllerV3Test {
 
         final RegisterDatabaseResponseBuilder registerDatabaseResponseBuilder = registerDatabaseResponseBuilderSample();
 
-        when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         when(migrationService.registerDatabases(any(), eq(API_VERSION.V3), eq(false))).thenReturn(registerDatabaseResponseBuilder);
         given().auth().preemptive().basic("migration-client", "migration-client")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -111,7 +110,6 @@ class DatabasesMigrationControllerV3Test {
 
     @Test
     void testRegisterDbWithUserCreation_ValidateRequest() throws Exception {
-        when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         RegisterDatabaseWithUserCreationRequest validRegisteredRecord = getRegisterDatabaseWithUserCreationRequest();
         RegisterDatabaseWithUserCreationRequest notValidRegisteredRecord = getRegisterDatabaseWithUserCreationRequest(
                 getClassifier(),
@@ -173,7 +171,6 @@ class DatabasesMigrationControllerV3Test {
     void testRegisterDbWithUserCreation_SuccessRequest() throws Exception {
         RegisterDatabaseWithUserCreationRequest validRegisteredRecord = getRegisterDatabaseWithUserCreationRequest();
         List<RegisterDatabaseWithUserCreationRequest> requests = List.of(validRegisteredRecord);
-        when(dBaaService.isValidClassifierV3(any())).thenReturn(true);
         when(migrationService.registerDatabases(any(), eq(API_VERSION.V3), eq(true)))
                 .thenReturn(new RegisterDatabaseResponseBuilder());
 

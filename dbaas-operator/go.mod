@@ -7,16 +7,16 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/google/uuid v1.6.0
-	github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.7.0
-	github.com/netcracker/qubership-core-lib-go/v3 v3.14.0
-	github.com/onsi/ginkgo/v2 v2.32.2
-	github.com/onsi/gomega v1.43.1
+	github.com/netcracker/qubership-core-lib-go-error-handling/v3 v3.7.1
+	github.com/netcracker/qubership-core-lib-go/v3 v3.14.1
+	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/gomega v1.44.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
-	k8s.io/api v0.37.0
-	k8s.io/apiextensions-apiserver v0.37.0
-	k8s.io/apimachinery v0.37.0
-	k8s.io/client-go v0.37.0
+	k8s.io/api v0.37.1
+	k8s.io/apiextensions-apiserver v0.37.1
+	k8s.io/apimachinery v0.37.1
+	k8s.io/client-go v0.37.1
 	k8s.io/klog/v2 v2.140.0
 	sigs.k8s.io/controller-runtime v0.25.1
 )
@@ -79,7 +79,7 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect

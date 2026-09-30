@@ -7,7 +7,7 @@
                  "prometheus",
                  "k8s"
              ],
-    "schemaVersion":  39,
+    "schemaVersion":  42,
     "version":  9,
     "time":  {
                  "from":  "now-30m",

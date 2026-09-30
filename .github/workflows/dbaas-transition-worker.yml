@@ -1,0 +1,175 @@
+name: DBaaS Transition Worker
+
+on:
+  workflow_call:
+    inputs:
+      direction:
+        description: Which transition this run performs (upgrade or downgrade).
+        required: true
+        type: string
+      initial-version:
+        description: dbaas-aggregator version the environment starts on (for example, 6.14.1 or main).
+        required: true
+        type: string
+      target-version:
+        description: dbaas-aggregator version the Helm release is transitioned to (for example, 6.15.0 or main).
+        required: true
+        type: string
+      fixture-version:
+        description: >-
+          dbaas-operator version held fixed for the whole run, both directions; always the newer
+          of the two versions under test.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  transition:
+    name: ${{ inputs.direction }} ${{ inputs.initial-version }} -> ${{ inputs.target-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    permissions:
+      contents: read
+    concurrency:
+      group: dbaas-transition-${{ inputs.direction }}-${{ github.ref }}
+      cancel-in-progress: false
+
+    env:
+      KIND_CLUSTER: kind
+      HARNESS_DIR: ${{ github.workspace }}/harness
+      INITIAL_DIR: ${{ github.workspace }}/repos/qubership-dbaas-initial
+      TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
+      OPERATOR_CHART_DIR: ${{ github.workspace }}/repos/qubership-dbaas-fixture
+      PG_NAMESPACE: postgres
+      DBAAS_NAMESPACE: dbaas
+      AGGREGATOR_REPLICAS: "2"
+      PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
+      PROBE_IMAGE_TAG: it
+      INITIAL_REF: ${{ inputs.initial-version == 'main' && 'main' || format('v{0}', inputs.initial-version) }}
+      TARGET_REF: ${{ inputs.target-version == 'main' && 'main' || format('v{0}', inputs.target-version) }}
+      OPERATOR_REF: ${{ inputs.fixture-version == 'main' && 'main' || format('v{0}', inputs.fixture-version) }}
+      INITIAL_TAG: ${{ inputs.initial-version == 'main' && 'latest' || format('v{0}', inputs.initial-version) }}
+      TARGET_TAG: ${{ inputs.target-version == 'main' && 'latest' || format('v{0}', inputs.target-version) }}
+      OPERATOR_TAG: ${{ inputs.fixture-version == 'main' && 'latest' || format('v{0}', inputs.fixture-version) }}
+
+    steps:
+      - name: Checkout harness (Helmfile, probe, and KUTTL test)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+
+      - name: Checkout initial-version dbaas (aggregator chart only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Netcracker/qubership-dbaas
+          ref: ${{ env.INITIAL_REF }}
+          path: repos/qubership-dbaas-initial
+          persist-credentials: false
+
+      - name: Checkout target-version dbaas (aggregator chart only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Netcracker/qubership-dbaas
+          ref: ${{ env.TARGET_REF }}
+          path: repos/qubership-dbaas-target
+          persist-credentials: false
+
+      - name: Checkout fixture-version dbaas (fixed operator chart and resource profile)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Netcracker/qubership-dbaas
+          ref: ${{ env.OPERATOR_REF }}
+          path: repos/qubership-dbaas-fixture
+          persist-credentials: false
+
+      - name: Set up Kind
+        uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          version: v0.33.0
+          cluster_name: kind
+          config: harness/bootstrap/helmfile/kind.yaml
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Install KUTTL (pinned release, checksum-verified)
+        run: |
+          set -euo pipefail
+          KUTTL_VERSION=0.27.0
+          KUTTL_BINARY=kubectl-kuttl_${KUTTL_VERSION}_linux_x86_64
+          KUTTL_SHA256=ead175622128c043cd5f90fc7f9ed07602d064e02a8bec89632be801f83c6490
+          curl -sSLO "https://github.com/kudobuilder/kuttl/releases/download/v${KUTTL_VERSION}/${KUTTL_BINARY}"
+          echo "${KUTTL_SHA256}  ${KUTTL_BINARY}" | sha256sum -c -
+          install -m 0755 -D "${KUTTL_BINARY}" "$RUNNER_TEMP/kuttl-bin/kubectl-kuttl"
+          echo "$RUNNER_TEMP/kuttl-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/kuttl-bin/kubectl-kuttl" version
+
+      - name: Install Helmfile (pinned release, checksum-verified)
+        run: |
+          set -euo pipefail
+          HELMFILE_VERSION=1.8.0
+          HELMFILE_ARCHIVE=helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
+          HELMFILE_SHA256=35d5d39fc608342b23fc7ce1dd0c3bf0c96cc07ec3796507ab6894a5d172bf20
+          curl -sSLO "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/${HELMFILE_ARCHIVE}"
+          echo "${HELMFILE_SHA256}  ${HELMFILE_ARCHIVE}" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/helmfile-bin"
+          tar -xzf "${HELMFILE_ARCHIVE}" -C "$RUNNER_TEMP/helmfile-bin" helmfile
+          chmod 0755 "$RUNNER_TEMP/helmfile-bin/helmfile"
+          echo "$RUNNER_TEMP/helmfile-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/helmfile-bin/helmfile" version
+
+      - name: Build dbaas-availability-probe image and load into kind
+        run: |
+          docker build -t dbaas-availability-probe:it harness/test-apps/dbaas-availability-probe
+          kind load docker-image dbaas-availability-probe:it --name "$KIND_CLUSTER"
+
+      - name: Render test manifests
+        run: |
+          set -euo pipefail
+          export API_DBAAS_ADDRESS="http://dbaas-aggregator.${DBAAS_NAMESPACE}:8080"
+          for manifest in \
+            "$HARNESS_DIR"/test-apps/dbaas-availability-probe/manifests/*.yaml \
+            "$HARNESS_DIR"/test-apps/dbaas-transition-test/cases/transition/*/*.yaml; do
+            envsubst '${DBAAS_NAMESPACE} ${PG_NAMESPACE} ${API_DBAAS_ADDRESS}' \
+              < "$manifest" > "${manifest}.rendered"
+            mv "${manifest}.rendered" "$manifest"
+          done
+
+      - name: Provision transition environment
+        env:
+          AGGREGATOR_CHART_DIR: ${{ env.INITIAL_DIR }}
+          AGGREGATOR_TAG: ${{ env.INITIAL_TAG }}
+        run: helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" sync
+
+      - name: Run DBaaS transition availability test
+        working-directory: harness/test-apps/dbaas-transition-test
+        run: timeout 55m kubectl kuttl test --config kuttl-test.yaml --artifacts-dir "$GITHUB_WORKSPACE/diagnostics"
+
+      - name: Collect diagnostics
+        if: always()
+        env:
+          OUT_DIR: ${{ github.workspace }}/diagnostics
+          EXTRA_DEPLOYMENTS: dbaas-availability-probe:${{ env.DBAAS_NAMESPACE }}
+          AGGREGATOR_LOG_MODE: health-only
+        run: |
+          set -uo pipefail
+          bash harness/.github/scripts/collect-dbaas-logs.sh || true
+
+          helm -n "$DBAAS_NAMESPACE" status dbaas-aggregator > "$OUT_DIR/helm-status-dbaas-aggregator.txt" 2>&1 || true
+          helm -n "$DBAAS_NAMESPACE" history dbaas-aggregator > "$OUT_DIR/helm-history-dbaas-aggregator.txt" 2>&1 || true
+          helm -n "$DBAAS_NAMESPACE" get values dbaas-aggregator -o yaml \
+            > "$OUT_DIR/helm-values-dbaas-aggregator.yaml" 2>&1 || true
+          cp /tmp/dbaas-transition-*.txt /tmp/dbaas-transition-probe.jsonl "$OUT_DIR/" 2>/dev/null || true
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dbaas-transition-${{ inputs.direction }}-diagnostics
+          path: ${{ github.workspace }}/diagnostics/**
+          if-no-files-found: warn

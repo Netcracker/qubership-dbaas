@@ -55,13 +55,8 @@ Never repeat reserved keys (`microserviceName`, `scope`, `namespace`, `tenantId`
 
 ## InternalDatabase template
 
-For a Helm layout, replace `<operator-namespace>` with:
-
-```text
-{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) | quote }}
-```
-
-For a plain manifest, replace it with the verified literal namespace.
+Replace `<operator-namespace>` with the verified namespace of the operator instance that must manage
+the generated CRs. It is not necessarily the workload namespace.
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1

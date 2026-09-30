@@ -159,6 +159,11 @@ spec:
             - microserviceName
             - operatorNamespace
             type: object
+            x-kubernetes-validations:
+            - message: at least one of spec.services, spec.policy, or spec.disableGlobalPermissions
+                must be set
+              rule: (has(self.services) && size(self.services) > 0) || (has(self.policy)
+                && size(self.policy) > 0) || has(self.disableGlobalPermissions)
           status:
             description: status defines the observed state of DatabaseAccessPolicy.
             properties:

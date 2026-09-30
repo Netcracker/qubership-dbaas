@@ -3,10 +3,9 @@ module github.com/netcracker/qubership-dbaas/test-apps/go-test-app-service
 go 1.27.1
 
 require (
-	github.com/jackc/pgx/v5 v5.11.0
-	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.1
-	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.1
-	github.com/netcracker/qubership-core-lib-go/v3 v3.14.0
+	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.2
+	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.2
+	github.com/netcracker/qubership-core-lib-go/v3 v3.14.1
 	github.com/uptrace/bun v1.2.18
 )
 
@@ -17,6 +16,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.11.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/knadh/koanf/maps v0.1.3 // indirect
@@ -35,8 +35,8 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

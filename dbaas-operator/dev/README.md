@@ -89,7 +89,7 @@ bash dev/e2e-all-crs.sh
 ```
 
 The script leaves its successful resources in place for OpenLens inspection. It creates two
-`ExternalDatabase`, two `InternalDatabase`, two `DatabaseSecretClaim`, one
+`ExternalDatabase`, two `InternalDatabase`, two `DatabaseSecretClaim`, two
 `DatabaseAccessPolicy`, one `MicroserviceBalancingRule`, and one `NamespaceBalancingRule` in
 `test-ns`, all assigned to `dbaas-system`. It creates the permanent singleton in
 `dbaas-system`, temporarily creates a misplaced permanent singleton in `test-ns` to prove it
@@ -171,24 +171,28 @@ Rules are defined in `apply-rules.json` inside the `aggregator-mock-rules` Confi
 
 Expected output:
 
-```
-NAME                      PHASE
-dap-success                Succeeded
-dap-400                    InvalidConfiguration
-dap-401                    BackingOff
-dap-500                    BackingOff
-dap-invalid-empty-spec     InvalidConfiguration
+```text
+NAME                             PHASE
+dap-success                      Succeeded
+dap-disable-global-permissions   Succeeded
+dap-400                          InvalidConfiguration
+dap-401                          BackingOff
+dap-500                          BackingOff
 ```
 
 | CR file | `microserviceName` | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
 |---|---|---|---|---|---|
 | `dap-success.yaml` | `svc-ok` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
+| `dap-disable-global-permissions.yaml` | `svc-disable-global-perms` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
 | `dap-400.yaml` | `svc-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
 | `dap-401.yaml` | `svc-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
 | `dap-500.yaml` | `svc-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
-| `dap-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (no HTTP call) | `InvalidConfiguration` | `InvalidSpec` | `True` |
+| `dap-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (never reached) | N/A — rejected at admission | — | — |
 
-> **Note:** `dap-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
+> **Note:** `dap-invalid-empty-spec.yaml` exercises CRD admission validation — the CEL cross-field rule that requires at
+> least one of `services`, `policy`, or `disableGlobalPermissions` to be set. The API server rejects the CR with HTTP
+> 422, so `kubectl apply` prints an error for this file and the object is never stored. It does not appear in
+> `kubectl get databaseaccesspolicy`.
 
 ### InternalDatabase
 
@@ -504,11 +508,12 @@ dev/
     ├── edb-secret-empty-key.yaml    # EDB — Secret exists, key present but empty → BackingOff (SecretError, not Unauthorized)
     │
     │   # DatabaseAccessPolicy test CRs
-    ├── dap-success.yaml                # DatabaseAccessPolicy — 200 OK → Succeeded (reason: PolicyApplied)
-    ├── dap-400.yaml                    # DatabaseAccessPolicy — 400 → InvalidConfiguration
-    ├── dap-401.yaml                    # DatabaseAccessPolicy — 401 → BackingOff
-    ├── dap-500.yaml                    # DatabaseAccessPolicy — 500 → BackingOff
-    ├── dap-invalid-empty-spec.yaml     # DatabaseAccessPolicy — pre-flight: no services/policy → InvalidConfiguration
+    ├── dap-success.yaml                       # DatabaseAccessPolicy — 200 OK → Succeeded (reason: PolicyApplied)
+    ├── dap-disable-global-permissions.yaml    # DatabaseAccessPolicy — disableGlobalPermissions only → Succeeded
+    ├── dap-400.yaml                           # DatabaseAccessPolicy — 400 → InvalidConfiguration
+    ├── dap-401.yaml                           # DatabaseAccessPolicy — 401 → BackingOff
+    ├── dap-500.yaml                           # DatabaseAccessPolicy — 500 → BackingOff
+    ├── dap-invalid-empty-spec.yaml            # DatabaseAccessPolicy — CRD admission: all fields absent → rejected (HTTP 422)
     │
     │   # InternalDatabase test CRs
     ├── idb-success-sync.yaml                 # IDB — apply-rule 200 (sync) → Succeeded

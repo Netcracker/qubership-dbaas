@@ -5,7 +5,7 @@ metadata:
   namespace: test-ns
 spec:
   operatorNamespace: dbaas-system
-  # Neither services nor policy are set — CRD allows it (both fields are +optional),
-  # but the controller requires at least one to be non-empty.
-  # Expected: Phase=InvalidConfiguration, Stalled=True, reason=InvalidSpec (no requeue, no aggregator call)
+  # Neither services, policy, nor disableGlobalPermissions are set —
+  # CRD admission rejects this CR with HTTP 422 (CEL cross-field rule).
+  # Expected: kubectl apply returns an error; the object is never stored.
   microserviceName: svc-invalid-empty-spec

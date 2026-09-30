@@ -444,6 +444,13 @@ public class OperatorHelper {
     public static GenericKubernetesResource buildDatabaseAccessPolicyCR(String crName, String microserviceName,
                                                             List<Map<String, Object>> services,
                                                             List<Map<String, Object>> policy) {
+        return buildDatabaseAccessPolicyCR(crName, microserviceName, services, policy, null);
+    }
+
+    public static GenericKubernetesResource buildDatabaseAccessPolicyCR(String crName, String microserviceName,
+                                                            List<Map<String, Object>> services,
+                                                            List<Map<String, Object>> policy,
+                                                            Boolean disableGlobalPermissions) {
         GenericKubernetesResource cr = new GenericKubernetesResource();
         cr.setApiVersion("dbaas.netcracker.com/v1");
         cr.setKind("DatabaseAccessPolicy");
@@ -462,6 +469,9 @@ public class OperatorHelper {
         }
         if (policy != null) {
             specBody.put("policy", policy);
+        }
+        if (disableGlobalPermissions != null) {
+            specBody.put("disableGlobalPermissions", disableGlobalPermissions);
         }
 
         cr.setAdditionalProperty("spec", specBody);

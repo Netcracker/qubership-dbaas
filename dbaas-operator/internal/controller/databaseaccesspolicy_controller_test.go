@@ -189,13 +189,31 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 		})
 	})
 
-	Context("both services and policy are empty", func() {
-		It("sets Phase=InvalidConfiguration, Ready=False/InvalidSpec, Stalled=True, does not requeue", func() {
-			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
+	Context("services, policy, and disableGlobalPermissions are all unset", func() {
+		It("is rejected by CRD admission validation before reaching the controller", func() {
+			err := k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
 				Spec: dbaasv1.DatabaseAccessPolicySpec{
 					OperatorNamespace: testOperatorNamespace,
 					MicroserviceName:  "test-service",
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("at least one of"))
+			Expect(fixture.capturedBody).To(BeEmpty(), "aggregator must not be called")
+		})
+	})
+
+	Context("only disableGlobalPermissions is set", func() {
+		It("treats the spec as valid, calls the aggregator, and sets Phase=Succeeded", func() {
+			fixture.statusCode = http.StatusOK
+			disableGP := true
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseAccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec: dbaasv1.DatabaseAccessPolicySpec{
+					OperatorNamespace:        testOperatorNamespace,
+					MicroserviceName:         "test-service",
+					DisableGlobalPermissions: &disableGP,
 				},
 			})).To(Succeed())
 
@@ -203,15 +221,19 @@ var _ = Describe("DatabaseAccessPolicy Controller", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
-			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
-			Expect(fixture.capturedBody).To(BeEmpty())
+			Expect(dp.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(fixture.capturedBody).NotTo(BeEmpty(), "aggregator must be called")
 
-			ready := findCondition(dp.Status.Conditions, conditionTypeReady)
-			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
-			Expect(ready.Message).To(ContainSubstring("at least one of"))
+			var sent struct {
+				Spec struct {
+					DisableGlobalPermissions *bool `json:"disableGlobalPermissions"`
+				} `json:"spec"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.Spec.DisableGlobalPermissions).NotTo(BeNil())
+			Expect(*sent.Spec.DisableGlobalPermissions).To(BeTrue())
 
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonPolicyApplied)
 			expectNoRecordedEvent(fixture.recorder.Events)
 		})
 	})

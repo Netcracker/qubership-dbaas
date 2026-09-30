@@ -44,6 +44,9 @@ public class DatabaseDeclarativeConfig implements Serializable {
     @Column(name = "name_prefix")
     private String namePrefix;
 
+    @Column(name = "physical_database_id")
+    private String physicalDatabaseId;
+
     private String namespace;
 
 
@@ -59,6 +62,7 @@ public class DatabaseDeclarativeConfig implements Serializable {
         this.classifier = new TreeMap<>(config.getClassifier());
         this.type = config.getType();
         this.namePrefix = config.getNamePrefix();
+        this.physicalDatabaseId = config.getPhysicalDatabaseId();
         this.namespace = config.getNamespace();
     }
 
@@ -71,6 +75,7 @@ public class DatabaseDeclarativeConfig implements Serializable {
         this.versioningApproach = declaration.getVersioningConfig() == null ? NEW_MODE : declaration.getVersioningConfig().getApproach();
         this.classifier = new TreeMap<>(classifier);
         this.type = declaration.getType();
+        this.physicalDatabaseId = declaration.getPhysicalDatabaseId();
         this.namespace = namespace;
     }
 
