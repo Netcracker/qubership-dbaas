@@ -30,6 +30,7 @@ public class DbaasAdapterRESTClientFactory {
         BasicAuthFilter authFilter = new BasicAuthFilter(username, password);
         DbaasAdapterRestClient restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
                 .register(authFilter)
+                .register(new AdapterResponseExceptionMapper())
                 .connectTimeout(3, TimeUnit.MINUTES)
                 .readTimeout(3, TimeUnit.MINUTES)
                 .build(DbaasAdapterRestClient.class);

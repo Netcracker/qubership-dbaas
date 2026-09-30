@@ -7,14 +7,13 @@ import com.netcracker.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
 import com.netcracker.cloud.dbaas.exceptions.PasswordChangeValidationException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +35,8 @@ import java.util.stream.Stream;
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static com.netcracker.cloud.dbaas.entity.pg.DbResource.USER_KIND;
 import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.*;
+import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
+import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -99,8 +100,37 @@ class PasswordRotationServiceTest {
         adapterNotSupportUsers(TEST_NS, PG_TYPE, connection, classifier);
         doReturn(true).when(pgDefaultAdapter).isUsersSupported();
 
-        doThrow(new WebApplicationException(Response.Status.NOT_FOUND)).when(pgDefaultAdapter).ensureUser(ADMIN_USER_NAME, null, databaseName, Role.ADMIN.toString());
+        doThrow(new AdapterException(NOT_FOUND.getStatusCode(), NOT_FOUND.getReasonPhrase()))
+                .when(pgDefaultAdapter).ensureUser(ADMIN_USER_NAME, null, databaseName, Role.ADMIN.toString());
         passwordChangeFail(TEST_NS, PG_TYPE, classifier);
+    }
+
+    @Test
+    void changeUserPasswordOneDatabaseTest_adapterException_collectedInFailed() {
+        DatabaseRegistry database = new DatabaseBuilder()
+                .registry()
+                .build()
+                .getDatabaseRegistry().getFirst();
+        SortedMap<String, Object> classifier = database.getClassifier();
+        String databaseName = database.getName();
+
+        DbaasAdapter pgDefaultAdapter = Mockito.spy(createAdapter("pgDefaultAdapter-address", PG_TYPE,
+                mock(DbaasAdapterRestClientV2.class), POSTGRES_ADAPTER_ID, mock(AdapterActionTrackerClient.class)));
+        Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(Arrays.asList(pgDefaultAdapter));
+        doReturn(true).when(pgDefaultAdapter).isUsersSupported();
+        when(logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository()).thenReturn(databaseRegistryDbaasRepository);
+        Mockito.when(databaseRegistryDbaasRepository.getDatabaseByClassifierAndType(classifier, PG_TYPE))
+                .thenReturn(Optional.of(database.getDatabaseRegistry().get(0)));
+
+        doThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), INTERNAL_SERVER_ERROR.getReasonPhrase()))
+                .when(pgDefaultAdapter).ensureUser(ADMIN_USER_NAME, null, databaseName, Role.ADMIN.toString());
+
+        PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(classifier, PG_TYPE);
+        // AdapterException is now caught per-CP and collected in the failed list.
+        // changeUserPassword wraps a non-empty failed list in PasswordChangeFailedException.
+        Assertions.assertThrows(PasswordChangeFailedException.class,
+                () -> passwordRotationService.changeUserPassword(passwordChangeRequest, TEST_NS, Role.ADMIN.toString()),
+                "AdapterException should be collected in the failed list, then wrapped in PasswordChangeFailedException");
     }
 
     @Test
@@ -206,7 +236,7 @@ class PasswordRotationServiceTest {
         doReturn(true).when(mongoNotDefaultAdapter).isUsersSupported();
 
         checkSuccessChangePassword(TEST_NS, PG_TYPE, classifier1, classifier2, connection1, connection2, mongoDefaultAdapter, mongoNotDefaultAdapter, database1, database2);
-        doThrow(new WebApplicationException(Response.Status.NOT_FOUND)).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
+        doThrow(new AdapterException(NOT_FOUND.getStatusCode(), NOT_FOUND.getReasonPhrase())).when(mongoNotDefaultAdapter).ensureUser(userName2, null, databaseName2, Role.ADMIN.toString());
         Mockito.clearInvocations(passwordRotationCommitService);
         checkOneFailChangePassword(TEST_NS, PG_TYPE, classifier1, classifier2, connection1, connection2, mongoDefaultAdapter, mongoNotDefaultAdapter, database1, database2);
     }
@@ -353,14 +383,14 @@ class PasswordRotationServiceTest {
         PasswordChangeFailedException exception = eRef.get();
         PasswordChangeResponse response = exception.getResponse();
         Assertions.assertNotNull(response);
-        Assertions.assertEquals(404, exception.getStatus());
+        Assertions.assertEquals(NOT_FOUND.getStatusCode(), exception.getStatus());
 
         Assertions.assertEquals(1, response.getChanged().size());
         Assertions.assertEquals(classifier1, response.getChanged().get(0).getClassifier());
 
         Assertions.assertEquals(1, response.getFailed().size());
         Assertions.assertEquals(classifier2, response.getFailed().get(0).getClassifier());
-        Assertions.assertEquals("HTTP 404 Not Found", response.getFailed().get(0).getMessage());
+        Assertions.assertEquals(NOT_FOUND.getReasonPhrase(), response.getFailed().get(0).getMessage());
 
         // The successful database must have been committed; the failed one must not have been.
         verify(passwordRotationCommitService).commitRotation(database1);
@@ -398,10 +428,10 @@ class PasswordRotationServiceTest {
         PasswordChangeFailedException exception = eRef.get();
         PasswordChangeResponse response = exception.getResponse();
         Assertions.assertNotNull(response);
-        Assertions.assertEquals(404, exception.getStatus());
+        Assertions.assertEquals(NOT_FOUND.getStatusCode(), exception.getStatus());
         Assertions.assertEquals(1, response.getFailed().size());
         Assertions.assertEquals(classifierRequest, response.getFailed().get(0).getClassifier());
-        Assertions.assertEquals("HTTP 404 Not Found", response.getFailed().get(0).getMessage());
+        Assertions.assertEquals(NOT_FOUND.getReasonPhrase(), response.getFailed().get(0).getMessage());
     }
 
     private void adapterNotSupportUsers(String namespace, String dbType, Map<String, Object> connection, Map<String, Object> classifierRequest) {

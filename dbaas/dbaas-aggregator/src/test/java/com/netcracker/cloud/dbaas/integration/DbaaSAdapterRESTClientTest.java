@@ -1,9 +1,12 @@
 package com.netcracker.cloud.dbaas.integration;
 
 import com.netcracker.cloud.dbaas.dto.DescribedDatabase;
+import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
 import com.netcracker.cloud.dbaas.dto.backup.Status;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.service.AdapterActionTrackerClient;
@@ -11,7 +14,6 @@ import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
-import jakarta.ws.rs.WebApplicationException;
 import lombok.Data;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,8 @@ import java.util.*;
 
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbResource.DATABASE_KIND;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbResource.USER_KIND;
+import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
+import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.*;
@@ -56,7 +60,8 @@ class DbaaSAdapterRESTClientTest {
         adapterBackupAction.setAction(TrackedAction.Action.BACKUP);
         when(restClientV2.collectBackup(any(), any(), any(), any())).thenReturn(adapterBackupAction);
 
-        when(restClientV2.trackBackup(any(), any(), any())).thenThrow(new WebApplicationException());
+        when(restClientV2.trackBackup(any(), any(), any()))
+                .thenThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), "Adapter Internal Server Error"));
 
         Assertions.assertEquals(Status.FAIL, new DbaasAdapterRESTClientV2("", "", restClientV2, "", client)
                 .backup(Arrays.asList("any"), ALLOW_EVICTION).getStatus());
@@ -83,6 +88,51 @@ class DbaaSAdapterRESTClientTest {
         DescribedDatabase describedDatabase = describeDatabases.get("one");
         Assertions.assertNotNull(describedDatabase.getConnectionProperties());
         Assertions.assertEquals(expectedDescribeResponse.getConnectionProperties().get(0), describedDatabase.getConnectionProperties().get(0));
+    }
+
+    @Test
+    void testDeleteBackup_500_adapterException_setsFailStatus() {
+        DbaasAdapterRestClientV2 restClientV2 = mock(DbaasAdapterRestClientV2.class);
+        when(restClientV2.deleteBackup(any(), any()))
+                .thenThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), "internal adapter error"));
+
+        DatabasesBackup backup = new DatabasesBackup();
+        backup.setLocalId("backup-123");
+
+        DeleteResult result = new DbaasAdapterRESTClientV2("", "pg", restClientV2, "", client).delete(backup);
+        Assertions.assertEquals(Status.FAIL, result.getStatus(),
+                "A 500 from deleteBackup should record Status.FAIL on the DeleteResult, not propagate");
+    }
+
+    @Test
+    void testDeleteBackup_404_adapterException_setsSuccessStatus() {
+        DbaasAdapterRestClientV2 restClientV2 = mock(DbaasAdapterRestClientV2.class);
+        when(restClientV2.deleteBackup(any(), any()))
+                .thenThrow(new AdapterException(NOT_FOUND.getStatusCode(), "backup not found"));
+
+        DatabasesBackup backup = new DatabasesBackup();
+        backup.setLocalId("backup-404");
+
+        // A 404 means the delete-backup endpoint is not yet implemented on the adapter;
+        // the contract treats that as SUCCESS (nothing to delete).
+        DeleteResult result = new DbaasAdapterRESTClientV2("", "pg", restClientV2, "", client).delete(backup);
+        Assertions.assertEquals(Status.SUCCESS, result.getStatus(),
+                "A 404 from deleteBackup should record Status.SUCCESS on the DeleteResult, not propagate");
+    }
+
+    @Test
+    void testUpdateSettings_adapterException_isRethrown() {
+        DbaasAdapterRestClientV2 restClientV2 = mock(DbaasAdapterRestClientV2.class);
+        when(restClientV2.updateSettings(any(), any(), any()))
+                .thenThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), "settings update failed"));
+
+        DbaasAdapterRESTClientV2 adapter = new DbaasAdapterRESTClientV2("", "pg", restClientV2, "", client);
+
+        // The generic catch (Exception e) in AbstractDbaasAdapterRESTClient.updateSettings() catches
+        // AdapterException and re-throws it. The caller receives the exception correctly; this is
+        // a regression test that verifies the re-throw path is not silently swallowed.
+        Assertions.assertThrows(AdapterException.class,
+                () -> adapter.updateSettings("dbname", Map.of(), Map.of("key", "value")));
     }
 
     @Data

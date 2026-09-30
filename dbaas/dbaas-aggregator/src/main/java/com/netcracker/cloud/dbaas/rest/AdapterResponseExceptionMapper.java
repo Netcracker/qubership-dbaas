@@ -14,7 +14,7 @@ public class AdapterResponseExceptionMapper implements ResponseExceptionMapper<A
         String responseBody = response.readEntity(String.class);
         String errorMessage;
         try {
-            errorMessage = objectMapper.readTree(responseBody).get("message").asText();
+            errorMessage = objectMapper.readTree(responseBody).path("message").asText(responseBody);
         } catch (JsonProcessingException e) {
             errorMessage = responseBody;
         }
