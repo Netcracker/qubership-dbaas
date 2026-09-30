@@ -3,6 +3,7 @@ kind: NamespaceBalancingRule
 metadata:
   name: namespace-balancing-rules
 spec:
+  operatorNamespace: dbaas-system
   rules:
     - name: pg-sample
       type: postgresql

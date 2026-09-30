@@ -22,8 +22,8 @@ package controller
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dbaas.netcracker.com,resources=databasesecretclaims/status,verbs=get;update;patch
 //
-// Secret access is granted by a namespaced Role + RoleBinding provisioned alongside the
-// NamespaceBinding (not a ClusterRole), so there is no cluster-wide secrets RBAC marker here.
+// Secret access is granted by a namespaced Role + RoleBinding, so there is no
+// cluster-wide secrets RBAC marker here.
 
 import (
 	"bytes"
@@ -45,7 +45,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -53,7 +52,6 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 // secretNameIndex is the field index key for DatabaseSecretClaim.Spec.SecretName,
@@ -69,15 +67,15 @@ const secretNameIndex = "spec.secretName"
 //  4. Creates or updates the core v1.Secret with the returned connectionProperties.
 type DatabaseSecretClaimReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Aggregator *aggregatorclient.AggregatorClient
-	Recorder   record.EventRecorder
-	Ownership  *ownership.OwnershipResolver
+	Scheme      *runtime.Scheme
+	Aggregator  *aggregatorclient.AggregatorClient
+	Recorder    record.EventRecorder
+	MyNamespace string
 
-	bindingTriggerTracker
 	triggerMu             sync.Mutex
 	siblingTriggerStamps  map[string]struct{}
 	rotationTriggerValues map[string]string
+	pollBackoff           pollBackoffTracker
 }
 
 func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -87,26 +85,21 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 	if err := r.Get(ctx, req.NamespacedName, s); err != nil {
 		if apierrors.IsNotFound(err) {
 			key := req.Namespace + "/" + req.Name
-			r.clearBindingTrigger(key)
 			r.clearSiblingTrigger(key)
 			r.clearRotationTrigger(key)
+			r.pollBackoff.forget(req.NamespacedName)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	key := s.Namespace + "/" + s.Name
 
-	owned, result, err := checkOwnership(ctx, r.Ownership, s.Namespace, s.Name, "DatabaseSecretClaim")
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if !owned {
-		if r.Ownership.GetState(s.Namespace) == ownership.Foreign {
-			r.clearBindingTrigger(key)
-			r.clearSiblingTrigger(key)
-			r.clearRotationTrigger(key)
-		}
-		return result, nil
+	if !isEligibleForOperator(ctx, s.Spec.OperatorNamespace, r.MyNamespace,
+		s.Namespace, s.Name, "DatabaseSecretClaim") {
+		r.clearSiblingTrigger(key)
+		r.clearRotationTrigger(key)
+		r.pollBackoff.forget(req.NamespacedName)
+		return ctrl.Result{}, nil
 	}
 	trigger := r.triggerForSecretClaim(key, s)
 	recordReconcileTrigger(controllerDSC, trigger)
@@ -157,8 +150,12 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 			EventReasonEmptyConnectionProperties, msg)
 		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonEmptyConnectionProperties,
 			"%s (requestId=%s)", msg, requestID)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(s), nil
 	}
+
+	// Non-empty connectionProperties is a genuine success — clear the backoff so
+	// a future not-found/empty-response streak starts fresh at the initial interval.
+	r.pollBackoff.forgetObject(s)
 
 	secretData, err := buildSecretData(s, dbResp)
 	if err != nil {
@@ -180,6 +177,7 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	s *dbaasv1.DatabaseSecretClaim,
 ) (ctrl.Result, bool, error) {
 	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
+		r.pollBackoff.forgetObject(s)
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
 			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q",
@@ -190,6 +188,7 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	// extraKeys must not shadow the typed classifier fields — a collision is a
 	// spec mistake (the typed field would win and the extraKey be dropped).
 	if reserved := dbaasv1.ReservedExtraKeys(s.Spec.Classifier); len(reserved) > 0 {
+		r.pollBackoff.forgetObject(s)
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
 			fmt.Sprintf("spec.classifier.extraKeys must not contain the reserved keys %v — they are owned by the typed classifier fields", reserved))
@@ -197,6 +196,7 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	}
 
 	if s.Labels["app.kubernetes.io/name"] == "" {
+		r.pollBackoff.forgetObject(s)
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
 			"label app.kubernetes.io/name is required — its value is used as originService in the get-by-classifier request")
@@ -229,6 +229,12 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	for i := range siblings.Items {
 		sib := &siblings.Items[i]
 		if sib.UID == s.UID {
+			continue
+		}
+		// A sibling assigned to a different operator is never reconciled here and
+		// never creates the Secret, so it cannot be the real owner. Skip it, or an
+		// older foreign claim would park this one in SecretConflict indefinitely.
+		if sib.Spec.OperatorNamespace != s.Spec.OperatorNamespace {
 			continue
 		}
 		if isOlderClaimant(sib, s) {
@@ -436,6 +442,7 @@ func (r *DatabaseSecretClaimReconciler) ownerConflict(s *dbaasv1.DatabaseSecretC
 // markSecretConflict sets InvalidConfiguration/SecretConflict and stops reconciliation.
 func (r *DatabaseSecretClaimReconciler) markSecretConflict(ctx context.Context, s *dbaasv1.DatabaseSecretClaim, msg string) (ctrl.Result, error) {
 	log.InfoC(ctx, "SecretConflict name=%s reason=%s", s.Name, msg)
+	r.pollBackoff.forgetObject(s)
 	markPermanentFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation, EventReasonSecretConflict, msg)
 	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonSecretConflict, "%s", msg)
 	return ctrl.Result{}, nil
@@ -472,7 +479,7 @@ func (r *DatabaseSecretClaimReconciler) handleAggregatorErr(
 				EventReasonDatabaseNotFound, aggErr.UserMessage())
 			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonDatabaseNotFound,
 				"database not found in dbaas-aggregator, waiting for provisioning (requestId=%s)", requestID)
-			return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+			return r.pollBackoff.schedule(s), nil
 		}
 
 		// Past the timeout: emit the one-shot DatabaseNotFoundTimeout Warning
@@ -492,12 +499,19 @@ func (r *DatabaseSecretClaimReconciler) handleAggregatorErr(
 			EventReasonDatabaseNotFoundTimeout,
 			fmt.Sprintf("database not found in dbaas-aggregator for %s — operator action may be required",
 				elapsed.Round(time.Second)))
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(s), nil
 	}
 	// Non-NotFound failure path — drop the wait marker so a future 404 starts a fresh streak.
 	s.Status.FirstNotFoundAt = nil
-	return handleAggregatorError(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+	result, callErr := handleAggregatorError(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 		r.Recorder, s, err, requestID)
+	if callErr == nil {
+		// A nil error means handleAggregatorError classified this as a permanent
+		// failure (no requeue) rather than a transient one left for the rate
+		// limiter — clear the backoff so a future retry starts fresh.
+		r.pollBackoff.forgetObject(s)
+	}
+	return result, callErr
 }
 
 // Secret data keys written by the operator and consumed by dbaas-client.
@@ -598,7 +612,7 @@ func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
 }
 
 // SetupWithManager registers indexes and watches for DatabaseSecretClaim reconciliation.
-func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
 		&dbaasv1.DatabaseSecretClaim{},
@@ -629,11 +643,6 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.DatabaseSecretClaim{},
 			builder.WithPredicates(specOrRotationTriggerPredicate{})).
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
-			// The binding status is written by its own controller; only create, delete,
-			// and spec changes can affect ownership, so status-only updates are ignored.
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Re-enqueue siblings that share spec.secretName when any DatabaseSecretClaim
 		// in the namespace is created, deleted, or has a spec change. This lets
 		// a loser CR recover automatically once the older claimant is removed or
@@ -644,14 +653,9 @@ func (r *DatabaseSecretClaimReconciler) SetupWithManager(mgr ctrl.Manager, opts 
 		Watches(&dbaasv1.DatabaseSecretClaim{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueSiblingsBySecretName),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("databasesecretclaim").
 		Complete(r)
-}
-
-func (r *DatabaseSecretClaimReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.DatabaseSecretClaimList{}, obj.GetNamespace(),
-		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
 }
 
 // enqueueSiblingsBySecretName re-enqueues every DatabaseSecretClaim in the same
@@ -687,8 +691,6 @@ func (r *DatabaseSecretClaimReconciler) triggerForSecretClaim(key string, s *dba
 	switch {
 	case r.consumeRotationTrigger(key, s.Annotations[dbaasv1.AnnotationRotationTrigger]):
 		return triggerRotation
-	case r.consumeBindingTrigger(key):
-		return triggerNamespaceBindingChange
 	case r.consumeSiblingTrigger(key):
 		return triggerSiblingSecretClaim
 	case isReadyForGeneration(s.Status.Conditions, s.Generation):

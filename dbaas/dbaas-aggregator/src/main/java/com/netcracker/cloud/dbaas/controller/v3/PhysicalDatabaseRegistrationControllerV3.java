@@ -58,11 +58,15 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                     "exists with another adapter id or the same adapter already exists and it is used with other physical database"),
             @APIResponse(responseCode = "502", description = "Adapter is not available during handshake process"),
             @APIResponse(responseCode = "400", description = "Adapter already running or request validation failed"),
+            @APIResponse(responseCode = "500", description = "Unexpected server error. " +
+                    "A known cause is a request without a required field: `adapterAddress`, `httpBasicCredentials`, `metadata`, " +
+                    "or `metadata.features.multiusers` when an already registered adapter reports a different set of roles. " +
+                    "The physical database is left unchanged. Add the missing field and send the request again."),
     })
     @Path("/{phydbid}")
     @PUT
     @Transactional
-    public Response register(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.", required = true)
+    public Response register(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.", required = true)
                              @PathParam("type") String type,
                              @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                              @PathParam("phydbid") String phydbid,
@@ -133,7 +137,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
             @APIResponse(responseCode = "404", description = "Specified physical database does not registered")})
     @Path("/{phydbid}/global")
     @PUT
-    public Response makeGlobal(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.", required = true)
+    public Response makeGlobal(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.", required = true)
                                @PathParam("type") String type,
                                @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                                @PathParam("phydbid") String phydbid) {
@@ -159,7 +163,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
     @Path("/{phydbid}/instruction/{instructionid}/additional-roles")
     @POST
     @Transactional
-    public Response instruction(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.", required = true)
+    public Response instruction(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.", required = true)
                                 @PathParam("type") String type,
                                 @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                                 @PathParam("phydbid") String phydbid,
@@ -210,7 +214,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
             @APIResponse(responseCode = "200", description = "Registered physical databases by specific type were found.", content = @Content(schema = @Schema(implementation = RegisteredPhysicalDatabasesDTO.class))),
             @APIResponse(responseCode = "404", description = "Registered physical databases by specific type were not found.")})
     @GET
-    public Response getRegisteredDatabases(@Parameter(description = "Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc. or all - to list all registered physical databases", required = true)
+    public Response getRegisteredDatabases(@Parameter(description = "Type of database, for example: MongoDB, PostgreSQL, opensearch, etc. or all - to list all registered physical databases", required = true)
                                            @PathParam("type") String type) {
         List<PhysicalDatabase> databases;
         if ("all".equals(type)) {
@@ -239,7 +243,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
     @Path("/{phydbid}")
     @DELETE
     @Transactional
-    public Response deletePhysicalDatabase(@Parameter(description = "Type of database, for example: MongoDB, PostgreSQL, elasticsearch, etc.", required = true)
+    public Response deletePhysicalDatabase(@Parameter(description = "Type of database, for example: MongoDB, PostgreSQL, opensearch, etc.", required = true)
                                            @PathParam("type") String type,
                                            @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                                            @PathParam("phydbid") String phydbid) {

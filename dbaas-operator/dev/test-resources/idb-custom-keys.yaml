@@ -9,6 +9,7 @@ metadata:
   name: idb-custom-keys
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
     microserviceName: idb-svc-custom-keys
     scope: service

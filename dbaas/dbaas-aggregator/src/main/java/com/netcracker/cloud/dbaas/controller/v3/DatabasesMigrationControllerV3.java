@@ -11,6 +11,7 @@ import com.netcracker.cloud.dbaas.exceptions.InvalidClassifierException;
 import com.netcracker.cloud.dbaas.exceptions.RequestValidationException;
 import com.netcracker.cloud.dbaas.service.DBaaService;
 import com.netcracker.cloud.dbaas.service.MigrationService;
+import com.netcracker.cloud.dbaas.utils.ClassifierValidator;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -63,7 +64,7 @@ public class DatabasesMigrationControllerV3 {
     public Response registerDatabases(List<RegisterDatabaseRequestV3> databasesToRegister) {
         log.debug("Start validate classifiers");
         for (RegisterDatabaseRequestV3 request : databasesToRegister) {
-            if (!dBaaService.isValidClassifierV3(request.getClassifier())) {
+            if (!ClassifierValidator.isValid(request.getClassifier())) {
                 log.error("RegisterDatabaseRequest={} contains not valid V3 classifier", request);
                 throw new InvalidClassifierException("Invalid V3 classifier", request.getClassifier(), Source.builder().pointer("").build());
             }
@@ -88,7 +89,7 @@ public class DatabasesMigrationControllerV3 {
         log.info("get request to register logical databases");
         validateRequest(databasesToRegister);
         for (RegisterDatabaseWithUserCreationRequest request : databasesToRegister) {
-            if (!dBaaService.isValidClassifierV3(request.getClassifier())) {
+            if (!ClassifierValidator.isValid(request.getClassifier())) {
                 log.error("request body contains not valid V3 classifier: {}", request);
                 throw new InvalidClassifierException("It does not match v3 format", request.getClassifier(), Source.builder().pointer("").build());
             }

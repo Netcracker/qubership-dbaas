@@ -20,7 +20,6 @@ import (
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
 
 type balancingRuleCall struct {
@@ -60,6 +59,27 @@ var _ = Describe("BalancingRule Controller", func() {
 	})
 
 	Context("microservice singleton", func() {
+		It("skips a resource assigned to another operator without adding a finalizer or mutating status", func() {
+			rule := &dbaasv1.MicroserviceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					OperatorNamespace: testForeignOperatorNamespace,
+					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
+						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, result, err := reconcileMicroserviceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(stored.Finalizers).To(BeEmpty())
+			Expect(stored.Status.Phase).To(BeEmpty())
+		})
+
 		It("applies the full rule list and updates status", func() {
 			rule := &dbaasv1.MicroserviceBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
@@ -68,6 +88,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.MicroserviceBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
 						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing", "ledger"}},
 						{Type: "cassandra", Label: "region=west", Microservices: []string{"audit"}},
@@ -101,6 +122,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.MicroserviceBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
 						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
 					},
@@ -130,6 +152,7 @@ var _ = Describe("BalancingRule Controller", func() {
 			rule := &dbaasv1.MicroserviceBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.MicroserviceBalancingRuleName, Namespace: businessNS},
 				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
 						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing"}},
 					},
@@ -152,6 +175,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.MicroserviceBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.MicroserviceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.MicroserviceBalancingRuleItem{
 						{Type: "mongodb", Label: "tier=gold", Microservices: []string{"billing", "ledger"}},
 					},
@@ -185,6 +209,27 @@ var _ = Describe("BalancingRule Controller", func() {
 	})
 
 	Context("namespace singleton", func() {
+		It("skips a resource assigned to another operator without adding a finalizer or mutating status", func() {
+			rule := &dbaasv1.NamespaceBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: businessNS},
+				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					OperatorNamespace: testForeignOperatorNamespace,
+					Rules: []dbaasv1.NamespaceBalancingRuleItem{
+						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, result, err := reconcileNamespaceAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(stored.Finalizers).To(BeEmpty())
+			Expect(stored.Status.Phase).To(BeEmpty())
+		})
+
 		It("applies each namespace rule and updates status", func() {
 			rule := &dbaasv1.NamespaceBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
@@ -193,6 +238,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.NamespaceBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 						{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},
@@ -241,6 +287,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.NamespaceBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "payments-redis", Type: "redis", PhysicalDatabaseID: "redis-payments", Order: 5},
 						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
@@ -278,6 +325,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.NamespaceBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 					},
@@ -303,6 +351,7 @@ var _ = Describe("BalancingRule Controller", func() {
 			rule := &dbaasv1.NamespaceBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.NamespaceBalancingRuleName, Namespace: businessNS},
 				Spec: dbaasv1.NamespaceBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.NamespaceBalancingRuleItem{
 						{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 					},
@@ -380,10 +429,80 @@ var _ = Describe("BalancingRule Controller", func() {
 	})
 
 	Context("permanent singleton", func() {
+		It("rejects a resource outside its assigned operator namespace before calling the aggregator", func() {
+			const assignedOperatorNamespace = "operator-ns"
+			fixture.reconciler.MyNamespace = assignedOperatorNamespace
+			rule := &dbaasv1.PermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       dbaasv1.PermanentBalancingRuleName,
+					Namespace:  businessNS,
+					Finalizers: []string{dbaasv1.PermanentBalancingRuleFinalizer},
+				},
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: assignedOperatorNamespace,
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
+						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, result, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(findCondition(stored.Status.Conditions, conditionTypeStalled).Status).To(Equal(metav1.ConditionTrue))
+		})
+
+		It("does not add a finalizer to a misplaced rule it will not service", func() {
+			const assignedOperatorNamespace = "operator-ns"
+			fixture.reconciler.MyNamespace = assignedOperatorNamespace
+			rule := &dbaasv1.PermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      dbaasv1.PermanentBalancingRuleName,
+					Namespace: businessNS,
+				},
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: assignedOperatorNamespace,
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
+						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, _, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(stored.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(slices.Contains(stored.Finalizers, dbaasv1.PermanentBalancingRuleFinalizer)).To(BeFalse())
+		})
+
+		It("skips a resource assigned to another operator without adding a finalizer or mutating status", func() {
+			rule := &dbaasv1.PermanentBalancingRule{
+				ObjectMeta: metav1.ObjectMeta{Name: dbaasv1.PermanentBalancingRuleName, Namespace: operatorNS},
+				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: testForeignOperatorNamespace,
+					Rules: []dbaasv1.PermanentBalancingRuleItem{
+						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rule)).To(Succeed())
+
+			stored, result, err := reconcilePermanentAndFetch(fixture.reconciler, client.ObjectKeyFromObject(rule))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(fixture.calls).To(BeEmpty())
+			Expect(stored.Finalizers).To(BeEmpty())
+			Expect(stored.Status.Phase).To(BeEmpty())
+		})
+
 		It("applies the full permanent rule list and updates status", func() {
-			fixture.reconciler.Ownership.SetOwner("payments", operatorNS)
-			fixture.reconciler.Ownership.SetOwner("orders", operatorNS)
-			fixture.reconciler.Ownership.SetOwner("audit", operatorNS)
 			rule := &dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       dbaasv1.PermanentBalancingRuleName,
@@ -391,6 +510,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.PermanentBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments", "orders"}},
 						{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"audit"}},
@@ -416,7 +536,6 @@ var _ = Describe("BalancingRule Controller", func() {
 		})
 
 		It("deletes removed targets before applying the new desired list", func() {
-			fixture.reconciler.Ownership.SetOwner("green", operatorNS)
 			rule := &dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       dbaasv1.PermanentBalancingRuleName,
@@ -424,6 +543,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.PermanentBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"green"}},
 					},
@@ -446,11 +566,9 @@ var _ = Describe("BalancingRule Controller", func() {
 			Expect(fixture.calls[1].method).To(Equal(http.MethodPut))
 		})
 
-		It("applies regardless of target namespace ownership (decoupled from NamespaceBinding)", func() {
-			// "payments" has no NamespaceBinding owned by this operator. Permanent
-			// rules are operator-namespace-only admin resources decoupled from
-			// NamespaceBinding, so the rule still applies — the aggregator is the
-			// authority on target namespaces.
+		It("applies regardless of target namespace ownership", func() {
+			// Operator assignment applies to the CR itself; the aggregator remains
+			// the authority on the namespaces targeted by its rules.
 			rule := &dbaasv1.PermanentBalancingRule{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       dbaasv1.PermanentBalancingRuleName,
@@ -458,6 +576,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.PermanentBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DBType: "mongodb", PhysicalDatabaseID: "mongodb-prod-a", Namespaces: []string{"payments"}},
 					},
@@ -482,6 +601,7 @@ var _ = Describe("BalancingRule Controller", func() {
 					Finalizers: []string{dbaasv1.PermanentBalancingRuleFinalizer},
 				},
 				Spec: dbaasv1.PermanentBalancingRuleSpec{
+					OperatorNamespace: balancingTestNS,
 					Rules: []dbaasv1.PermanentBalancingRuleItem{
 						{DBType: "cassandra", PhysicalDatabaseID: "cassandra-prod-a", Namespaces: []string{"blue", "green"}},
 					},
@@ -538,14 +658,11 @@ func newBalancingRuleReconcileFixture(ownedNamespace string) *balancingRuleRecon
 		}
 		w.WriteHeader(statusCode)
 	}))
-	resolver := ownership.NewOwnershipResolver(ownedNamespace, k8sClient)
-	resolver.SetOwner(ownedNamespace, ownedNamespace)
 	fixture.reconciler = &BalancingRuleReconciler{
 		Client:      k8sClient,
 		Scheme:      k8sClient.Scheme(),
 		Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(context.Context) (string, error) { return testToken, nil }),
 		Recorder:    fixture.recorder,
-		Ownership:   resolver,
 		MyNamespace: ownedNamespace,
 	}
 	return fixture
@@ -559,6 +676,7 @@ func namespaceRuleWithFinalizer() *dbaasv1.NamespaceBalancingRule {
 			Finalizers: []string{dbaasv1.NamespaceBalancingRuleFinalizer},
 		},
 		Spec: dbaasv1.NamespaceBalancingRuleSpec{
+			OperatorNamespace: balancingTestNS,
 			Rules: []dbaasv1.NamespaceBalancingRuleItem{
 				{Name: "payments-mongo", Type: "mongodb", PhysicalDatabaseID: "mongodb-payments", Order: 10},
 				{Name: "payments-cassandra", Type: "cassandra", PhysicalDatabaseID: "cassandra-payments", Order: 20},

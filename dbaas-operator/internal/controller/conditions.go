@@ -20,25 +20,6 @@ const (
 	stalledMsgTransient = "Transient error — the controller will retry automatically."
 )
 
-// ownershipPollInterval is the requeue delay used when a workload CR is
-// reconciled in a namespace whose NamespaceBinding state is Unknown (no cache
-// entry at all — transient window at startup or right after Forget).  The
-// short interval is acceptable because Unknown is genuinely ephemeral.
-const ownershipPollInterval = 30 * time.Second
-
-// ownershipUnboundRetryInterval is the requeue delay used when a workload CR
-// is reconciled in a namespace confirmed to have no NamespaceBinding (Unbound
-// state).  It is intentionally much longer than ownershipPollInterval because
-// Unbound namespaces are common (any namespace without a binding) and polling
-// them every 30 s would cause background churn.
-//
-// This interval acts as a safety net: if the NamespaceBinding → workloads
-// fan-out watch fires but the LIST inside the MapFunc fails transiently, the
-// cached state transitions from Unbound → Mine (SetOwner is still called by
-// the NamespaceBindingReconciler), and the periodic requeue here guarantees the
-// workload CR will eventually be reconciled even if that watch trigger was lost.
-const ownershipUnboundRetryInterval = 5 * time.Minute
-
 // databaseNotFoundTimeout is the duration after which a DatabaseSecretClaim that has
 // been continuously receiving DatabaseNotFound (404) responses from the aggregator
 // is considered stuck. Polling continues (so the CR can recover if the database

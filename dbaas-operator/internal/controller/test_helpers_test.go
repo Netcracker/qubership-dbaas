@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,10 +12,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+)
 
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
+const (
+	testOperatorNamespace        = "test-namespace"
+	testForeignOperatorNamespace = "other-operator-namespace"
 )
 
 func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
@@ -118,6 +123,22 @@ func reconcileAndFetchObject[T client.Object](
 	return obj, result, err
 }
 
+// expectRequeueAfterStep asserts that result.RequeueAfter is the jittered delay
+// for the given backoff step: in [nominal, nominal*(1+pollJitterFactor)) below
+// the cap, or in (pollMaxInterval*(1-pollJitterFactor), pollMaxInterval] once
+// pollDelayForStep(step) has reached the cap.
+func expectRequeueAfterStep(result ctrl.Result, step int32) {
+	GinkgoHelper()
+	nominal := pollDelayForStep(step)
+	if nominal >= pollMaxInterval {
+		Expect(result.RequeueAfter).To(BeNumerically(">", time.Duration(float64(pollMaxInterval)*(1-pollJitterFactor))))
+		Expect(result.RequeueAfter).To(BeNumerically("<=", pollMaxInterval))
+		return
+	}
+	Expect(result.RequeueAfter).To(BeNumerically(">=", nominal))
+	Expect(result.RequeueAfter).To(BeNumerically("<", time.Duration(float64(nominal)*(1+pollJitterFactor))))
+}
+
 func deleteIfExists(obj client.Object) {
 	err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 	if err == nil {
@@ -127,34 +148,4 @@ func deleteIfExists(obj client.Object) {
 		}
 		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).To(Succeed())
 	}
-}
-
-// mineOwnershipResolver returns an OwnershipResolver whose cache is pre-seeded
-// with Mine state for each supplied namespace.  Tests use this so that the
-// ownership check fast-path always succeeds without hitting the API server.
-func mineOwnershipResolver(namespaces ...string) *ownership.OwnershipResolver {
-	const testLocation = "test-namespace"
-	r := ownership.NewOwnershipResolver(testLocation, k8sClient)
-	for _, ns := range namespaces {
-		r.SetOwner(ns, testLocation)
-	}
-	return r
-}
-
-// foreignOwnershipResolver returns an OwnershipResolver whose cache is
-// pre-seeded with Foreign state for each supplied namespace.
-func foreignOwnershipResolver(namespaces ...string) *ownership.OwnershipResolver {
-	const testLocation = "test-namespace"
-	r := ownership.NewOwnershipResolver(testLocation, k8sClient)
-	for _, ns := range namespaces {
-		r.SetOwner(ns, "other-operator-ns") // different from testLocation → Foreign
-	}
-	return r
-}
-
-// emptyOwnershipResolver returns an OwnershipResolver with an empty cache and
-// no NamespaceBinding objects in the API server.  IsMyNamespace will perform a
-// live GET, find nothing, and return (false, nil) — leaving the state Unknown.
-func emptyOwnershipResolver() *ownership.OwnershipResolver {
-	return ownership.NewOwnershipResolver("test-namespace", k8sClient)
 }

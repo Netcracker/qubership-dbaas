@@ -23,6 +23,7 @@ Use fixtures that cover at least:
 Assert semantic properties rather than byte-for-byte YAML formatting:
 
 - inventory feasibility and evidence;
+- a non-empty inventory operator namespace and the same `spec.operatorNamespace` on every generated CR;
 - database deduplication by classifier and type;
 - claim expansion by requested role;
 - exact `extraKeys`/`customKeys` placement;
@@ -87,7 +88,8 @@ live reload. Use a second namespace to prove namespace defaulting and isolation.
 Use a disposable namespace on a cluster containing the real DBaaS operator, aggregator, and target
 adapter.
 
-1. Apply namespace binding/configuration required by the local DBaaS stack.
+1. Verify the intended operator Deployment or Pod namespace and set each managed CR's
+   `spec.operatorNamespace` to that exact value.
 1. Apply `InternalDatabase` and wait for its `Ready` condition and `status.phase=Succeeded`.
 1. Apply `DatabaseSecretClaim` and wait for its `Ready` condition and `status.phase=Succeeded`.
 1. Verify the generated Secret contains `metadata.json` and `connectionProperties.json`.

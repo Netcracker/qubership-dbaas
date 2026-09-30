@@ -12,6 +12,7 @@ import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.service.*;
+import com.netcracker.cloud.dbaas.utils.ClassifierValidator;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -190,7 +191,7 @@ public class DatabaseOperationControllerV3 {
                     Optional.ofNullable(updateClassifierRequest.getTo()).map(c -> c.get(NAMESPACE)).orElse(null), namespace), updateClassifierRequest.getTo(),
                     Source.builder().pointer("/to/namespace").build()));
         }
-        if (!dBaaService.isValidClassifierV3(updateClassifierRequest.getTo())) {
+        if (!ClassifierValidator.isValid(updateClassifierRequest.getTo())) {
             errors.add(
                     new InvalidClassifierException("Classifier 'to' has no valid form. It must contains tenant or service 'scope', 'namespace' and 'microserviceName' but you have the following classifier ",
                             updateClassifierRequest.getTo(),
@@ -368,7 +369,7 @@ public class DatabaseOperationControllerV3 {
         // get and check that db exists with this classifier
         for (int i = 0; i < recreateDatabasesRequests.size(); i++) {
             RecreateDatabaseRequest recreateDbRequest = recreateDatabasesRequests.get(i);
-            if (!dBaaService.isValidClassifierV3(recreateDbRequest.getClassifier())) {
+            if (!ClassifierValidator.isValid(recreateDbRequest.getClassifier())) {
                 errors.add(new InvalidClassifierException("Is not valid classifier V3 = " + recreateDbRequest.getClassifier(), recreateDbRequest.getClassifier(),
                         Source.builder().pointer("/" + i + "/physicalDatabaseId").build()));
             }

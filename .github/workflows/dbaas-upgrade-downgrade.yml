@@ -1,0 +1,139 @@
+name: DBaaS Upgrade/Downgrade Availability
+
+run-name: >
+  DBaaS aggregator ${{ github.event.inputs.direction }}
+  ${{ github.event.inputs.older-version }} <-> ${{ github.event.inputs.newer-version }}
+
+# Each direction runs in a separate Kind cluster with the operator fixed at the newer version.
+# Job-level concurrency lets upgrade and downgrade run in parallel while serializing repeated runs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      older-version:
+        description: 'Older dbaas-aggregator version (for example, 6.14.1) or latest'
+        required: true
+        default: latest
+        type: string
+      newer-version:
+        description: 'Newer dbaas-aggregator version (for example, 6.15.0) or main'
+        required: true
+        default: main
+        type: string
+      direction:
+        description: Which direction(s) to run
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - upgrade
+          - downgrade
+
+permissions: {}
+
+jobs:
+  resolve-versions:
+    name: Resolve transition versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      older-version: ${{ steps.resolve.outputs.older-version }}
+      newer-version: ${{ steps.resolve.outputs.newer-version }}
+    steps:
+      - name: Resolve versions
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLDER_VERSION: ${{ github.event.inputs.older-version }}
+          NEWER_VERSION: ${{ github.event.inputs.newer-version }}
+        run: |
+          set -euo pipefail
+
+          normalize_version() {
+            local version="${1#v}"
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Unsupported DBaaS version: $1" >&2
+              exit 1
+            fi
+            printf '%s' "$version"
+          }
+
+          if [[ "$OLDER_VERSION" == "latest" ]]; then
+            latest_tag="$(curl --fail --silent --show-error \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/latest" | jq -r '.tag_name')"
+            older_version="$(normalize_version "$latest_tag")"
+          else
+            older_version="$(normalize_version "$OLDER_VERSION")"
+          fi
+
+          if [[ "$NEWER_VERSION" == "main" ]]; then
+            newer_version=main
+          else
+            newer_version="$(normalize_version "$NEWER_VERSION")"
+          fi
+
+          echo "older-version=$older_version" >> "$GITHUB_OUTPUT"
+          echo "newer-version=$newer_version" >> "$GITHUB_OUTPUT"
+
+  upgrade:
+    name: Upgrade ${{ needs.resolve-versions.outputs.older-version }} -> ${{ needs.resolve-versions.outputs.newer-version }}
+    needs: resolve-versions
+    if: ${{ needs.resolve-versions.result == 'success' && (github.event.inputs.direction == 'both' || github.event.inputs.direction == 'upgrade') }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/dbaas-transition-worker.yml
+    with:
+      direction: upgrade
+      initial-version: ${{ needs.resolve-versions.outputs.older-version }}
+      target-version: ${{ needs.resolve-versions.outputs.newer-version }}
+      fixture-version: ${{ needs.resolve-versions.outputs.newer-version }}
+
+  downgrade:
+    name: Downgrade ${{ needs.resolve-versions.outputs.newer-version }} -> ${{ needs.resolve-versions.outputs.older-version }}
+    needs: resolve-versions
+    if: ${{ needs.resolve-versions.result == 'success' && (github.event.inputs.direction == 'both' || github.event.inputs.direction == 'downgrade') }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/dbaas-transition-worker.yml
+    with:
+      direction: downgrade
+      initial-version: ${{ needs.resolve-versions.outputs.newer-version }}
+      target-version: ${{ needs.resolve-versions.outputs.older-version }}
+      fixture-version: ${{ needs.resolve-versions.outputs.newer-version }}
+
+  # Keep one branch-protection check name for all direction selections.
+  gate:
+    name: DBaaS Upgrade/Downgrade Gate
+    if: always()
+    needs: [resolve-versions, upgrade, downgrade]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check selected direction(s) succeeded
+        run: |
+          set -euo pipefail
+          upgrade_result="${{ needs.upgrade.result }}"
+          downgrade_result="${{ needs.downgrade.result }}"
+          resolve_result="${{ needs.resolve-versions.result }}"
+          echo "version resolution: $resolve_result"
+          echo "upgrade: $upgrade_result"
+          echo "downgrade: $downgrade_result"
+          fail=0
+          for result in "$resolve_result" "$upgrade_result" "$downgrade_result"; do
+            case "$result" in
+              success|skipped) ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::At least one selected transition direction did not succeed"
+            exit 1
+          fi
+          echo "All selected transition directions succeeded"

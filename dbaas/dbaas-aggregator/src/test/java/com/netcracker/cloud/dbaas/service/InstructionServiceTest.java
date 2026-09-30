@@ -26,6 +26,7 @@ import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
@@ -168,6 +169,30 @@ public class InstructionServiceTest {
         when(physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabase.getPhysicalDatabaseIdentifier())).thenReturn(expectedInstructions);
         instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier());
         verify(physicalDatabaseInstructionRepository, times(1)).findByPhysicalDatabaseId(physicalDatabase.getPhysicalDatabaseIdentifier());
+    }
+
+    @Test
+    void testFindInstructionById_shouldReturnStoredInstruction() throws JsonProcessingException {
+        Instruction instruction = generateInstruction(2);
+        PhysicalDatabaseInstruction storedInstruction = getPhysicalDatabaseInstructionSample(instruction);
+        when(physicalDatabaseInstructionRepository.findByIdOptional(UUID.fromString(TEST_INSTRUCTION_ID)))
+                .thenReturn(Optional.of(storedInstruction));
+
+        Instruction foundInstruction = instructionService.findInstructionById(TEST_INSTRUCTION_ID);
+
+        assertNotNull(foundInstruction);
+        assertEquals(TEST_INSTRUCTION_ID, foundInstruction.getId());
+        assertEquals(instruction.getAdditionalRoles().size(), foundInstruction.getAdditionalRoles().size());
+    }
+
+    @Test
+    void testFindInstructionById_shouldReturnNullForUnknownId() throws JsonProcessingException {
+        when(physicalDatabaseInstructionRepository.findByIdOptional(UUID.fromString(TEST_INSTRUCTION_ID)))
+                .thenReturn(Optional.empty());
+
+        // The caller answers 404 on null. Returning an empty Instruction here hid the unknown id
+        // until its additional roles were dereferenced, which surfaced as a 500.
+        assertNull(instructionService.findInstructionById(TEST_INSTRUCTION_ID));
     }
 
     @Test

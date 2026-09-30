@@ -56,6 +56,21 @@ spec:
           spec:
             description: spec defines the desired state of PermanentBalancingRule.
             properties:
+              operatorNamespace:
+                description: |-
+                  operatorNamespace is the namespace where the dbaas-operator instance
+                  responsible for this resource is deployed. It must match that operator's
+                  CLOUD_NAMESPACE and is immutable after creation.
+                  The Pattern requires an RFC-1123 label, so a value that cannot name a
+                  namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+                  is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+                x-kubernetes-validations:
+                - message: spec.operatorNamespace is immutable after creation
+                  rule: self == oldSelf
               rules:
                 description: rules is the set of permanent balancing rules managed
                   by this singleton CR.
@@ -99,6 +114,7 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
             required:
+            - operatorNamespace
             - rules
             type: object
           status:
@@ -137,10 +153,7 @@ spec:
                   False on any error, with Reason carrying the error category. Success
                   reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
                   (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
-                  ProvisioningStarted while the async operation runs), BindingRegistered
-                  (NamespaceBinding; BindingBlocked while deletion is deferred,
-                  BindingReleased once only other controllers' finalizers keep the object
-                  alive, OwnershipCheckError when listing blocking resources fails).
+                  ProvisioningStarted while the async operation runs).
                   Stalled=True marks a permanent error; the controller does not retry
                   until the spec changes. Stalled=False covers successful, ongoing, and
                   retriable states.
@@ -205,10 +218,9 @@ spec:
               lastRequestId:
                 description: |-
                   lastRequestId is the X-Request-Id of the most recent reconcile attempt
-                  that wrote this status; a reconcile that leaves the status untouched (for
-                  example a steady-state NamespaceBinding reconcile) keeps the previous
-                  value. Use it to correlate operator logs with dbaas-aggregator logs when
-                  investigating issues for a specific resource.
+                  that wrote this status; a reconcile that leaves the status untouched keeps
+                  the previous value. Use it to correlate operator logs with
+                  dbaas-aggregator logs when investigating issues for a specific resource.
                 type: string
               observedGeneration:
                 description: |-
@@ -234,6 +246,8 @@ spec:
         x-kubernetes-validations:
         - message: PermanentBalancingRule name must be 'permanent-balancing-rules'
           rule: self.metadata.name == 'permanent-balancing-rules'
+    selectableFields:
+    - jsonPath: .spec.operatorNamespace
     served: true
     storage: true
     subresources:

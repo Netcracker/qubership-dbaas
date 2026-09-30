@@ -10,9 +10,8 @@ in a local [kind](https://kind.sigs.k8s.io/) cluster.
 | `aggregator-mock` Deployment + Service | `dbaas-system` | HTTP stub for dbaas-aggregator |
 | `aggregator-mock-rules` ConfigMap | `dbaas-system` | Per-request routing rules: `rules.json` (EDB by `dbName`), `apply-rules.json` (DatabaseAccessPolicy/InternalDatabase by `microserviceName`), `poll-rules.json` (InternalDatabase async poll by `trackingId`), `changed.json` (rotation feed), `get-by-classifier.json` (DatabaseSecretClaim connection properties by `originService`), `create-db-rules.json` (InternalDatabase tenant get-or-create by `originService`) |
 | `dbaas-operator` Deployment | `dbaas-system` | Operator — watches CRs cluster-wide; Secret access is **namespaced** (no cluster-wide Secret RBAC) |
-| `Role`/`RoleBinding` `dbaas-operator` | `dbaas-system` | Operator's own-namespace RBAC (leases, events, permanentbalancingrules) — **no Secret access** |
+| `Role`/`RoleBinding` `dbaas-operator` | `dbaas-system` | Operator's own-namespace RBAC (leases and events) — **no Secret access** |
 | Namespace `test-ns` | — | Working namespace for CRs |
-| `NamespaceBinding/binding` | `test-ns` | Claims `test-ns` for this operator (operatorNamespace=`dbaas-system`) |
 | `Role`/`RoleBinding` `dbaas-operator-secrets` | `test-ns` | **Per-namespace Secret access for the operator** — required because the operator has no cluster-wide Secret RBAC |
 | Secret `pg-credentials` | `test-ns` | Test credentials for ExternalDatabase |
 
@@ -63,7 +62,8 @@ The script runs these steps in order:
 3. `docker build` — builds `dbaas-operator:dev` and `aggregator-mock:dev` images
 4. `kind load docker-image` — loads images into the cluster (no registry required)
 5. `kubectl apply` — deploys aggregator-mock and the operator into `dbaas-system`
-6. `kubectl apply` — creates namespace `test-ns`, its `NamespaceBinding`, the namespaced Secret **`Role`+`RoleBinding`** (`secret-rbac.yaml`), and secret `pg-credentials`
+6. `kubectl apply` — creates namespace `test-ns`, its namespaced Secret **`Role`+`RoleBinding`**
+   (`secret-rbac.yaml`), and secret `pg-credentials`
 7. Waits for `rollout status` on both deployments
 
 Re-running the script on an existing cluster rebuilds and reloads the images, but both
@@ -76,13 +76,27 @@ kubectl rollout restart deployment/dbaas-operator deployment/dbaas-aggregator -n
 
 ## Test scenarios
 
-**Namespace ownership** is now declared through `NamespaceBinding` rather than a
-`--watch-namespaces` flag.  The operator runs cluster-wide but only reconciles
-resources in namespaces where a `NamespaceBinding` named `binding` exists
-and its `spec.operatorNamespace` matches the operator's own namespace (`CLOUD_NAMESPACE`).
+**Operator assignment** is declared on each managed CR through required, immutable
+`spec.operatorNamespace`. The operator runs cluster-wide and reconciles a CR only when that
+value matches its own namespace (`CLOUD_NAMESPACE`). All local test CRs use `dbaas-system`.
 
-`dev/test-resources/namespacebinding.yaml` (included in the directory) creates
-the binding for `test-ns` automatically when you apply the full directory.
+### All managed CR kinds and operator assignment
+
+Run the complete reconciliation smoke test after `kind-up.sh`:
+
+```bash
+bash dev/e2e-all-crs.sh
+```
+
+The script leaves its successful resources in place for OpenLens inspection. It creates two
+`ExternalDatabase`, two `InternalDatabase`, two `DatabaseSecretClaim`, two
+`DatabaseAccessPolicy`, one `MicroserviceBalancingRule`, and one `NamespaceBalancingRule` in
+`test-ns`, all assigned to `dbaas-system`. It creates the permanent singleton in
+`dbaas-system`, temporarily creates a misplaced permanent singleton in `test-ns` to prove it
+reaches `InvalidConfiguration` without an aggregator call, and then removes that negative case.
+For every successful CR it checks `Succeeded`, `Ready=True`, and
+`status.observedGeneration == metadata.generation`; it also verifies both claimed Secrets and
+the tenant materialization path.
 
 ### Secret access is namespaced
 
@@ -90,27 +104,26 @@ The operator deploy holds **no Secret RBAC at all** — not cluster-wide, and no
 namespace (it reads its own aggregator credentials from a mounted volume, not the API). It can
 read/write Secrets only in a namespace where a `Role` + `RoleBinding` grant its ServiceAccount
 (`dbaas-operator` in `dbaas-system`) access. So **every namespace it works in must have such a
-`Role` + `RoleBinding` installed alongside its `NamespaceBinding`** — otherwise `ExternalDatabase`
+`Role` + `RoleBinding` installed** — otherwise `ExternalDatabase`
 (reads a referenced credential Secret) and `DatabaseSecretClaim` (creates the owned Secret) fail
 with `forbidden`.
 
 `dev/test-resources/secret-rbac.yaml` provisions this for `test-ns`, and `kind-up.sh` applies it
-next to the `NamespaceBinding` — exactly as a real namespace onboarding would. The granted verbs
+as part of namespace onboarding. The granted verbs
 are the minimum the operator uses: `get, create, update, patch` (no `list`/`watch` — there is no
 Secret informer; no `delete` — owned Secrets are garbage-collected via ownerReferences). See
 `config/samples/namespaced-secret-rbac.yaml` for the production-shaped template.
 
-> The operator is deployed **without a self-`NamespaceBinding`** for its own namespace, and its
-> own-namespace `Role` grants **no Secret access** — the operator reads its own aggregator
-> credentials from a mounted volume, not the API. It reconciles CRs in a namespace only once a
-> `NamespaceBinding` for it exists, so to manage CRs in `dbaas-system` too, create both a
-> `NamespaceBinding` and a `dbaas-operator-secrets` `Role`+`RoleBinding` there (as for `test-ns`).
+> The operator's own-namespace `Role` grants **no Secret access** — the operator reads its own
+> aggregator credentials from a mounted volume, not the API. If Secret-backed CRs are created in
+> `dbaas-system`, add a `dbaas-operator-secrets` `Role`+`RoleBinding` there too.
 
-Apply all test CRs at once and observe their phases:
+Apply all test CRs at once and observe their phases. Each manifest declares its own namespace
+(`test-ns` for the workload CRs, `dbaas-system` for `pbr-success.yaml`), so do not pass `-n` —
+it would conflict with the PermanentBalancingRule's pinned operator namespace:
 
 ```bash
-kubectl apply -f dev/test-resources/ -n test-ns
-kubectl get namespacebinding -n test-ns       # binding   dbaas-system
+kubectl apply -f dev/test-resources/
 kubectl get externaldatabase -n test-ns
 kubectl get databaseaccesspolicy -n test-ns
 kubectl get internaldatabase -n test-ns
@@ -158,24 +171,28 @@ Rules are defined in `apply-rules.json` inside the `aggregator-mock-rules` Confi
 
 Expected output:
 
-```
-NAME                      PHASE
-dap-success                Succeeded
-dap-400                    InvalidConfiguration
-dap-401                    BackingOff
-dap-500                    BackingOff
-dap-invalid-empty-spec     InvalidConfiguration
+```text
+NAME                             PHASE
+dap-success                      Succeeded
+dap-disable-global-permissions   Succeeded
+dap-400                          InvalidConfiguration
+dap-401                          BackingOff
+dap-500                          BackingOff
 ```
 
 | CR file | `microserviceName` | Mock response | Expected Phase | `Ready.reason` | `Stalled` |
 |---|---|---|---|---|---|
 | `dap-success.yaml` | `svc-ok` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
+| `dap-disable-global-permissions.yaml` | `svc-disable-global-perms` | 200 (default) | `Succeeded` | `PolicyApplied` | `False` |
 | `dap-400.yaml` | `svc-400` | 400 | `InvalidConfiguration` | `AggregatorRejected` | `True` |
 | `dap-401.yaml` | `svc-401` | 401 | `BackingOff` | `Unauthorized` | `False` |
 | `dap-500.yaml` | `svc-500` | 500 | `BackingOff` | `AggregatorError` | `False` |
-| `dap-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (no HTTP call) | `InvalidConfiguration` | `InvalidSpec` | `True` |
+| `dap-invalid-empty-spec.yaml` | `svc-invalid-empty-spec` | — (never reached) | N/A — rejected at admission | — | — |
 
-> **Note:** `dap-invalid-empty-spec.yaml` exercises controller-level pre-flight validation — a case the CRD schema cannot enforce: both `services` and `policy` are absent (each is `+optional` individually, but the controller requires at least one).
+> **Note:** `dap-invalid-empty-spec.yaml` exercises CRD admission validation — the CEL cross-field rule that requires at
+> least one of `services`, `policy`, or `disableGlobalPermissions` to be set. The API server rejects the CR with HTTP
+> 422, so `kubectl apply` prints an error for this file and the object is never stored. It does not appear in
+> `kubectl get databaseaccesspolicy`.
 
 ### InternalDatabase
 
@@ -183,6 +200,10 @@ The mock routes `POST /api/declarations/v1/apply` requests by `metadata.microser
 For `InternalDatabase` the default response is HTTP 202 (async) with
 `trackingId = "tracking-<microserviceName>"`. Poll responses are controlled by
 `poll-rules.json` (keyed by `trackingId`); missing rule → `COMPLETED`.
+
+Async operation polls and pending pinned-tenant get-or-create retries use the same in-memory, bounded exponential
+poll schedule: nominally 5 s, 10 s, 20 s, 40 s, then 60 s, with jitter. The step resets after an operator restart or
+leader change, and for a new object UID, spec generation, or logical provisioning operation.
 
 For a **tenant-scoped** declaration that pins a `tenantId`, the controller additionally
 issues a get-or-create (`PUT /api/v3/dbaas/{ns}/databases`) once the apply completes, to
@@ -363,8 +384,8 @@ It asserts:
    `Succeeded` and its Secret carries the tenant identity (`scope=tenant`, `tenantId=acme`).
 
 Restart the mock (`kubectl rollout restart deployment/dbaas-aggregator -n dbaas-system`) to
-clear the in-memory store, then apply the claim alone — it backs off on `DatabaseNotFound`
-until the `InternalDatabase` materializes its database. Pass `KEEP=1` to keep the CRs and Secret.
+clear the in-memory store, then apply the claim alone — it uses the bounded exponential poll schedule on
+`DatabaseNotFound` until the `InternalDatabase` materializes its database. Pass `KEEP=1` to keep the CRs and Secret.
 
 #### asynchronous tenant materialization (`dev/e2e-tenant-materialize-202.sh`)
 
@@ -440,7 +461,7 @@ kubectl apply -f dev/test-resources/dap-401.yaml -n test-ns
 kubectl delete internaldatabase -n test-ns idb-401-unauthorized
 kubectl apply -f dev/test-resources/idb-401-unauthorized.yaml -n test-ns
 
-# Redeploy all test resources at once (NamespaceBinding is preserved — it has a deletion-protection finalizer)
+# Redeploy all test resources at once
 kubectl delete externaldatabase,databaseaccesspolicy,internaldatabase -n test-ns --all
 kubectl apply -f dev/test-resources/ -n test-ns
 ```
@@ -471,7 +492,6 @@ dev/
 │   └── operator.yaml           # ServiceAccount + RBAC + Deployment for the operator
 └── test-resources/
     ├── namespace.yaml               # namespace test-ns
-    ├── namespacebinding.yaml        # NamespaceBinding/binding — claims test-ns (operatorNamespace=dbaas-system)
     ├── secret-rbac.yaml             # namespaced Secret Role+RoleBinding for test-ns
     ├── secret.yaml                  # Secret pg-credentials (and pg-credentials-incomplete)
     │
@@ -488,11 +508,12 @@ dev/
     ├── edb-secret-empty-key.yaml    # EDB — Secret exists, key present but empty → BackingOff (SecretError, not Unauthorized)
     │
     │   # DatabaseAccessPolicy test CRs
-    ├── dap-success.yaml                # DatabaseAccessPolicy — 200 OK → Succeeded (reason: PolicyApplied)
-    ├── dap-400.yaml                    # DatabaseAccessPolicy — 400 → InvalidConfiguration
-    ├── dap-401.yaml                    # DatabaseAccessPolicy — 401 → BackingOff
-    ├── dap-500.yaml                    # DatabaseAccessPolicy — 500 → BackingOff
-    ├── dap-invalid-empty-spec.yaml     # DatabaseAccessPolicy — pre-flight: no services/policy → InvalidConfiguration
+    ├── dap-success.yaml                       # DatabaseAccessPolicy — 200 OK → Succeeded (reason: PolicyApplied)
+    ├── dap-disable-global-permissions.yaml    # DatabaseAccessPolicy — disableGlobalPermissions only → Succeeded
+    ├── dap-400.yaml                           # DatabaseAccessPolicy — 400 → InvalidConfiguration
+    ├── dap-401.yaml                           # DatabaseAccessPolicy — 401 → BackingOff
+    ├── dap-500.yaml                           # DatabaseAccessPolicy — 500 → BackingOff
+    ├── dap-invalid-empty-spec.yaml            # DatabaseAccessPolicy — CRD admission: all fields absent → rejected (HTTP 422)
     │
     │   # InternalDatabase test CRs
     ├── idb-success-sync.yaml                 # IDB — apply-rule 200 (sync) → Succeeded

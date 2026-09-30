@@ -2,7 +2,10 @@
 
 `dbaas-operator` integrates Kubernetes with DBaaS by reconciling a family of custom resources that describe databases, credentials, access policies, and physical-database balancing rules, and driving them through dbaas-aggregator. It lets workloads declare and consume databases the Kubernetes-native way, and keeps `DatabaseSecretClaim` secrets in sync as credentials rotate.
 
-> **Full reference:** see **[docs/howto/DBaaS Operator.md](docs/howto/DBaaS%20Operator.md)** for the complete design, status/condition reference, RBAC, authentication, and credential-rotation details. For a local kind environment see **[dev/README.md](dev/README.md)**.
+> **Onboarding a service:** see **[docs/howto/onboarding.md](docs/howto/onboarding.md)** for the migration
+> paths available to a service adopting the operator, automated and manual.
+>
+> **Full reference:** see **[docs/DBaaS Operator.md](docs/DBaaS%20Operator.md)** for the complete design, status/condition reference, RBAC, authentication, and credential-rotation details. For a local kind environment see **[dev/README.md](dev/README.md)**.
 
 ## Custom Resources
 
@@ -15,7 +18,12 @@ All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` 
 | `DatabaseSecretClaim` | Materialize a database's credentials into a Kubernetes `Secret` in the workload namespace, kept in sync as credentials rotate. |
 | `DatabaseAccessPolicy` | Declare per-microservice role grants and apply them to dbaas-aggregator. |
 | `MicroserviceBalancingRule` / `NamespaceBalancingRule` / `PermanentBalancingRule` | Configure physical-database balancing rules in dbaas-aggregator. |
-| `NamespaceBinding` | Claim a namespace for this operator instance (ownership) — gates which CRs the operator reconciles. |
+
+All workload CRs declare the target operator through
+required, immutable `spec.operatorNamespace`. The operator reconciles a CR only when that value
+matches its `CLOUD_NAMESPACE`.
+`PermanentBalancingRule` additionally requires `metadata.namespace` to equal
+`spec.operatorNamespace`, so its singleton lives with the assigned operator.
 
 ## Authentication
 
@@ -24,7 +32,7 @@ The operator authenticates to dbaas-aggregator in one of two modes, selected by 
 - `false` (default) — HTTP Basic Auth, using the `dbaas-operator` entry of `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security`;
 - `true` — a Kubernetes projected service-account token (Bearer / M2M).
 
-Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](docs/howto/DBaaS%20Operator.md#configuration-parameters) for the full list.
+Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](docs/DBaaS%20Operator.md#configuration-parameters) for the full list.
 
 ## Getting Started
 

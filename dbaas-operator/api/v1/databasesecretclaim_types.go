@@ -22,6 +22,19 @@ import (
 
 // DatabaseSecretClaimSpec defines the desired state of DatabaseSecretClaim.
 type DatabaseSecretClaimSpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// classifier uniquely identifies the database whose credentials this secret tracks.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="classifier is immutable after creation"
@@ -74,6 +87,7 @@ type DatabaseSecretClaimStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:selectablefield:JSONPath=".spec.operatorNamespace"
 // +kubebuilder:resource:scope=Namespaced,path=databasesecretclaims,singular=databasesecretclaim,shortName=dbdsc,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"

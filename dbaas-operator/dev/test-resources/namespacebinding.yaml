@@ -1,8 +1,0 @@
-apiVersion: dbaas.netcracker.com/v1
-kind: NamespaceBinding
-metadata:
-  name: binding   # must always be "binding"
-  namespace: test-ns
-spec:
-  # operatorNamespace must match the operator's own namespace (CLOUD_NAMESPACE = dbaas-system)
-  operatorNamespace: dbaas-system

@@ -1,0 +1,12 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: MicroserviceBalancingRule
+metadata:
+  name: microservice-balancing-rules
+  namespace: test-ns
+spec:
+  operatorNamespace: dbaas-system
+  rules:
+    - type: postgresql
+      label: zone=fast
+      microservices:
+        - operator-namespace-smoke

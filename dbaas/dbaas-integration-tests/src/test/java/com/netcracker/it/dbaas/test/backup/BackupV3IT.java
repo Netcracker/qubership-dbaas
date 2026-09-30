@@ -85,21 +85,25 @@ class BackupV3IT extends AbstractIT {
 
             private final String databaseType = POSTGRES_TYPE;
 
+            @Tag("postgresql")
             @Test
             void testCollectAndRestoreBackupToTargetNamespace() throws IOException, InterruptedException {
                 BackupV3IT.this.testCollectAndRestoreBackupToTargetNamespace(databaseType);
             }
 
+            @Tag("postgresql")
             @Test
             void testCollectAndRestoreBackupWithDeltaCheckConnectionsAndData() throws IOException, InterruptedException {
                 BackupV3IT.this.testCollectAndRestoreBackupWithDeltaCheckConnectionsAndData(databaseType);
             }
 
+            @Tag("postgresql")
             @Test
             void testDeleteDatabaseBackup() throws IOException, InterruptedException {
                 BackupV3IT.this.testDeleteDatabaseBackup(databaseType);
             }
 
+            @Tag("postgresql")
             @Test
             void testRestoreNamespaceBackupAfterDeletionAllLogicalDatabases() throws IOException, InterruptedException {
                 var namespace = helperV3.generateTestNamespace();
@@ -126,6 +130,7 @@ class BackupV3IT extends AbstractIT {
                 backupHelperV3.checkConnections(false, backupedLogicalDatabases, null, BackupHelperV3.BACKUPED_DATA, false);
             }
 
+            @Tag("postgresql")
             @Test
             void testRestoreNamespaceBackupWhenBackupedLogicalDatabasesAreDeletedAndOtherTwoLogicalDatabasesWithTheSameClassifiersExist() throws IOException {
                 var namespace = helperV3.generateTestNamespace();
@@ -162,52 +167,64 @@ class BackupV3IT extends AbstractIT {
                 assertEquals(backupedLogicalDatabase2.getName(), restoredLogicalDatabase2.getName());
             }
 
+            @Tag("postgresql")
             @Test
             void testBackupRestoreV1_importAndExportBackupMetadata() throws IOException {
                 BackupV3IT.this.testImportAndExportBackupMetadata(POSTGRES_TYPE);
             }
 
+            @Tag("clickhouse")
             @Test
             void testBackupRestoreV1_testFailedBackup() throws IOException {
                 BackupV3IT.this.testFailedBackup();
             }
 
+            @Tag("postgresql")
+            @Tag("cassandra")
             @Test
             void testBackupRestoreV1_testExternalDbBackupRestore() throws IOException {
                 BackupV3IT.this.testExternalDbBackupRestore(POSTGRES_TYPE);
             }
 
+            @Tag("postgresql")
+            @Tag("cassandra")
             @Test
             void testBackupRestoreV1_externalInternalDbBackupRestore() throws IOException {
                 BackupV3IT.this.testExternalInternalDbBackupRestore(POSTGRES_TYPE);
             }
 
+            @Tag("postgresql")
             @Test
             void testBackupRestoreV1_testEnrichingBackupRestore() throws IOException {
                 BackupV3IT.this.testEnrichingBackupRestore(POSTGRES_TYPE);
             }
 
+            @Tag("postgresql")
             @Test
             void testBackupRestoreV1_testParallelBackupRestore() throws IOException {
                 BackupV3IT.this.testParallelBackupRestore(POSTGRES_TYPE);
             }
 
+            @Tag("postgresql")
             @Test
             void testBackupRestoreV1_restoreDeletedBackup() throws IOException {
                 BackupV3IT.this.testRestoreDeletedBackup(POSTGRES_TYPE);
             }
 
+            @Tag("postgresql")
             @Test
             void testBackupRestoreV1_backupRestore() throws IOException {
                 BackupV3IT.this.testBackupRestoreToSameNamespace(POSTGRES_TYPE);
             }
 
+            @Tag("postgresql")
             @Test
             void testMigratedExternalToInternalDatabasesBackupRestore() throws IOException {
                 BackupV3IT.this.testMigratedExternalToInternalDatabasesBackupRestore();
             }
         }
 
+        @Tag("cassandra")
         @Nested
         @EnableExtension
         class Cassandra {
@@ -230,6 +247,7 @@ class BackupV3IT extends AbstractIT {
             }
         }
 
+        @Tag("mongodb")
         @Nested
         @EnableExtension
         class Mongodb {
@@ -317,6 +335,7 @@ class BackupV3IT extends AbstractIT {
             }
         }
 
+        @Tag("opensearch")
         @Nested
         @EnableExtension
         class Opensearch {
@@ -339,6 +358,7 @@ class BackupV3IT extends AbstractIT {
             }
         }
 
+        @Tag("clickhouse")
         @Nested
         @EnableExtension
         class Clickhouse {
@@ -361,6 +381,7 @@ class BackupV3IT extends AbstractIT {
             }
         }
 
+        @Tag("arangodb")
         @Nested
         @EnableExtension
         class Arangodb {

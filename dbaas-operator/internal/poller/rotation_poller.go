@@ -68,6 +68,9 @@ type RotationPoller struct {
 	Interval time.Duration
 	// Limit is the page size; DefaultLimit when zero.
 	Limit int
+	// OperatorNamespace is this operator instance's CLOUD_NAMESPACE. Only claims
+	// whose spec.operatorNamespace matches this value are patched.
+	OperatorNamespace string
 }
 
 // NeedLeaderElection makes the poller run only on the elected leader, so a single
@@ -138,7 +141,9 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 	for i := range resp.Items {
 		it := &resp.Items[i]
 		trigger := it.LastRotatedAt.UTC().Format(time.RFC3339Nano)
-		if _, _, perr := PatchClaimsForRotation(ctx, p.Client, it.Namespace, it.Classifier, it.Type, trigger); perr != nil {
+		if _, _, perr := PatchClaimsForRotation(
+			ctx, p.Client, it.Namespace, it.Classifier, it.Type, p.OperatorNamespace, trigger,
+		); perr != nil {
 			log.ErrorC(ctx, "Rotation poller failed to fan out namespace=%s type=%s err=%v",
 				it.Namespace, it.Type, perr)
 		}

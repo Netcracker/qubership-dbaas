@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -21,6 +22,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.*;
 
 @Slf4j
+@Tag("postgresql")
 public class NoNamespaceAPIV3IT extends AbstractIT {
     private static final String SECOND_TEST_NAMESPACE = TEST_NAMESPACE + "_2";
 

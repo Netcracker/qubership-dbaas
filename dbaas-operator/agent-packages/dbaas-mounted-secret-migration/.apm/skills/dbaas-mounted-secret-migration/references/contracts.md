@@ -55,6 +55,9 @@ Never repeat reserved keys (`microserviceName`, `scope`, `namespace`, `tenantId`
 
 ## InternalDatabase template
 
+Replace `<operator-namespace>` with the verified namespace of the operator instance that must manage
+the generated CRs. It is not necessarily the workload namespace.
+
 ```yaml
 apiVersion: dbaas.netcracker.com/v1
 kind: InternalDatabase
@@ -62,6 +65,7 @@ metadata:
   name: orders-postgresql-service-db
   namespace: orders-ns
 spec:
+  operatorNamespace: <operator-namespace>
   classifier:
     microserviceName: orders
     namespace: orders-ns
@@ -94,6 +98,7 @@ metadata:
   labels:
     app.kubernetes.io/name: orders
 spec:
+  operatorNamespace: <operator-namespace>
   classifier:
     microserviceName: orders
     namespace: orders-ns

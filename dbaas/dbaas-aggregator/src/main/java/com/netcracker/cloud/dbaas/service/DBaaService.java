@@ -168,14 +168,6 @@ public class DBaaService {
         return databaseRegistry;
     }
 
-    public boolean isValidClassifierV3(Map<String, Object> classifier) {
-        return classifier != null &&
-                (classifier.containsKey(SCOPE) &&
-                        ((classifier.get(SCOPE).equals(SCOPE_VALUE_TENANT) && classifier.containsKey(TENANT_ID)) ||
-                                classifier.get(SCOPE).equals(SCOPE_VALUE_SERVICE)) &&
-                        classifier.containsKey(MICROSERVICE_NAME) && classifier.containsKey(NAMESPACE));
-    }
-
     private Optional<DbaasAdapter> getAdapter(Database database) {
         return getAdapter(database.getAdapterId());
     }

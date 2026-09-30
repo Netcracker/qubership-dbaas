@@ -7,6 +7,7 @@ metadata:
   name: idb-401-unauthorized
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
       microserviceName: idb-svc-401
       scope: service

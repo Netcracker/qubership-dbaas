@@ -8,6 +8,7 @@ metadata:
   name: idb-success-async
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
       microserviceName: idb-svc-async
       scope: service

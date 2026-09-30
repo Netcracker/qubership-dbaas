@@ -216,6 +216,17 @@ class PhysicalDatabasesServiceTest {
     }
 
     @Test
+    void testFoundPhysicalDatabase_missingHttpBasicCredentialsFailsBeforeHandshake() {
+        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestSample();
+        physicalDatabaseRegistryRequest.setHttpBasicCredentials(null);
+
+        // The registration endpoint maps this exception to a 500 response.
+        assertThrows(NullPointerException.class,
+                () -> physicalDatabasesService.foundPhysicalDatabase(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest));
+        verifyNoInteractions(handshakeClient, physicalDatabaseDbaasRepository);
+    }
+
+    @Test
     void testBalanceByType() {
         final PhysicalDatabase physicalDatabaseWithGlobalFalse = getPhysicalDatabaseSample();
         physicalDatabaseWithGlobalFalse.setGlobal(false);

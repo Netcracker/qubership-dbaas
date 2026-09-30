@@ -10,6 +10,7 @@ metadata:
   name: idb-tenant-materialize
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
       microserviceName: idb-tenant
       scope: tenant

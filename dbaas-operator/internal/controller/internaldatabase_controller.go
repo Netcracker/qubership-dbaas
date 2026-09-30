@@ -36,18 +36,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
-	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/ownership"
 )
-
-// pollRequeueAfter is the interval between polls of an in-progress async operation.
-const pollRequeueAfter = 5 * time.Second
 
 // InternalDatabaseReconciler reconciles InternalDatabase objects.
 //
@@ -58,10 +51,10 @@ const pollRequeueAfter = 5 * time.Second
 //     COMPLETED → Succeeded. FAILED/TERMINATED → InvalidConfiguration. IN_PROGRESS → requeue.
 type InternalDatabaseReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Aggregator *aggregatorclient.AggregatorClient
-	Recorder   record.EventRecorder
-	Ownership  *ownership.OwnershipResolver
+	Scheme      *runtime.Scheme
+	Aggregator  *aggregatorclient.AggregatorClient
+	Recorder    record.EventRecorder
+	MyNamespace string
 
 	// asyncStartMu guards asyncStartTimes.
 	asyncStartMu sync.Mutex
@@ -69,8 +62,7 @@ type InternalDatabaseReconciler struct {
 	// submitted (HTTP 202), keyed by "namespace/name". Consumed when the
 	// operation reaches a terminal state (COMPLETED, FAILED, TERMINATED).
 	asyncStartTimes map[string]time.Time
-
-	bindingTriggerTracker
+	pollBackoff     pollBackoffTracker
 }
 
 func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -80,23 +72,19 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.Get(ctx, req.NamespacedName, dd); err != nil {
 		if apierrors.IsNotFound(err) {
 			key := req.Namespace + "/" + req.Name
-			r.clearBindingTrigger(key)
 			r.clearAsyncStart(key)
+			r.pollBackoff.forget(req.NamespacedName)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	key := req.Namespace + "/" + req.Name
-	bindingTriggered := r.consumeBindingTrigger(key)
 
-	owned, result, err := checkOwnership(ctx, r.Ownership, dd.Namespace, dd.Name, "InternalDatabase")
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if !owned {
-		r.clearBindingTrigger(key)
+	if !isEligibleForOperator(ctx, dd.Spec.OperatorNamespace, r.MyNamespace,
+		dd.Namespace, dd.Name, "InternalDatabase") {
 		r.clearAsyncStart(key)
-		return result, nil
+		r.pollBackoff.forget(req.NamespacedName)
+		return ctrl.Result{}, nil
 	}
 
 	original := dd.DeepCopy()
@@ -124,9 +112,7 @@ func (r *InternalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	trigger := triggerSpecChange
-	if bindingTriggered {
-		trigger = triggerNamespaceBindingChange
-	} else if dd.Status.TrackingID != "" {
+	if dd.Status.TrackingID != "" {
 		trigger = triggerPolling
 	}
 	recordReconcileTrigger(controllerIDB, trigger)
@@ -146,6 +132,7 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 	dd.Status.Phase = dbaasv1.PhaseProcessing
 
 	if msg := validateInternalDatabaseSpec(dd); msg != "" {
+		r.pollBackoff.forgetObject(dd)
 		return invalidSpec(ctx, &dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, msg)
 	}
 
@@ -156,7 +143,11 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 	recordAggregatorCall(controllerIDB, operationApplyConfig, aggStart, err)
 	if err != nil {
 		log.ErrorC(ctx, "failed to apply InternalDatabase to dbaas-aggregator: %v", err)
-		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		if callErr == nil {
+			r.pollBackoff.forgetObject(dd)
+		}
+		return result, callErr
 	}
 
 	if resp.TrackingID != "" {
@@ -169,11 +160,12 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 		}
 		r.asyncStartTimes[ddKey] = time.Now()
 		r.asyncStartMu.Unlock()
+		r.pollBackoff.forgetObject(dd)
 		markProvisioningStarted(dd, resp.TrackingID)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonProvisioningStarted,
 			"database provisioning started asynchronously (trackingId=%s, requestId=%s)",
 			resp.TrackingID, requestID)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(dd), nil
 	}
 
 	// HTTP 200 OK — synchronous completion.
@@ -181,13 +173,18 @@ func (r *InternalDatabaseReconciler) reconcileSubmit(
 	pending, err := r.materializeTenantDatabaseIfPinned(ctx, dd)
 	if err != nil {
 		log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
-		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+		if callErr == nil {
+			r.pollBackoff.forgetObject(dd)
+		}
+		return result, callErr
 	}
 	if pending {
 		log.InfoC(ctx, "tenant database creation accepted, not ready yet; will retry")
 		markTenantMaterializationPending(dd)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(dd), nil
 	}
+	r.pollBackoff.forgetObject(dd)
 	markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 	r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
 		"database provisioned synchronously (microserviceName=%s)",
@@ -246,6 +243,9 @@ func (r *InternalDatabaseReconciler) materializeTenantDatabaseIfPinned(ctx conte
 	if !strings.EqualFold(dd.Spec.Classifier.Scope, "tenant") || dd.Spec.Classifier.TenantID == "" {
 		return false, nil
 	}
+	// physicalDatabaseId is not sent here: the declarative apply above has already persisted it on the
+	// declaration, and the aggregator's get-or-create rebuilds this request from that stored declaration
+	// (AggregatedDatabaseAdministrationService), so any value passed on the request would be overwritten.
 	req := &aggregatorclient.CreateDatabaseRequest{
 		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(dd.Spec.Classifier, dd.Namespace)),
 		Type:          dd.Spec.Type,
@@ -291,10 +291,11 @@ func toWireSpec(spec dbaasv1.InternalDatabaseSpec, namespace string) aggregatorc
 		ClassifierConfig: aggregatorclient.ClassifierConfigWire{
 			Classifier: dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(spec.Classifier, namespace)),
 		},
-		Type:       spec.Type,
-		Lazy:       spec.Lazy,
-		Settings:   spec.Settings,
-		NamePrefix: spec.NamePrefix,
+		Type:               spec.Type,
+		Lazy:               spec.Lazy,
+		Settings:           spec.Settings,
+		NamePrefix:         spec.NamePrefix,
+		PhysicalDatabaseID: spec.PhysicalDatabaseID,
 	}
 	if spec.VersioningConfig != nil {
 		wire.VersioningConfig = &aggregatorclient.VersioningConfigWire{
@@ -455,8 +456,12 @@ func (r *InternalDatabaseReconciler) handlePollError(
 ) (ctrl.Result, error) {
 	var requestContextErr *aggregatorclient.RequestContextError
 	if errors.As(err, &requestContextErr) {
-		return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
+		result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			r.Recorder, dd, err, requestID)
+		if callErr == nil {
+			r.pollBackoff.forgetObject(dd)
+		}
+		return result, callErr
 	}
 
 	var aggErr *aggregatorclient.AggregatorError
@@ -477,6 +482,7 @@ func (r *InternalDatabaseReconciler) handlePollError(
 			log.InfoC(ctx, "trackingId not found, will re-submit on next reconcile trackingId=%v", trackingID)
 			r.clearAsyncStart(dd.Namespace + "/" + dd.Name)
 			clearPendingOperation(dd)
+			r.pollBackoff.forgetObject(dd)
 			markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 				EventReasonAggregatorError, "operation trackingId not found — will re-submit on next reconcile")
 			r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonAggregatorError,
@@ -509,16 +515,18 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		log.InfoC(ctx, "database provisioned. trackingId = %v, microserviceName = %v",
 			trackingID, dd.Spec.Classifier.MicroserviceName)
 		clearPendingOperation(dd)
+		r.pollBackoff.forgetObject(dd)
 		r.observeAsyncCompletion(dd, resultSuccess)
 		pending, err := r.materializeTenantDatabaseIfPinned(ctx, dd)
 		if err != nil {
 			log.ErrorC(ctx, "failed to materialize pinned tenant database: %v", err)
-			return handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+			result, callErr := handleAggregatorError(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, r.Recorder, dd, err, requestID)
+			return result, callErr
 		}
 		if pending {
 			log.InfoC(ctx, "tenant database creation accepted, not ready yet; will retry")
 			markTenantMaterializationPending(dd)
-			return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+			return r.pollBackoff.schedule(dd), nil
 		}
 		markSucceeded(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation, EventReasonDatabaseProvisioned)
 		r.Recorder.Eventf(dd, corev1.EventTypeNormal, EventReasonDatabaseProvisioned,
@@ -531,6 +539,7 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		log.InfoC(ctx, "database provisioning failed trackingId=%v status=%v reason=%v",
 			trackingID, resp.Status, reason)
 		clearPendingOperation(dd)
+		r.pollBackoff.forgetObject(dd)
 		r.observeAsyncCompletion(dd, asyncResultFailed)
 		markPermanentFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonAggregatorRejected, reason)
@@ -545,12 +554,13 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 		// Clear the stale trackingID so the next reconcile enters the SUBMIT branch.
 		log.InfoC(ctx, "provisioning was terminated, clearing trackingId for resubmit trackingId=%v", trackingID)
 		clearPendingOperation(dd)
+		r.pollBackoff.forgetObject(dd)
 		r.observeAsyncCompletion(dd, asyncResultTerminated)
 		markTransientFailure(&dd.Status.Phase, &dd.Status.Conditions, dd.Generation,
 			EventReasonOperationTerminated, "provisioning was terminated by the aggregator, resubmitting")
 		r.Recorder.Eventf(dd, corev1.EventTypeWarning, EventReasonOperationTerminated,
 			"provisioning terminated (trackingId=%s, requestId=%s), resubmitting", trackingID, requestID)
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return initialPollRequeue(), nil
 
 	default: // IN_PROGRESS, NOT_STARTED — keep polling
 		log.DebugC(ctx, "provisioning still in progress status=%v trackingId=%v", resp.Status, trackingID)
@@ -558,7 +568,7 @@ func (r *InternalDatabaseReconciler) handlePollResponse(
 			setCondition(&dd.Status.Conditions, dd.Generation,
 				conditionTypeReady, metav1.ConditionFalse, EventReasonProvisioningStarted, msg)
 		}
-		return ctrl.Result{RequeueAfter: pollRequeueAfter}, nil
+		return r.pollBackoff.schedule(dd), nil
 	}
 }
 
@@ -572,28 +582,13 @@ func pollProgressMessage(resp *aggregatorclient.DeclarativeResponse) string {
 	return pollConditionText(resp, "")
 }
 
-// SetupWithManager registers watches for spec changes and NamespaceBinding fan-out.
-// Timer-based polling requeues bypass watch predicates.
-func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, opts ctrlcontroller.Options) error {
+// SetupWithManager registers watches for spec changes. Timer-based polling
+// requeues bypass watch predicates.
+func (r *InternalDatabaseReconciler) SetupWithManager(mgr ctrl.Manager, config RateLimiterConfig) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbaasv1.InternalDatabase{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Re-enqueue all InternalDatabases in a namespace when its NamespaceBinding
-		// is created or updated, so existing CRs are reconciled without waiting for
-		// a spec change.
-		Watches(&dbaasv1.NamespaceBinding{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueForBinding),
-			// The binding status is written by its own controller; only create, delete,
-			// and spec changes can affect ownership, so status-only updates are ignored.
-			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WithOptions(opts).
+		WithOptions(config.controllerOptions()).
 		Named("internaldatabase").
 		Complete(r)
-}
-
-// enqueueForBinding maps an NamespaceBinding event to reconcile requests for
-// all InternalDatabases that live in the same namespace.
-func (r *InternalDatabaseReconciler) enqueueForBinding(ctx context.Context, obj client.Object) []reconcile.Request {
-	return enqueueForBindingList(ctx, r.Client, &dbaasv1.InternalDatabaseList{}, obj.GetNamespace(),
-		func(o client.Object) { r.stampBindingTrigger(o.GetNamespace() + "/" + o.GetName()) })
 }

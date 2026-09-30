@@ -30,10 +30,8 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	httpserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -61,6 +59,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 	baseSpec := func() dbaasv1.DatabaseSecretClaimSpec {
 		return dbaasv1.DatabaseSecretClaimSpec{
+			OperatorNamespace: testOperatorNamespace,
 			Classifier: dbaasv1.Classifier{
 				MicroserviceName: "test-service",
 				Scope:            "service",
@@ -94,11 +93,11 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 		fixture = newAggregatorSyncFixture()
 		namespacedName = types.NamespacedName{Name: resourceName, Namespace: ns}
 		reconciler = &DatabaseSecretClaimReconciler{
-			Client:     cacheClient,
-			Scheme:     cacheClient.Scheme(),
-			Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
-			Recorder:   fixture.recorder,
-			Ownership:  mineOwnershipResolver(ns),
+			Client:      cacheClient,
+			Scheme:      cacheClient.Scheme(),
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
+			Recorder:    fixture.recorder,
+			MyNamespace: testOperatorNamespace,
 		}
 	})
 
@@ -173,7 +172,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 				"a successful reconcile schedules the safety-net re-poll")
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(ds.Status.ObservedGeneration).To(Equal(ds.Generation))
-
 			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionTrue))
@@ -467,7 +465,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			ds, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
@@ -476,6 +474,12 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonEmptyConnectionProperties)
 			expectNoRecordedEvent(fixture.recorder.Events)
+
+			// A second consecutive empty-connectionProperties response advances the
+			// same scheduler used by the not-found paths.
+			ds, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 1)
 		})
 	})
 
@@ -497,7 +501,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			ds, result, err := reconcileAndFetch()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter))
+			expectRequeueAfterStep(result, 0)
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			Expect(ds.Status.ObservedGeneration).To(BeZero())
 			Expect(ds.Status.FirstNotFoundAt).NotTo(BeNil(), "first 404 must stamp FirstNotFoundAt")
@@ -551,8 +555,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			got, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(pollRequeueAfter),
-				"polling must continue so the CR can self-heal if the database appears later")
+			expectRequeueAfterStep(result, 0)
 			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff),
 				"phase must remain BackingOff — timeout is informational, not permanent")
 			Expect(got.Status.FirstNotFoundAt).NotTo(BeNil(),
@@ -677,7 +680,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
-
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionTrue))
@@ -704,7 +706,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
-
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
@@ -767,7 +768,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
-
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
@@ -970,11 +970,11 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			})).To(Succeed())
 
 			reconciler2 := &DatabaseSecretClaimReconciler{
-				Client:     cacheClient,
-				Scheme:     cacheClient.Scheme(),
-				Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
-				Recorder:   fixture.recorder,
-				Ownership:  mineOwnershipResolver(ns),
+				Client:      cacheClient,
+				Scheme:      cacheClient.Scheme(),
+				Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
+				Recorder:    fixture.recorder,
+				MyNamespace: testOperatorNamespace,
 			}
 			cr2Key := types.NamespacedName{Name: cr2Name, Namespace: ns}
 			Eventually(func() error {
@@ -1063,6 +1063,62 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(k8sClient.Get(ctx, cr1Key, got1)).To(Succeed())
 			Expect(got1.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded),
 				"older claimant must not be marked SecretConflict by the younger sibling")
+		})
+	})
+
+	Context("Pre-flight: sibling assigned to another operator", func() {
+		It("ignores an older foreign-operator sibling and succeeds", func() {
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			// Older sibling assigned to a different operator. This reconciler never
+			// services it, so it never creates the Secret; it must not win the
+			// tiebreak against the claim this operator owns.
+			foreignSpec := baseSpec()
+			foreignSpec.OperatorNamespace = "other-operator-ns"
+			foreign := &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: foreignSpec,
+			}
+			Expect(k8sClient.Create(ctx, foreign)).To(Succeed())
+
+			// creationTimestamp has 1-second resolution. Sleep so the owned claim is
+			// strictly younger, i.e. it would lose the age tiebreak if the foreign
+			// sibling were not filtered out.
+			time.Sleep(1100 * time.Millisecond)
+
+			ownedName := resourceName + "-2"
+			owned := &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      ownedName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: baseSpec(),
+			}
+			Expect(k8sClient.Create(ctx, owned)).To(Succeed())
+
+			foreignKey := types.NamespacedName{Name: resourceName, Namespace: ns}
+			ownedKey := types.NamespacedName{Name: ownedName, Namespace: ns}
+			Eventually(func() error {
+				if err := cacheClient.Get(ctx, foreignKey, &dbaasv1.DatabaseSecretClaim{}); err != nil {
+					return err
+				}
+				return cacheClient.Get(ctx, ownedKey, &dbaasv1.DatabaseSecretClaim{})
+			}).Should(Succeed())
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: ownedKey})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(secretRotationSafetyNetInterval))
+
+			got := &dbaasv1.DatabaseSecretClaim{}
+			Expect(k8sClient.Get(ctx, ownedKey, got)).To(Succeed())
+			Expect(got.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded),
+				"a foreign-operator sibling must not park this claim in SecretConflict")
 		})
 	})
 
@@ -1183,29 +1239,31 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 		})
 	})
 
-	// ── Ownership / namespace ─────────────────────────────────────────────────
+	// ── Operator eligibility ──────────────────────────────────────────────────
 
-	Context("Foreign namespace — ownership check skips reconcile", func() {
+	Context("The resource is assigned to another operator", func() {
 		It("does not update status and does not call aggregator", func() {
+			spec := baseSpec()
+			spec.OperatorNamespace = testForeignOperatorNamespace
 			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: ns,
 					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
 				},
-				Spec: baseSpec(),
+				Spec: spec,
 			})).To(Succeed())
 
 			foreignReconciler := &DatabaseSecretClaimReconciler{
-				Client:     k8sClient,
-				Scheme:     k8sClient.Scheme(),
-				Aggregator: aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
-				Recorder:   fixture.recorder,
-				Ownership:  foreignOwnershipResolver(ns),
+				Client:      k8sClient,
+				Scheme:      k8sClient.Scheme(),
+				Aggregator:  aggregatorclient.NewClientWithTokenFunc(fixture.server.URL, func(_ context.Context) (string, error) { return testToken, nil }),
+				Recorder:    fixture.recorder,
+				MyNamespace: testOperatorNamespace,
 			}
 			_, err := foreignReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(fixture.capturedPath).To(BeEmpty(), "aggregator must not be called for foreign namespace")
+			Expect(fixture.capturedPath).To(BeEmpty(), "aggregator must not be called for a foreign resource")
 
 			ds := &dbaasv1.DatabaseSecretClaim{}
 			Expect(k8sClient.Get(ctx, namespacedName, ds)).To(Succeed())
@@ -1341,9 +1399,10 @@ var _ = Describe("DatabaseSecretClaim Controller — classifier+type field index
 					Labels: map[string]string{"app.kubernetes.io/name": "svc-a"},
 				},
 				Spec: dbaasv1.DatabaseSecretClaimSpec{
-					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
-					Type:       "postgresql",
-					SecretName: "idx-secret-a",
+					OperatorNamespace: testOperatorNamespace,
+					Classifier:        dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
+					Type:              "postgresql",
+					SecretName:        "idx-secret-a",
 				},
 			}
 			crB = &dbaasv1.DatabaseSecretClaim{
@@ -1352,6 +1411,7 @@ var _ = Describe("DatabaseSecretClaim Controller — classifier+type field index
 					Labels: map[string]string{"app.kubernetes.io/name": "svc-b"},
 				},
 				Spec: dbaasv1.DatabaseSecretClaimSpec{
+					OperatorNamespace: testOperatorNamespace,
 					// Same classifier as A, same type → should match A's key.
 					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-a", Scope: "service"},
 					Type:       "postgresql",
@@ -1364,6 +1424,7 @@ var _ = Describe("DatabaseSecretClaim Controller — classifier+type field index
 					Labels: map[string]string{"app.kubernetes.io/name": "svc-c"},
 				},
 				Spec: dbaasv1.DatabaseSecretClaimSpec{
+					OperatorNamespace: testOperatorNamespace,
 					// Different classifier — must NOT match A's key.
 					Classifier: dbaasv1.Classifier{MicroserviceName: "svc-c", Scope: "service"},
 					Type:       "postgresql",
@@ -1497,6 +1558,7 @@ var _ = Describe("DatabaseSecretClaim Controller — buildSecretData", func() {
 		return &dbaasv1.DatabaseSecretClaim{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a"},
 			Spec: dbaasv1.DatabaseSecretClaimSpec{
+				OperatorNamespace: testOperatorNamespace,
 				// namespace omitted from the classifier on purpose — must be defaulted.
 				Classifier: dbaasv1.Classifier{MicroserviceName: "svc", Scope: "service"},
 				Type:       "postgresql",
@@ -1654,7 +1716,7 @@ var _ = Describe("DatabaseSecretClaim Controller — rotation-trigger predicate"
 // ── Rate limiter / SetupWithManager ──────────────────────────────────────────
 
 var _ = Describe("DatabaseSecretClaim Controller — rate limiter", func() {
-	It("registers the controller with a custom exponential rate limiter", func() {
+	It("registers the controller with configured backoff", func() {
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 k8sClient.Scheme(),
 			Metrics:                httpserver.Options{BindAddress: "0"},
@@ -1665,22 +1727,14 @@ var _ = Describe("DatabaseSecretClaim Controller — rate limiter", func() {
 		const base = 100 * time.Millisecond
 		const max = 10 * time.Second
 
-		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](base, max)
-
 		err = (&DatabaseSecretClaimReconciler{
-			Client:     mgr.GetClient(),
-			Scheme:     mgr.GetScheme(),
-			Recorder:   mgr.GetEventRecorderFor("ds-rate-limiter-test"), //nolint:staticcheck
-			Aggregator: aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
-			Ownership:  mineOwnershipResolver("ns"),
-		}).SetupWithManager(mgr, ctrlcontroller.Options{RateLimiter: rateLimiter})
+			Client:      mgr.GetClient(),
+			Scheme:      mgr.GetScheme(),
+			Recorder:    mgr.GetEventRecorderFor("ds-rate-limiter-test"), //nolint:staticcheck
+			Aggregator:  aggregatorclient.NewClientWithTokenFunc("http://localhost:9999", func(_ context.Context) (string, error) { return testToken, nil }),
+			MyNamespace: testOperatorNamespace,
+		}).SetupWithManager(mgr, NewRateLimiterConfig(base, max))
 		Expect(err).NotTo(HaveOccurred())
 
-		req := reconcile.Request{NamespacedName: types.NamespacedName{Name: "ds", Namespace: "ns"}}
-		Expect(rateLimiter.When(req)).To(Equal(base))
-		Expect(rateLimiter.When(req)).To(Equal(2 * base))
-
-		rateLimiter.Forget(req)
-		Expect(rateLimiter.When(req)).To(Equal(base))
 	})
 })

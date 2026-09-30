@@ -71,6 +71,12 @@ to GitHub Packages.
 | `QUARKUS_DBAAS_API_AGGREGATOR_USERNAME` / `_PASSWORD` | cleared in Pass C so the M2M client is selected | `dbaas` / `dbaas` |
 | `LOG_LEVEL` | log level | `INFO` |
 
+The `http://dbaas-aggregator:8080` default above is the standalone binary's fallback. The Helm chart
+sets `API_DBAAS_ADDRESS` to a namespaced in-cluster host (`http://dbaas-aggregator.dbaas:8080` by
+default): the `InternalDatabase` and `DatabaseSecretClaim` templates read its second DNS label as
+`spec.operatorNamespace`, so the chart value must keep the `<service>.<namespace>` form and a short
+host without a namespace label fails chart rendering.
+
 Runs on the same digest-pinned Java base image as dbaas-aggregator
 (`ghcr.io/netcracker/qubership-java-base-prof`).
 

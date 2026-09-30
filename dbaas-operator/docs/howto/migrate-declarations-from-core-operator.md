@@ -25,11 +25,15 @@ behavior (role grants, provisioning, cloning) is unchanged.
 | `spec.apiVersion: v1` | present (declaration version) | **removed** — not part of the CRD |
 | Owning microservice | derived from label `app.kubernetes.io/name` (fallback `app.kubernetes.io/instance`) | **explicit field in `spec`** (see per-type sections) |
 | Labels | `app.kubernetes.io/instance`, `app.kubernetes.io/managed-by: operator` | `app.kubernetes.io/name` recommended; `managed-by` no longer required |
+| Operator assignment | implicit | `spec.operatorNamespace` (**required, immutable**) |
 
 > **Why `microserviceName` moves into `spec`.** Core Operator read the owning
 > service from the `app.kubernetes.io/name` label and injected it into the
 > declaration's `metadata.microserviceName`. The new CRDs make it an explicit,
 > validated, **immutable** spec field so the owner is unambiguous and auditable.
+
+For Helm charts, derive `spec.operatorNamespace` from `API_DBAAS_ADDRESS` using the expression in the
+examples below. A plain `kubectl apply` manifest uses the literal namespace instead.
 
 ---
 
@@ -87,6 +91,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
   microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
   services:
     - name: install-base-service
@@ -131,6 +136,7 @@ own `InternalDatabase` CR.**
 | `declarations[].initialInstantiation.approach` | `spec.initialInstantiation.approach` |
 | `initialInstantiation.sourceClassifier{...}` | `spec.initialInstantiation.sourceClassifier{...}` — now a full `Classifier` (add `microserviceName`) |
 | `declarations[].lazy` / `.settings` / `.namePrefix` | `spec.lazy` / `spec.settings` / `spec.namePrefix` |
+| `declarations[].physicalDatabaseId` | `spec.physicalDatabaseId` — unchanged; omit to keep balancing-rule selection. Pins only new-creation databases; ignored for `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`, which follow the source/backup adapter instead |
 
 ### DatabaseDeclaration before (Core Operator)
 
@@ -174,6 +180,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
+  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
   classifier:
     microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
     scope: service
@@ -211,7 +218,7 @@ spec:
   on the wire, distinct from the nested `customKeys`. The reserved keys
   `microserviceName`, `scope`, `namespace`, `tenantId`, `customKeys` are rejected by the controller with
   phase `InvalidConfiguration` and reason `InvalidSpec`. See
-  [Classifier → Aggregator Wire Mapping](DBaaS%20Operator.md#classifier--aggregator-wire-mapping) for the
+  [Classifier → Aggregator Wire Mapping](../DBaaS%20Operator.md#classifier--aggregator-wire-mapping) for the
   full mapping. Because these fields are part of the database identity, **every
   consumer's dbaas-client must emit the same keys/values**, or the database (and its
   mounted Secret) won't be found.
@@ -227,13 +234,13 @@ spec:
   Omit `tenantId` to declare a template only.
 - **`clone` requires a source.** When `initialInstantiation.approach: clone`,
   `sourceClassifier` is required and `spec.lazy: true` is prohibited.
-- **DatabaseAccessPolicy needs `services` or `policy`.** At least one must be set; otherwise the
-  controller reports phase `InvalidConfiguration` with reason `InvalidSpec`. The CRD itself does not
-  enforce this, so the API server accepts the CR first.
+- **DatabaseAccessPolicy needs `services`, `policy`, or `disableGlobalPermissions`.** At least one
+  must be set; the CRD enforces this with a CEL cross-field rule, so the API server rejects a CR that
+  omits all three with HTTP 422.
 - **Status & lifecycle.** Each CR now carries its own `status.phase`, conditions, and
   `observedGeneration`; provisioning may be synchronous or asynchronous, and the controller polls the
   aggregator while an async operation is in flight. See
-  [InternalDatabase Status Reference](DBaaS%20Operator.md#internaldatabase-status-reference) for the
+  [InternalDatabase Status Reference](../DBaaS%20Operator.md#internaldatabase-status-reference) for the
   phase and condition reference.
 
 ---

@@ -4,6 +4,7 @@ metadata:
   name: microservice-balancing-rules
   namespace: dbaas-system
 spec:
+  operatorNamespace: dbaas-system
   rules:
     - type: postgresql
       label: zone=fast

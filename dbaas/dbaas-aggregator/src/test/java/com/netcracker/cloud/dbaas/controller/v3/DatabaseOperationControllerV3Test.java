@@ -114,7 +114,6 @@ class DatabaseOperationControllerV3Test {
         PhysicalDatabase physicalDatabase = new PhysicalDatabase();
         physicalDatabase.setPhysicalDatabaseIdentifier("123");
         when(physicalDatabaseDbaasRepository.findByAdapterId(adapterId)).thenReturn(physicalDatabase);
-        when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         UpdateClassifierRequestV3 request = createUpdateClassifierRequest(primaryClassifier, targetClassifier);
         String mongodb = "mongodb";
         Database database = new Database();
@@ -183,7 +182,6 @@ class DatabaseOperationControllerV3Test {
             put("scope", "tenant");
             put("tenantId", "serviceOne");
         }};
-        when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
 
         UpdateClassifierRequestV3 request = createUpdateClassifierRequest(primaryClassifier, targetClassifier);
         String mongodb = "mongodb";
@@ -212,7 +210,6 @@ class DatabaseOperationControllerV3Test {
             put("scope", "tenant");
             put("tenantId", "serviceOne");
         }};
-        when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
 
         UpdateClassifierRequestV3 request = createUpdateClassifierRequest(primaryClassifier, targetClassifier);
         String mongodb = "mongodb";
@@ -407,7 +404,6 @@ class DatabaseOperationControllerV3Test {
     void recreateDbPhysicalDbNotRegistered() throws Exception {
         String physicalDbId = "123";
         Mockito.when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDbId)).thenReturn(null);
-        Mockito.when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         given().auth().preemptive().basic("dbaas-db-editor-client", "dbaas-db-editor-client")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -431,7 +427,6 @@ class DatabaseOperationControllerV3Test {
         Mockito.when(
                 databaseDbaasRepository.getDatabaseByClassifierAndType(request.get(0).getClassifier(), request.get(0).getType())
         ).thenReturn(Optional.empty());
-        Mockito.when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         given().auth().preemptive().basic("dbaas-db-editor-client", "dbaas-db-editor-client")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -462,7 +457,6 @@ class DatabaseOperationControllerV3Test {
         Mockito.when(
                 databaseDbaasRepository.getDatabaseByClassifierAndType(request.get(0).getClassifier(), request.get(0).getType())
         ).thenReturn(Optional.of(databaseRegistry));
-        Mockito.when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         Mockito.when(dBaaService.recreateDatabase(any(), any())).thenThrow(new RuntimeException("I can't do it"));
 
         given().auth().preemptive().basic("dbaas-db-editor-client", "dbaas-db-editor-client")
@@ -491,7 +485,6 @@ class DatabaseOperationControllerV3Test {
         Mockito.when(
                 databaseDbaasRepository.getDatabaseByClassifierAndType(request.get(0).getClassifier(), request.get(0).getType())
         ).thenReturn(Optional.of(databaseRegistry));
-        Mockito.when(dBaaService.isValidClassifierV3(any())).thenCallRealMethod();
         Mockito.when(dBaaService.recreateDatabase(any(), any())).thenReturn(databaseRegistry);
         given().auth().preemptive().basic("dbaas-db-editor-client", "dbaas-db-editor-client")
                 .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)

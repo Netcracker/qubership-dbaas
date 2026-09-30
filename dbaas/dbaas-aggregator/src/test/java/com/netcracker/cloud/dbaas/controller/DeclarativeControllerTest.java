@@ -25,6 +25,7 @@ import jakarta.ws.rs.core.MediaType;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import java.util.*;
@@ -37,6 +38,8 @@ import static jakarta.ws.rs.core.Response.Status.ACCEPTED;
 import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
 import static jakarta.ws.rs.core.Response.Status.OK;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -141,6 +144,39 @@ class DeclarativeControllerTest {
                 .then()
                 .statusCode(ACCEPTED.getStatusCode());
         Mockito.verify(dbaasCreationService).saveDeclarativeDatabase(any(), any(), any());
+    }
+
+    @Test
+    void testDeclarativeControllerDbCreateRequest_physicalDatabaseIdDeserialized() throws JsonProcessingException {
+        DeclarativeDatabaseCreationRequest dbCreateRequest = getDeclarativeDatabaseCreationRequest();
+        dbCreateRequest.getDeclarations().get(0).setPhysicalDatabaseId("postgresql-prod-a");
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(dbCreateRequest))
+                .when().post("/namespaces/{" + NAMESPACE_PARAMETER + "}" + "/service/{serviceName}", "test-service")
+                .then()
+                .statusCode(ACCEPTED.getStatusCode());
+
+        ArgumentCaptor<List<DatabaseDeclaration>> declarationsCaptor = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(dbaasCreationService).saveDeclarativeDatabase(any(), any(), declarationsCaptor.capture());
+        assertEquals("postgresql-prod-a", declarationsCaptor.getValue().get(0).getPhysicalDatabaseId());
+    }
+
+    @Test
+    void testDeclarativeControllerDbCreateRequest_physicalDatabaseIdOmitted() throws JsonProcessingException {
+        DeclarativeDatabaseCreationRequest dbCreateRequest = getDeclarativeDatabaseCreationRequest();
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam(NAMESPACE_PARAMETER, TEST_NAMESPACE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(dbCreateRequest))
+                .when().post("/namespaces/{" + NAMESPACE_PARAMETER + "}" + "/service/{serviceName}", "test-service")
+                .then()
+                .statusCode(ACCEPTED.getStatusCode());
+
+        ArgumentCaptor<List<DatabaseDeclaration>> declarationsCaptor = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(dbaasCreationService).saveDeclarativeDatabase(any(), any(), declarationsCaptor.capture());
+        assertNull(declarationsCaptor.getValue().get(0).getPhysicalDatabaseId());
     }
 
     @Test

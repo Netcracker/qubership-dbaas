@@ -35,15 +35,21 @@ var log = logging.GetLogger("dbaas-rotation-poller")
 
 // PatchClaimsForRotation lists every DatabaseSecretClaim matching (classifier,
 // dbType) in the given namespace via the ClassifierTypeIndex and patches each
-// with triggerValue under AnnotationRotationTrigger, waking its reconcile. A
-// fresh triggerValue (the event's lastRotatedAt) guarantees the annotation
-// changes so the controller predicate fires even when the CR is otherwise
-// unchanged.
+// claim assigned to operatorNamespace with triggerValue under
+// AnnotationRotationTrigger, waking its reconcile. A fresh triggerValue (the
+// event's lastRotatedAt) guarantees the annotation changes so the controller
+// predicate fires even when the CR is otherwise unchanged.
 //
 // Per-CR patch failures are logged and skipped, not propagated: one transient
 // k8s API error must not block notifications for the rest, and the safety-net
 // reconcile will heal any CR missed here.
-func PatchClaimsForRotation(ctx context.Context, c client.Client, namespace string, classifier map[string]any, dbType, triggerValue string) (matched, patched int, err error) {
+func PatchClaimsForRotation(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	classifier map[string]any,
+	dbType, operatorNamespace, triggerValue string,
+) (matched, patched int, err error) {
 	typed, err := classifierFromMap(classifier)
 	if err != nil {
 		return 0, 0, fmt.Errorf("normalize classifier: %w", err)
@@ -56,8 +62,6 @@ func PatchClaimsForRotation(ctx context.Context, c client.Client, namespace stri
 		client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
 		return 0, 0, fmt.Errorf("list DatabaseSecretClaim in %s: %w", namespace, err)
 	}
-	matched = len(list.Items)
-
 	patchBytes, err := json.Marshal(map[string]any{
 		"metadata": map[string]any{
 			"annotations": map[string]string{
@@ -72,6 +76,10 @@ func PatchClaimsForRotation(ctx context.Context, c client.Client, namespace stri
 
 	for i := range list.Items {
 		ds := &list.Items[i]
+		if !dbaasv1.IsAssignedTo(ds.Spec.OperatorNamespace, operatorNamespace) {
+			continue
+		}
+		matched++
 		if patchErr := c.Patch(ctx, ds, client.RawPatch(types.MergePatchType, patchBytes)); patchErr != nil {
 			log.ErrorC(ctx, "Failed to patch rotation-trigger annotation name=%s namespace=%s err=%v",
 				ds.Name, ds.Namespace, patchErr)

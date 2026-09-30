@@ -133,6 +133,18 @@ dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/
   `DatabaseRegistryBuilder`) from `com.netcracker.cloud.dbaas.utils.DatabaseBuilder`. Prefer its predefined constants (
   `PG_TYPE`, `TEST_NS`, etc.) over hard-coded literals. Never build these entities
   manually (setting individual fields by hand) when `DatabaseBuilder` covers the case.
+- **Tags on integration tests**: Apply `@Tag` annotations from the set below to every new `*IT` class or
+  method. Use **class level** when every method in the class fits the same tag; use **method level** otherwise.
+  A test that fits multiple tags gets one annotation per tag. Trace through `@BeforeAll` setup and shared
+  helpers when the test method is a thin delegate.
+  - DB type — `"postgresql"`, `"mongodb"`, `"redis"`, `"cassandra"`, `"opensearch"`, `"clickhouse"`,
+    `"arangodb"`: the test creates or operates on databases of that type. Methods that work only on
+    aggregator-level structures (health checks, composite namespaces) with no concrete DB type get no DB-type
+    tag. Identify the type from: constants (`POSTGRES_TYPE`, `MONGODB_TYPE`, etc.),
+    `assumeTrue(helperV3.hasAdapterOfType(...))` guards, or type arguments in helper calls.
+  - `"backup"`: the test exercises backup or restore workflows.
+  - `"bg"`: the test exercises Blue-Green promotion, rollback, or warmup.
+  - `"Smoke"`: the test is a fast, high-value sanity check for a quick-pass run.
 
 ---
 

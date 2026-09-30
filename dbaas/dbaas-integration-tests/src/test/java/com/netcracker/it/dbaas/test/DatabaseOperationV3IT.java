@@ -8,6 +8,7 @@ import okhttp3.Request;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -36,6 +37,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE + "-additional");
     }
 
+    @Tag("postgresql")
     @Test
     public void passwordChangeOneDbPG() throws IOException {
         String authorization = helperV3.getClusterDbaAuthorization();
@@ -50,6 +52,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         checkResultPasswordChangeOneDb(passwordChangeResponse, databases, "password-change-IT-2", POSTGRES_TYPE);
     }
 
+    @Tag("mongodb")
     @Test
     public void passwordChangeOneDbMongo() throws IOException {
         Assumptions.assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
@@ -65,6 +68,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         checkResultPasswordChangeOneDb(passwordChangeResponse, databases, "password-change-IT-1", MONGODB_TYPE);
     }
 
+    @Tag("postgresql")
     @Test
     public void passwordChangeSeveralDb() throws IOException, InterruptedException {
         String authorization = helperV3.getClusterDbaAuthorization();
@@ -92,6 +96,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         checkResultPasswordSeveralDb(passwordChangeResponse, "password-change-IT-1", "password-change-IT-2", TEST_NAMESPACE, databasesWithAllConnectionProperties, POSTGRES_TYPE);
     }
 
+    @Tag("postgresql")
     @Test
     public void updateClassifier() throws IOException {
         Map<String, Object> classifier = new ClassifierBuilder().build();
@@ -121,6 +126,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         assertEquals(updatedDatabase.getName(), foundedDb.getName());
     }
 
+    @Tag("postgresql")
     @Test
     void testUpdateConnectionProperties() throws IOException {
         Map<String, Object> classifier = new ClassifierBuilder().build();
@@ -150,6 +156,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         assertEquals(connectionProperties, foundedDb.getConnectionProperties());
     }
 
+    @Tag("postgresql")
     @Test
     void testUpdateConnectionPropertiesWithPhysicalDatabaseId() throws IOException {
         Map<String, Object> classifier = new ClassifierBuilder().build();
@@ -226,6 +233,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         assertEquals(updatedDatabase.getPhysicalDatabaseId(), oldPhysicalDatabaseId);
     }
 
+    @Tag("postgresql")
     @Test
     public void recreateLogicalDb() throws IOException {
         // create the first db
@@ -279,6 +287,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         assertTrue(archivedDb.getClassifier().containsKey("archived"));
     }
 
+    @Tag("postgresql")
     @Test
     void updateClassifierWithCloneIT() throws IOException, SQLException {
         Map<String, Object> classifier = new ClassifierBuilder().build();
@@ -325,6 +334,7 @@ public class DatabaseOperationV3IT extends AbstractIT {
         helperV3.deleteDatabasesByClassifierRequest(TEST_NAMESPACE, POSTGRES_TYPE, classifierWithRolesRequest, 200);
     }
 
+    @Tag("postgresql")
     @Test
     void linkDBToAnotherNamespace() throws IOException, SQLException {
         String targetNamespace = TEST_NAMESPACE + "_target";

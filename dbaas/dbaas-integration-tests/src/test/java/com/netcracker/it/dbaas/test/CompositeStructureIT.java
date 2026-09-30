@@ -123,6 +123,7 @@ public class CompositeStructureIT extends AbstractIT {
         Assertions.assertFalse(compositeStructure.getNamespaces().contains(SATELLITE_1));
     }
 
+    @Tag("postgresql")
     @Test
     public void deleteDatabasesAndBaselineFromComposite() throws IOException {
         saveCompositeStructure(new CompositeStructureDto(BASE_NAMESPACE, Set.of(SATELLITE_1, SATELLITE_2, BASE_NAMESPACE)));

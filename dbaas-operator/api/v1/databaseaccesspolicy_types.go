@@ -65,8 +65,22 @@ type PolicyRole struct {
 //	{ "subKind": "DbPolicy", "metadata": { "microserviceName": <microserviceName> }, "spec": <roles>, ... }
 //
 // Field names and semantics match the RolesRegistration Java class in the aggregator.
-// At least one of services or policy must be provided.
+// At least one of services, policy, or disableGlobalPermissions must be set.
+// +kubebuilder:validation:XValidation:rule="(has(self.services) && size(self.services) > 0) || (has(self.policy) && size(self.policy) > 0) || has(self.disableGlobalPermissions)",message="at least one of spec.services, spec.policy, or spec.disableGlobalPermissions must be set"
 type DatabaseAccessPolicySpec struct {
+	// operatorNamespace is the namespace where the dbaas-operator instance
+	// responsible for this resource is deployed. It must match that operator's
+	// CLOUD_NAMESPACE and is immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// The Pattern requires an RFC-1123 label, so a value that cannot name a
+	// namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
+	OperatorNamespace string `json:"operatorNamespace"`
+
 	// microserviceName is the microservice that owns this policy.
 	// Mapped to metadata.microserviceName in the DBaaS declarative payload.
 	// Immutable after creation — repointing a DatabaseAccessPolicy CR at a different
@@ -92,7 +106,7 @@ type DatabaseAccessPolicySpec struct {
 	// dbaas-aggregator would otherwise apply to all databases of the service.
 	// Set to true to opt out of global defaults and rely solely on explicit entries.
 	// +optional
-	DisableGlobalPermissions bool `json:"disableGlobalPermissions,omitempty"`
+	DisableGlobalPermissions *bool `json:"disableGlobalPermissions,omitempty"`
 }
 
 // DatabaseAccessPolicyStatus defines the observed state of DatabaseAccessPolicy.
@@ -102,6 +116,7 @@ type DatabaseAccessPolicyStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:selectablefield:JSONPath=".spec.operatorNamespace"
 // +kubebuilder:resource:scope=Namespaced,path=databaseaccesspolicies,singular=databaseaccesspolicy,shortName=dbdap,categories=dbaas
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"

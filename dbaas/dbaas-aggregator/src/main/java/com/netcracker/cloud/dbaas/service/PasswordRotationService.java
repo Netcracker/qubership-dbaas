@@ -9,6 +9,7 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.utils.ClassifierValidator;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -62,7 +63,7 @@ public class PasswordRotationService {
         List<DatabaseRegistry> databasesForChangePassword = new ArrayList<>();
         if (!MapUtils.isEmpty(passwordChangeRequest.getClassifier())) {
             passwordChangeRequest.getClassifier().put("namespace", namespace);
-            if (!dBaaService.isValidClassifierV3(passwordChangeRequest.getClassifier())) {
+            if (!ClassifierValidator.isValid(passwordChangeRequest.getClassifier())) {
                 throw new PasswordChangeValidationException("PasswordChangeRequest =" + passwordChangeRequest + " contains not valid V3 classifier",
                         Source.builder().pointer("/classifier").build());
             }

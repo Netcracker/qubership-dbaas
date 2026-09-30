@@ -104,15 +104,11 @@ kubectl apply -f "${REPO_ROOT}/dev/k8s/mock-aggregator.yaml"
 envsubst '${KUBERNETES_M2M_ENABLED}' < "${REPO_ROOT}/dev/k8s/operator.yaml" | kubectl apply -f -
 
 # ── 6. Test resources ─────────────────────────────────────────────────────────
-info "Applying test resources (namespace test-ns, NamespaceBinding, secret)..."
+info "Applying test resources (namespace test-ns, Secret RBAC, secret)..."
 kubectl apply -f "${REPO_ROOT}/dev/test-resources/namespace.yaml"
-# NamespaceBinding must exist before the operator will reconcile CRs in test-ns
-# (the namespace must be claimed for this operator). Applied after the namespace.
-kubectl apply -f "${REPO_ROOT}/dev/test-resources/namespacebinding.yaml"
 # Namespaced Secret RBAC for test-ns: the operator holds no cluster-wide Secret access, so each
-# business namespace must grant it via a Role + RoleBinding — applied alongside the
-# NamespaceBinding, exactly as a real onboarding would. (The operator's own namespace is covered
-# by the Role in dev/k8s/operator.yaml.)
+# business namespace must grant it via a Role + RoleBinding. Managed CRs select this
+# operator with spec.operatorNamespace=dbaas-system.
 kubectl apply -f "${REPO_ROOT}/dev/test-resources/secret-rbac.yaml"
 kubectl apply -f "${REPO_ROOT}/dev/test-resources/secret.yaml"
 

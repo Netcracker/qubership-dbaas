@@ -2,13 +2,7 @@
 
 These resources are scoped to the local `dbaas-system` namespace.
 
-Apply the namespace binding first:
-
-```bash
-kubectl apply -f config/samples/local/dbaas-system-namespacebinding.yaml
-```
-
-Then apply the singleton namespace/permanent rule samples:
+Apply the singleton namespace/permanent rule samples:
 
 ```bash
 kubectl apply -f config/samples/local/namespacebalancingrule.yaml

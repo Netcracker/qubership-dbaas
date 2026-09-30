@@ -3,7 +3,6 @@
 Start from the base local samples:
 
 ```bash
-kubectl apply -f config/samples/local/dbaas-system-namespacebinding.yaml
 kubectl apply -f config/samples/local/namespacebalancingrule.yaml
 kubectl apply -f config/samples/local/permanentbalancingrule.yaml
 kubectl apply -f config/samples/local/microservicebalancingrule.yaml

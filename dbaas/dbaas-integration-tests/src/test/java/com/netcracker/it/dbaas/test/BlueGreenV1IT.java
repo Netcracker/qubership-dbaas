@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Slf4j
 @Tag("bg")
+@Tag("postgresql")
 class BlueGreenV1IT extends AbstractIT {
     private static PaasHelper paasHelper;
     private static BGHelper bgHelper;

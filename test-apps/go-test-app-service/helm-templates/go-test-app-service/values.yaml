@@ -20,8 +20,8 @@ DBAAS_AGENT: http://dbaas-aggregator.dbaas:8080
 # base client calls API_DBAAS_ADDRESS directly with a Bearer (no dbaas-agent). Default false keeps
 # the mounted-secret / REST-fallback phases unchanged.
 M2M_ENABLED: false
-# Direct aggregator URL used only when M2M_ENABLED is true (koanf key api.dbaas.address).
-API_DBAAS_ADDRESS: ""
+# CR templates derive spec.operatorNamespace from the second DNS label; use <service>.<namespace>.
+API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
 BASECLIENT_RETRY_MAX_ATTEMPTS: 0
 BASECLIENT_RETRY_DELAY_MS: 10
 

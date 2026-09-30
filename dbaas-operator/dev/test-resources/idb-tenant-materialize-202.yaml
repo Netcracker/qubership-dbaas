@@ -14,6 +14,7 @@ metadata:
   name: idb-tenant-materialize-202
   namespace: test-ns
 spec:
+  operatorNamespace: dbaas-system
   classifier:
       microserviceName: tenant-svc-202
       scope: tenant
