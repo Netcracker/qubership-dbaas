@@ -606,33 +606,21 @@ class AdapterErrorHandlingTest {
     @Test
     void testRestore_4xxAdapterError_immediatelyFailedWithNoRetries() {
         DbaasAdapter wiremockAdapter = createWireMockAdapter();
-        when(physicalDatabasesService.getAdapterById(POSTGRES_ADAPTER_ID)).thenReturn(wiremockAdapter);
-
-        PhysicalDatabase physDb = new PhysicalDatabase();
-        physDb.setPhysicalDatabaseIdentifier(POSTGRES_PHY_DB_ID);
         ExternalAdapterRegistrationEntry adapterEntry = new ExternalAdapterRegistrationEntry(
                 POSTGRES_ADAPTER_ID, wiremockAddress, null, null, null);
-        physDb.setAdapter(adapterEntry);
-        when(balancingRulesService.applyBalancingRules(eq(PG_TYPE), eq(TEST_NS), any())).thenReturn(physDb);
+        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
+        physicalDatabase.setPhysicalDatabaseIdentifier(POSTGRES_PHY_DB_ID);
+        physicalDatabase.setAdapter(adapterEntry);
+        when(balancingRulesService.applyBalancingRules(eq(PG_TYPE), eq(TEST_NS), any())).thenReturn(physicalDatabase);
+        when(physicalDatabasesService.getAdapterById(POSTGRES_ADAPTER_ID)).thenReturn(wiremockAdapter);
 
         WireMockResource.getServer().stubFor(
                 get(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/supports"))
                         .willReturn(aResponse().withStatus(NOT_FOUND.getStatusCode()))
         );
-        WireMockResource.getServer().stubFor(
-                post(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/backups/backup/.*/restore"))
-                        .willReturn(aResponse()
-                                .withStatus(404)
-                                .withHeader("Content-Type", "application/json")
-                                .withBody("""
-                                        {
-                                          "message": "Backup not found in adapter storage"
-                                        }
-                                        """))
-        );
 
         Backup backup = new Backup();
-        backup.setName("restore-4xx-test-backup");
+        backup.setName("restore-error-test-backup");
         backup.setStatus(BackupStatus.COMPLETED);
         backup.setStorageName("s3");
         backup.setBlobPath("/backups");
@@ -658,18 +646,57 @@ class AdapterErrorHandlingTest {
         backupRepository.save(backup);
 
         RestoreRequest request = new RestoreRequest();
-        request.setRestoreName("restore-4xx-test");
+        request.setRestoreName("restore-error-test");
         request.setStorageName("s3");
         request.setBlobPath("/backups");
         request.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
 
+        // test for 4xx error - no retries expected
+        WireMockResource.getServer().stubFor(
+                post(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/backups/backup/.*/restore"))
+                        .willReturn(aResponse()
+                                .withStatus(NOT_FOUND.getStatusCode())
+                                .withHeader("Content-Type", "application/json")
+                                .withBody("""
+                                        {
+                                          "message": "Backup not found in adapter storage"
+                                        }
+                                        """))
+        );
+
         RestoreResponse response = dbBackupV2Service.restore(
-                "restore-4xx-test-backup", request, false, true);
+                "restore-error-test-backup", request, false, true);
 
         assertEquals(RestoreStatus.FAILED, response.getStatus(),
                 "A 4xx from the adapter during restore must immediately mark the restore as FAILED");
         WireMockResource.getServer().verify(
                 1,
+                postRequestedFor(urlPathMatching(
+                        "/api/v2/dbaas/adapter/" + PG_TYPE + "/backups/backup/.*/restore"))
+        );
+
+        // test for 5xx error - 3 retry for dryRun=true, 3 retry for dryRun=false, total 8 requests
+        restoreRepository.listAll().forEach(restoreRepository::delete);
+        WireMockResource.getServer().resetRequests();
+        WireMockResource.getServer().stubFor(
+                post(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/backups/backup/.*/restore"))
+                        .willReturn(aResponse()
+                                .withStatus(INTERNAL_SERVER_ERROR.getStatusCode())
+                                .withHeader("Content-Type", "application/json")
+                                .withBody("""
+                                        {
+                                          "message": "Unknown error during restore"
+                                        }
+                                        """))
+        );
+
+        RestoreResponse response2 = dbBackupV2Service.restore(
+                "restore-error-test-backup", request, false, true);
+
+        assertEquals(RestoreStatus.IN_PROGRESS, response2.getStatus(),
+                "A 5xx from the adapter during restore must mark the restore as IN_PROGRESS");
+        WireMockResource.getServer().verify(
+                8,
                 postRequestedFor(urlPathMatching(
                         "/api/v2/dbaas/adapter/" + PG_TYPE + "/backups/backup/.*/restore"))
         );
