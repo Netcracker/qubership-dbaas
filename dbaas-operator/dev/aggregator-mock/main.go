@@ -18,8 +18,8 @@ limitations under the License.
 // endpoints used by dbaas-operator, for local development and kind-based testing.
 //
 // Authentication: every request must be authenticated either with HTTP Basic Auth
-// (Basic mode, the default — operator runs with KUBERNETES_M2M_ENABLED=false) or a
-// non-empty Bearer token (M2M mode, KUBERNETES_M2M_ENABLED=true). The mock validates
+// (Basic mode, the default — operator runs with M2M_AUTH_MODE=legacy) or a
+// non-empty Bearer token (operator runs with M2M_AUTH_MODE=hybrid or k8s). The mock validates
 // neither value — it only checks that the operator authenticated somehow, so the same
 // mock serves both modes with no reconfiguration. No credentials → 401 Unauthorized.
 //

@@ -163,8 +163,8 @@ spec:
               {{- end }}
                 -   name: DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED
                     value: '{{ .Values.DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED }}'
-                -   name: KUBERNETES_M2M_ENABLED
-                    value: '{{ .Values.KUBERNETES_M2M_ENABLED }}'
+                -   name: M2M_AUTH_MODE
+                    value: '{{ .Values.M2M_AUTH_MODE }}'
               {{- if .Values.KUBERNETES_M2M_AUDIENCE }}
                 -   name: KUBERNETES_M2M_AUDIENCE
                     value: '{{ .Values.KUBERNETES_M2M_AUDIENCE }}'

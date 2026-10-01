@@ -46,6 +46,7 @@ import (
 
 	"github.com/netcracker/qubership-core-lib-go/v3/logging"
 	_ "github.com/netcracker/qubership-core-lib-go/v3/memlimit"
+	"github.com/netcracker/qubership-core-lib-go/v3/security"
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 	"github.com/netcracker/qubership-dbaas/dbaas-operator/internal/controller"
@@ -116,12 +117,22 @@ func main() {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
 
-	// Authentication mode mirrors the aggregator's KUBERNETES_M2M_ENABLED flag:
-	//   true  → Kubernetes projected service-account token (Bearer / M2M);
-	//   false → HTTP Basic Auth with credentials from the mounted security Secret.
-	// The aggregator rejects a Bearer token outright when M2M is disabled, so the
-	// operator must match the cluster's setting. Defaults to false (Basic Auth).
-	m2mEnabled := strings.EqualFold(os.Getenv("KUBERNETES_M2M_ENABLED"), "true")
+	// Authentication mode, from M2M_AUTH_MODE:
+	//   hybrid, k8s → Kubernetes projected service-account token (Bearer / M2M);
+	//   legacy      → HTTP Basic Auth with credentials from the mounted security Secret.
+	// The aggregator rejects a Bearer token outright in legacy mode. Defaults to legacy (Basic Auth).
+	m2mAuthMode, err := security.ReadM2MAuthMode()
+	if err != nil {
+		setupLog.Errorf("%v", err)
+		os.Exit(1)
+	}
+	var m2mEnabled bool
+	switch m2mAuthMode {
+	case security.M2MAuthModeLegacy:
+		m2mEnabled = false
+	case security.M2MAuthModeHybrid, security.M2MAuthModeK8s:
+		m2mEnabled = true
+	}
 	var aggregator *aggregatorclient.AggregatorClient
 	var credentialWatcher manager.Runnable
 	if m2mEnabled {

@@ -64,7 +64,7 @@ The jar depends on the dbaas client snapshot that carries the mounted-secret fea
 | `MICROSERVICE_NAME` | dbaas classifier `microserviceName` | `spring-test-app-service` |
 | `MICROSERVICE_NAMESPACE` | dbaas classifier `namespace` | `default` |
 | `API_DBAAS_ADDRESS` | REST target: dbaas-agent (Pass B) or the aggregator directly (Pass C) | `http://dbaas-aggregator:8080` |
-| `KUBERNETES_M2M_ENABLED` | Pass C: call the aggregator directly with a `dbaas`-audience projected token | `false` |
+| `M2M_AUTH_MODE` | Pass C (`hybrid`): call the aggregator directly with a `dbaas`-audience projected token; set from the `M2M_ENABLED` Helm value | `legacy` |
 | `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH` | `false` in Pass C to select the M2M OkHttp client | `true` |
 | `LOG_LEVEL` | root + dbaas log level | `INFO` |
 | `JAVA_TOOL_OPTIONS` | JVM options (heap sizing) | — |

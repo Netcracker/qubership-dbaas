@@ -172,8 +172,8 @@ jobs:
         run: >
           make install
           CONFIG_FILE=local.mk
-          KUBERNETES_M2M_ENABLED=true
-          OPERATOR_M2M_ENABLED=false
+          M2M_AUTH_MODE=hybrid
+          OPERATOR_M2M_AUTH_MODE=legacy
           PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
           REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 

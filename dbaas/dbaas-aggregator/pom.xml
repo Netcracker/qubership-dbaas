@@ -206,7 +206,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.security.core.utils</groupId>
             <artifactId>k8s-utils</artifactId>
-            <version>3.2.4</version>
+            <version>3.2.5-feat-m2m-auth-mode-SNAPSHOT</version>
         </dependency>
 
         <dependency>

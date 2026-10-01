@@ -33,9 +33,9 @@ DBAAS_ROTATION_POLL_INTERVAL: "2s"
 DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL: "30s"
 
 # ============== Aggregator authentication ============================
-# Operator's auth mode. local.mk's OPERATOR_M2M_ENABLED defaults to the aggregator's
-# KUBERNETES_M2M_ENABLED, so the two match unless overridden. Default false → the
-# operator authenticates as the dbaas-operator Basic Auth user (the production
-# default). Override independently to test the hybrid (operator Basic vs M2M
-# aggregator): make ... KUBERNETES_M2M_ENABLED=true OPERATOR_M2M_ENABLED=false.
-KUBERNETES_M2M_ENABLED: ${OPERATOR_M2M_ENABLED}
+# Operator's auth mode. local.mk's OPERATOR_M2M_AUTH_MODE defaults to the aggregator's
+# M2M_AUTH_MODE, so the two match unless overridden. Default legacy → the operator
+# authenticates as the dbaas-operator Basic Auth user (the production default).
+# Override independently to test the operator on Basic against an aggregator that
+# also accepts Kubernetes tokens: make ... M2M_AUTH_MODE=hybrid OPERATOR_M2M_AUTH_MODE=legacy.
+M2M_AUTH_MODE: ${OPERATOR_M2M_AUTH_MODE}

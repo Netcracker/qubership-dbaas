@@ -18,7 +18,7 @@
   - [Rotation Poller Changed-Databases Feed](#rotation-poller-changed-databases-feed)
 - [Authentication: Basic Auth or M2M Token](#authentication-basic-auth-or-m2m-token)
   - [Basic Auth (Default)](#basic-auth-default)
-  - [M2M Token](#m2m-token-kubernetes_m2m_enabledtrue)
+  - [M2M Token](#m2m-token-m2m_auth_modehybrid-or-k8s)
 - [RBAC and Required Permissions](#rbac-and-required-permissions)
   - [Default Installation](#default-installation)
   - [Restricted Environment](#restricted-environment)
@@ -131,8 +131,8 @@ require the corresponding per-namespace Secret RBAC grant.
 - Secret access is **namespaced**, not cluster-wide: the `ClusterRole` carries no `secrets` permission. Each namespace
   containing Secret-backed CRs grants access through a small `Role` + `RoleBinding` — see
   [Secret access (namespaced)](#secret-access-namespaced).
-- Authentication to dbaas-aggregator is dual-mode (`KUBERNETES_M2M_ENABLED`): HTTP Basic Auth by default, or a projected
-  service-account token (M2M) when enabled — see [Authentication](#authentication-basic-auth-or-m2m-token).
+- Authentication to dbaas-aggregator is dual-mode (`M2M_AUTH_MODE`): HTTP Basic Auth in `legacy` (the default), or a
+  projected service-account token in `hybrid` and `k8s` — see [Authentication](#authentication-basic-auth-or-m2m-token).
 - Resource-identity fields on all workload CRs are immutable after creation (enforced by CRD CEL rules) — to retarget a
   CR at a different database, microservice, or operator instance, delete and recreate it. See the per-resource sections
   for the exact set of immutable fields.
@@ -401,14 +401,15 @@ See [DatabaseSecretClaim → Rotation Polling](#rotation-polling) for the full c
 ## Authentication: Basic Auth or M2M Token
 
 The operator authenticates to dbaas-aggregator in one of two mutually exclusive modes, selected by the
-`KUBERNETES_M2M_ENABLED` environment variable. **The operator's setting must match the aggregator's
-`KUBERNETES_M2M_ENABLED`** — when the aggregator has M2M disabled it rejects Bearer tokens outright (`401`), so an
-operator configured for M2M against a non-M2M aggregator fails every call.
+`M2M_AUTH_MODE` environment variable. Basic Auth works against the aggregator in any mode. The Bearer token needs the
+aggregator in `hybrid` or `k8s`: in `legacy` the aggregator rejects Bearer tokens outright (`401`), so an operator in
+`hybrid` or `k8s` against a `legacy` aggregator fails every call. Any value other than `legacy`, `hybrid`, or `k8s`
+stops the operator at startup with `M2M_AUTH_MODE has unsupported value "<value>": set it to legacy, hybrid, or k8s`.
 
-| `KUBERNETES_M2M_ENABLED` | Mode | Credential sent |
-|--------------------------|------|-----------------|
-| `false` (**default**) | HTTP **Basic Auth** | `Authorization: Basic <base64(username:password)>` |
-| `true` | **M2M** Bearer token | `Authorization: Bearer <projected SA token, audience=dbaas>` |
+| `M2M_AUTH_MODE` | Mode | Credential sent |
+|-----------------|------|-----------------|
+| `legacy` (**default**) | HTTP **Basic Auth** | `Authorization: Basic <base64(username:password)>` |
+| `hybrid`, `k8s` | Bearer token | `Authorization: Bearer <projected SA token, audience=dbaas>` |
 
 ### Basic Auth (Default)
 
@@ -423,7 +424,7 @@ operator configured for M2M against a non-M2M aggregator fails every call.
 - **Aggregator side:** the `dbaas-operator` user is included in `users.json` with the `DB_CLIENT` and `CLUSTER_OPERATOR`
   roles automatically — no manual credential configuration is needed on either side.
 
-### M2M Token (`KUBERNETES_M2M_ENABLED=true`)
+### M2M Token (`M2M_AUTH_MODE=hybrid` or `k8s`)
 
 - A projected service-account token (`audience=dbaas`, `expirationSeconds=600`) is mounted at
   `/var/run/secrets/tokens/dbaas/token`.
@@ -2254,7 +2255,7 @@ directly by the binary, and **startup flags** passed as container `args`.
 | `DBAAS_OPERATOR_ENABLED` | boolean | `false` | When `false`, no operator resources are created by the Helm chart (Deployment, RBAC, CRDs, and monitoring objects are all skipped); only a placeholder `<SERVICE_NAME>-stub` ConfigMap is rendered. Must be set to `true` to deploy the operator. **The CRDs ship as chart templates**, so setting this back to `false` on an existing release deletes them along with every CR they define. |
 | `LEADER_ELECT` | boolean | `true` | Enables leader election; a truthy value makes the chart append the `--leader-elect` flag. Required when running more than one replica to ensure only one active instance processes resources at a time. The binary's own default is `false` — see [Startup flags](#startup-flags). |
 | `K8S_EVENTS_ENABLED` | boolean | `true` | When `true`, the operator emits Kubernetes Events in each involved object's namespace (visible in `kubectl describe`). The chart conditionally grants `create` and `patch` on `core/events` through the operator-namespace `Role` and cluster-wide `ClusterRole`. |
-| `KUBERNETES_M2M_ENABLED` | boolean | `false` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `KUBERNETES_M2M_ENABLED`**. `false` (default): HTTP Basic Auth, with credentials read from `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security` (see [Authentication](#authentication-basic-auth-or-m2m-token)). `true`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
+| `M2M_AUTH_MODE` | string | `legacy` | Selects how the operator authenticates to dbaas-aggregator. `legacy` (default): HTTP Basic Auth, with credentials read from `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security` (see [Authentication](#authentication-basic-auth-or-m2m-token)); works against the aggregator in any mode. `hybrid` or `k8s`: Kubernetes projected service-account token (Bearer), which needs the aggregator in `hybrid` or `k8s`. Any other value stops the operator at startup. |
 | `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate `DatabaseSecretClaim` credential rotations. Empty uses the operator's built-in default (`30s`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
 | `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30s`, `1m`) for `ExternalDatabase` CRs. The operator does not watch Secrets, so a referenced credential Secret change is picked up on the next resync rather than instantly. Empty uses the operator's built-in default (`10m`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`, `fatal`. Per-package overrides (`LOGGING_LEVEL_<PACKAGE>`, `LOG_LEVEL_PACKAGE_<PACKAGE>`) and `LOGGING_LEVEL_ROOT` take precedence over this value. |
