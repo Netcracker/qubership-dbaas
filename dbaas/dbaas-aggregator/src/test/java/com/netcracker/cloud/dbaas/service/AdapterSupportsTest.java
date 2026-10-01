@@ -1,9 +1,10 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
-import jakarta.ws.rs.NotFoundException;
 
+import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -86,7 +87,7 @@ public class AdapterSupportsTest {
 
     @Test
     void testSettingsWith404() {
-        when(restClient.supports(anyString())).thenThrow(new NotFoundException());
+        when(restClient.supports(anyString())).thenThrow(new AdapterException(Response.Status.NOT_FOUND.getStatusCode(), "Settings Not Found"));
 
         boolean actualValue = adapterSupports.settings();
         assertFalse(actualValue);

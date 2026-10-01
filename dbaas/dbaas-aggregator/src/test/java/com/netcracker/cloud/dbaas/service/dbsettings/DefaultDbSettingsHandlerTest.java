@@ -2,13 +2,11 @@ package com.netcracker.cloud.dbaas.service.dbsettings;
 
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.service.DbaasAdapter;
 import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
-import jakarta.ws.rs.InternalServerErrorException;
-import jakarta.ws.rs.WebApplicationException;
-
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,10 +20,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.service.dbsettings.DefaultDbSettingsHandler.DEFAULT_DB_SETTING_HANDLER_TYPE;
+import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class DefaultDbSettingsHandlerTest {
     private DefaultDbSettingsHandler defaultDbSettingsHandler;
@@ -125,10 +122,10 @@ class DefaultDbSettingsHandlerTest {
         when(adapter.identifier()).thenReturn(adapterId);
         when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(adapter);
 
-        WebApplicationException exception = new InternalServerErrorException("test-message");
-
+        AdapterException exception = new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), INTERNAL_SERVER_ERROR.getReasonPhrase());
         doThrow(exception).when(adapter).updateSettings(Mockito.eq(dbName), Mockito.any(), Mockito.any());
-        Assertions.assertThrows(WebApplicationException.class, () -> defaultDbSettingsHandler.updateSettings(databaseRegistry, settings));
+
+        Assertions.assertThrows(AdapterException.class, () -> defaultDbSettingsHandler.updateSettings(databaseRegistry, settings));
         verify(databaseRegistryDbaasRepository, Mockito.never()).saveAnyTypeLogDb(Mockito.any(DatabaseRegistry.class));
     }
 }

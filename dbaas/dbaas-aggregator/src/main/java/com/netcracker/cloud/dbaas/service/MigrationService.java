@@ -8,11 +8,12 @@ import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
 import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.WebApplicationException;
+
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.hibernate.exception.ConstraintViolationException;
@@ -154,8 +155,8 @@ public class MigrationService {
         try {
             log.info("Get all database from dbaas adapter with identifier {}", dbaasAdapter.identifier());
             databases = dbaasAdapter.getDatabases();
-        } catch (WebApplicationException e) {
-            log.error("Request to adapter {} was not processed with code {}", dbaasAdapter, e.getResponse().getStatus());
+        } catch (AdapterException e) {
+            log.error("Request to adapter {} was not processed with code {}", dbaasAdapter, e.getHttpCode());
             return Optional.empty();
         }
         return Optional.ofNullable(databases);

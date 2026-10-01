@@ -7,28 +7,19 @@ import com.netcracker.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
-import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
-import com.netcracker.cloud.dbaas.exceptions.PasswordChangeValidationException;
-import com.netcracker.cloud.dbaas.exceptions.UnknownErrorCodeException;
-import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
+import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.utils.ClassifierValidator;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -149,11 +140,11 @@ public class PasswordRotationService {
 
                     log.info("The password was changed successfully from database with classifier {} and type {} and role {}", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE));
                     sum += 1L;
-                } catch (WebApplicationException e) {
-                    response.putFailedEntity(databaseRegistry.getClassifier(), e.getMessage());
-                    log.error("Faled during change password from database with classifier {} and type {} and role {}. Error: ", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE), e);
-                    if (e.getResponse().getStatus() > response.getFailedHttpStatus()) {
-                        response.setFailedHttpStatus(e.getResponse().getStatus());
+                } catch (AdapterException e) {
+                    response.putFailedEntity(databaseRegistry.getClassifier(), e.getErrorMessage());
+                    log.error("Failed during change password from database with classifier {} and type {} and role {}. Error: ", databaseRegistry.getClassifier(), databaseRegistry.getType(), (String) cp.get(ROLE), e);
+                    if (e.getHttpCode() > response.getFailedHttpStatus()) {
+                        response.setFailedHttpStatus(e.getHttpCode());
                     }
                 }
             }

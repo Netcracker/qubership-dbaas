@@ -9,14 +9,10 @@ import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
-import com.netcracker.cloud.dbaas.exceptions.DBBackupValidationException;
-import com.netcracker.cloud.dbaas.exceptions.InteruptedPollingException;
-import com.netcracker.cloud.dbaas.exceptions.MultiValidationException;
-import com.netcracker.cloud.dbaas.exceptions.ValidationException;
+import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.monitoring.annotation.TimeMeasure;
 import jakarta.ws.rs.NotAllowedException;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -203,14 +199,14 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
             deleteResponse.setStatus(Status.SUCCESS);
             deleteResponse.setMessage(response);
             log.info("Received response from adapter {}, {} : {}", identifier, adapterAddress, deleteResponse);
-        } catch (WebApplicationException e) {
+        } catch (AdapterException e) {
             log.error("Received response from adapter {}, {} : {}", identifier, adapterAddress, e.getMessage());
-            if (e.getResponse().getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+            if (e.getHttpCode() == Response.Status.NOT_FOUND.getStatusCode()) {
                 deleteResponse.setStatus(Status.SUCCESS);
                 deleteResponse.setMessage("Endpoint to delete backup not implemented on adapter yet!");
             } else {
                 deleteResponse.setStatus(Status.FAIL);
-                deleteResponse.setMessage("Adapter returned " + e.getResponse().getStatus() + " with error " + e.getMessage());
+                deleteResponse.setMessage("Adapter returned " + e.getHttpCode() + " with error " + e.getErrorMessage());
             }
         }
         if (log.isDebugEnabled()) {
@@ -280,10 +276,9 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
         try {
             String response = updateSettings(dbName, request);
             return (response != null ? response : "");
-        } catch (WebApplicationException e) {
-            // failed to update setting on adapter side
-            log.error("Failed to update settings for db {} from settings: {} to new settings: {}, errorStatus: {} {}, errorMessage: {}",
-                    dbName, currentSettings, newSettings, e.getResponse().getStatus(), e.getResponse().getStatusInfo().getReasonPhrase(), e.getResponse().getEntity(), e);
+        } catch (AdapterException e) {
+            log.error("Failed to update settings for db {} from settings: {} to new settings: {}, errorStatus: {}, errorMessage: {}",
+                    dbName, currentSettings, newSettings, e.getHttpCode(), e.getErrorMessage(), e);
             throw e;
         } catch (Exception e) {
             log.error("Problem with access to adapter {} ", this, e);
@@ -298,13 +293,13 @@ public abstract class AbstractDbaasAdapterRESTClient implements DbaasAdapter {
         log.info("Call adapter {} of type {} to get databases", adapterAddress, type);
         try {
             return doGetDatabases();
-        } catch (WebApplicationException e) {
-            if (e.getResponse().getStatus() == Response.Status.METHOD_NOT_ALLOWED.getStatusCode()) {
-                throw new NotAllowedException(Response.status(Response.Status.METHOD_NOT_ALLOWED.getStatusCode(), e.getResponse().getStatusInfo().getReasonPhrase().concat(String.format(
-                                ". DbaaS adapter with address %s does not have 'GET /api/" + supportedVersion + "/dbaas/adapter/%s/databases' API (getDatabases). You need to contact cloud administrator and update this adapter to a newer version.",
-                                adapterAddress,
-                                type)))
-                        .entity(e.getResponse().getEntity()).build());
+        } catch (AdapterException e) {
+            if (e.getHttpCode() == Response.Status.METHOD_NOT_ALLOWED.getStatusCode()) {
+                String message = e.getErrorMessage() + String.format(
+                        ". DbaaS adapter with address %s does not have 'GET /api/%s/dbaas/adapter/%s/databases' API (getDatabases)." +
+                                " Contact your cloud administrator and upgrade this adapter to a newer version.",
+                        adapterAddress, supportedVersion, type);
+                throw new NotAllowedException(message, Response.status(Response.Status.METHOD_NOT_ALLOWED).build());
             } else {
                 throw e;
             }
