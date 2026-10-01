@@ -1817,6 +1817,7 @@ public class DbBackupV2Service {
         String context = String.format("%s operation [%s=%s, adapter=%s]", operation, entityType, entityId, adapterId);
         return new RetryPolicy<>()
                 .handle(AdapterException.class)
+                .abortIf((_, e) -> e != null && is4xxError(e))
                 .withMaxRetries(retryAttempts)
                 .withDelay(retryDelay)
                 .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",

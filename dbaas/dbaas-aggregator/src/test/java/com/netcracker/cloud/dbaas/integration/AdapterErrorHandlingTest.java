@@ -9,6 +9,11 @@ import com.netcracker.cloud.dbaas.dto.backupV2.BackupRequest;
 import com.netcracker.cloud.dbaas.dto.backupV2.BackupResponse;
 import com.netcracker.cloud.dbaas.dto.backupV2.Filter;
 import com.netcracker.cloud.dbaas.dto.backupV2.FilterCriteria;
+import com.netcracker.cloud.dbaas.dto.backupV2.RestoreRequest;
+import com.netcracker.cloud.dbaas.dto.backupV2.RestoreResponse;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.Backup;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.BackupDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.backupV2.LogicalBackup;
 import com.netcracker.cloud.dbaas.dto.migration.RegisterDatabaseResponseBuilder;
 import com.netcracker.cloud.dbaas.dto.userrestore.RestoreUsersRequest;
 import com.netcracker.cloud.dbaas.dto.userrestore.RestoreUsersResponse;
@@ -22,12 +27,14 @@ import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.enums.BackupStatus;
 import com.netcracker.cloud.dbaas.enums.ExternalDatabaseStrategy;
+import com.netcracker.cloud.dbaas.enums.RestoreStatus;
 import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.integration.config.WireMockResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.rest.AdapterResponseExceptionMapper;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.rest.SecureDbaasAdapterRestClientV2;
@@ -53,6 +60,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.*;
@@ -92,12 +100,16 @@ class AdapterErrorHandlingTest {
     DbBackupV2Service dbBackupV2Service;
     @Inject
     BackupRepository backupRepository;
+    @Inject
+    RestoreRepository restoreRepository;
 
     @AfterEach
     void cleanup() {
         WireMockResource.getServer().resetAll();
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType()
                 .forEach(databaseRegistryDbaasRepository::delete);
+        // Restores must be deleted before backups: restore_database has a FK to backup_database.
+        restoreRepository.listAll().forEach(restoreRepository::delete);
         backupRepository.listAll().forEach(backupRepository::delete);
     }
 
@@ -589,6 +601,78 @@ class AdapterErrorHandlingTest {
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
                 .body("code", equalTo("CORE-DBAAS-4056"))
                 .body(containsString("Some obscure adapter error"));
+    }
+
+    @Test
+    void testRestore_4xxAdapterError_immediatelyFailedWithNoRetries() {
+        DbaasAdapter wiremockAdapter = createWireMockAdapter();
+        when(physicalDatabasesService.getAdapterById(POSTGRES_ADAPTER_ID)).thenReturn(wiremockAdapter);
+
+        PhysicalDatabase physDb = new PhysicalDatabase();
+        physDb.setPhysicalDatabaseIdentifier(POSTGRES_PHY_DB_ID);
+        ExternalAdapterRegistrationEntry adapterEntry = new ExternalAdapterRegistrationEntry(
+                POSTGRES_ADAPTER_ID, wiremockAddress, null, null, null);
+        physDb.setAdapter(adapterEntry);
+        when(balancingRulesService.applyBalancingRules(eq(PG_TYPE), eq(TEST_NS), any())).thenReturn(physDb);
+
+        WireMockResource.getServer().stubFor(
+                get(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/supports"))
+                        .willReturn(aResponse().withStatus(NOT_FOUND.getStatusCode()))
+        );
+        WireMockResource.getServer().stubFor(
+                post(urlPathMatching("/api/v2/dbaas/adapter/" + PG_TYPE + "/backups/backup/.*/restore"))
+                        .willReturn(aResponse()
+                                .withStatus(404)
+                                .withHeader("Content-Type", "application/json")
+                                .withBody("""
+                                        {
+                                          "message": "Backup not found in adapter storage"
+                                        }
+                                        """))
+        );
+
+        Backup backup = new Backup();
+        backup.setName("restore-4xx-test-backup");
+        backup.setStatus(BackupStatus.COMPLETED);
+        backup.setStorageName("s3");
+        backup.setBlobPath("/backups");
+        backup.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+        backup.setExternalDatabases(new ArrayList<>());
+
+        LogicalBackup lb = new LogicalBackup();
+        lb.setId(UUID.randomUUID());
+        lb.setType(PG_TYPE);
+        lb.setLogicalBackupName("test-logical-backup-001");
+        lb.setBackup(backup);
+
+        BackupDatabase bd = new BackupDatabase();
+        bd.setId(UUID.randomUUID());
+        bd.setLogicalBackup(lb);
+        bd.setName("test-db");
+        bd.setClassifiers(List.of(new TreeMap<>(Map.of(
+                "namespace", TEST_NS, "microserviceName", TEST_MS, "scope", "service"))));
+        bd.setUsers(List.of());
+
+        lb.setBackupDatabases(List.of(bd));
+        backup.setLogicalBackups(List.of(lb));
+        backupRepository.save(backup);
+
+        RestoreRequest request = new RestoreRequest();
+        request.setRestoreName("restore-4xx-test");
+        request.setStorageName("s3");
+        request.setBlobPath("/backups");
+        request.setExternalDatabaseStrategy(ExternalDatabaseStrategy.SKIP);
+
+        RestoreResponse response = dbBackupV2Service.restore(
+                "restore-4xx-test-backup", request, false, true);
+
+        assertEquals(RestoreStatus.FAILED, response.getStatus(),
+                "A 4xx from the adapter during restore must immediately mark the restore as FAILED");
+        WireMockResource.getServer().verify(
+                1,
+                postRequestedFor(urlPathMatching(
+                        "/api/v2/dbaas/adapter/" + PG_TYPE + "/backups/backup/.*/restore"))
+        );
     }
 
     private DbaasAdapter createWireMockAdapter() {
