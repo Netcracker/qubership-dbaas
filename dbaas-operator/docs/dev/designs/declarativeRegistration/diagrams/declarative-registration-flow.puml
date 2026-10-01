@@ -28,7 +28,14 @@ opt secret is absent, key is missing or RBAC denies the read
 end
 
 Operator -> Adapter: get information about physical database\nGET /api/v2/physical_database\n(adapterAddress, credentials)
-Adapter --> Operator: physical database information or error
+Adapter --> Operator: physical database information or error\n(physicalDatabaseId, type, supportedRoles, features, labels, roHost, apiVersions)
+
+note over Operator, Adapter
+  Placeholder endpoint — not yet implemented by the adapter.
+  Shown as an example of how a v2-capable adapter exposes
+  its physical database descriptor.
+  The response fields map to the aggregator registration request body.
+end note
 
 opt response is 401, 403
   Operator --> K8s: CR status: BackingOff - Ready=False, Statlled=False, Reason=Unauthorized
@@ -42,7 +49,7 @@ opt another CR claims same physicalDatabaseId
   Operator --> K8s: CR status: InvalidConfiguration - Ready=False, Stalled=True, Reason=RegistrationConflict
 end 
 
-Operator -> Aggregator: register physical database\nPUT /api/v3/dbaas/{type}/physical_databases/{phydbid}?internalMigration=true\n(physicalDatabaseId, type, adapterAddress, credentials, supportedRoles, features, labels, apiVersions)
+Operator -> Aggregator: register physical database (existing endpoint)\nPUT /api/v3/dbaas/{type}/physical_databases/{phydbid}?internalMigration=true\n(from CR: adapterAddress, credentials)\n(from adapter: physicalDatabaseId, type, supportedRoles, features, labels, roHost, apiVersions)
 Aggregator -> Registry: find physical database by {phydbid}
 Registry --> Aggregator: return physical database or null 
 Aggregator -> Registry: find physical database by adapter address
