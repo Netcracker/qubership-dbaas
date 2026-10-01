@@ -3,9 +3,9 @@ module github.com/netcracker/qubership-dbaas/test-apps/go-test-app-service
 go 1.27.1
 
 require (
-	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.2
+	github.com/netcracker/qubership-core-lib-go-dbaas-base-client/v3 v3.7.3-0.20261001123219-85a6b732079e
 	github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4 v4.5.2
-	github.com/netcracker/qubership-core-lib-go/v3 v3.14.1
+	github.com/netcracker/qubership-core-lib-go/v3 v3.14.2-0.20261001083530-6572e74ff41e
 	github.com/uptrace/bun v1.2.18
 )
 
