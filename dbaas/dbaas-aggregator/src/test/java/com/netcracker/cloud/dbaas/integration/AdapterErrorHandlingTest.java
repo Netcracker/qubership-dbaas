@@ -604,7 +604,7 @@ class AdapterErrorHandlingTest {
     }
 
     @Test
-    void testRestore_4xxAdapterError_immediatelyFailedWithNoRetries() {
+    void testRestore_adapterErrors_retries() {
         DbaasAdapter wiremockAdapter = createWireMockAdapter();
         ExternalAdapterRegistrationEntry adapterEntry = new ExternalAdapterRegistrationEntry(
                 POSTGRES_ADAPTER_ID, wiremockAddress, null, null, null);
