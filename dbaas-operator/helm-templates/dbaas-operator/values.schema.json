@@ -233,7 +233,7 @@
       "$id": "#/properties/M2M_AUTH_MODE",
       "type": "string",
       "title": "The M2M_AUTH_MODE schema",
-      "description": "Authentication to dbaas-aggregator: legacy uses Basic Auth, hybrid and k8s use the Kubernetes service account token",
+      "description": "Machine-to-machine authentication mode: legacy, hybrid, or k8s",
       "enum": [
         "legacy",
         "hybrid",

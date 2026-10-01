@@ -67,7 +67,7 @@ to GitHub Packages.
 | `MICROSERVICE_NAME` | dbaas classifier `microserviceName` | `quarkus-test-app-service` |
 | `MICROSERVICE_NAMESPACE` | dbaas classifier `namespace` | `default` |
 | `API_DBAAS_ADDRESS` | REST target: dbaas-agent (Pass B) or the aggregator directly (Pass C) | `http://dbaas-aggregator:8080` |
-| `M2M_AUTH_MODE` | Pass C (`hybrid`): call the aggregator directly with a `dbaas`-audience projected token; set from the `M2M_ENABLED` Helm value | `legacy` |
+| `M2M_AUTH_MODE` | Pass C (`hybrid`): call the aggregator directly with a `dbaas`-audience projected token | `legacy` |
 | `QUARKUS_DBAAS_API_AGGREGATOR_USERNAME` / `_PASSWORD` | cleared in Pass C so the M2M client is selected | `dbaas` / `dbaas` |
 | `LOG_LEVEL` | log level | `INFO` |
 

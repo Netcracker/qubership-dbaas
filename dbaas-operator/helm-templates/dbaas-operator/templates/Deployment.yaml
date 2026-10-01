@@ -120,8 +120,9 @@ spec:
             - name: DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL
               value: '{{ .Values.DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL }}'
             {{- end }}
-            # Aggregator auth mode. In legacy mode the operator reads username/password from
-            # the mounted credentials Secret at /etc/dbaas/security (no extra env needed).
+            # Aggregator auth mode (must match the aggregator's M2M_AUTH_MODE).
+            # In Basic Auth mode the operator reads username/password from the mounted
+            # credentials Secret at /etc/dbaas/security (no extra env needed).
             - name: M2M_AUTH_MODE
               value: '{{ .Values.M2M_AUTH_MODE }}'
             {{- if .Values.DBAAS_AGGREGATOR_URL }}

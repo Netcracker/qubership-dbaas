@@ -40,10 +40,10 @@ const defaultTimeout = 30 * time.Second
 
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
 // It authenticates in one of two mutually exclusive modes, selected at
-// construction by the operator's M2M_AUTH_MODE:
-//   - M2M (Bearer), in hybrid and k8s: a Kubernetes projected service account token with audience
+// construction to mirror the aggregator's M2M_AUTH_MODE setting:
+//   - M2M (Bearer): a Kubernetes projected service account token with audience
 //     "dbaas", fetched fresh on every request via the tokensource library;
-//   - Basic Auth, in legacy: a username/password pair loaded from the mounted security
+//   - Basic Auth: a username/password pair loaded from the mounted security
 //     Secret, hot-swappable at runtime via SetCredentials.
 //
 // It is safe for concurrent use.
@@ -84,8 +84,8 @@ func NewClientWithTokenFunc(baseURL string, getToken func(ctx context.Context) (
 }
 
 // NewBasicAuthClient creates an AggregatorClient that authenticates with HTTP
-// Basic Auth. Used when M2M_AUTH_MODE is legacy; an aggregator in legacy mode
-// rejects Bearer tokens and expects Basic credentials.
+// Basic Auth. Used when M2M token auth is disabled (M2M_AUTH_MODE=legacy),
+// in which case the aggregator rejects Bearer tokens and expects Basic credentials.
 // The credentials can be hot-swapped at runtime via SetCredentials, so a mounted
 // Secret update is picked up without a pod restart.
 func NewBasicAuthClient(baseURL, username, password string) *AggregatorClient {

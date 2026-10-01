@@ -21,12 +21,12 @@ NODE_SELECTOR_DBAAS_KEY ?= region
 REGION_DBAAS ?= database
 # Default to the production default (legacy): the aggregator accepts only HTTP Basic
 # Auth and the operator authenticates as the dbaas-operator basic user. Set to hybrid
-# or k8s to exercise the Kubernetes token (projected SA token) path instead. This is
-# the aggregator's mode; the operator's defaults to it via OPERATOR_M2M_AUTH_MODE below.
+# or k8s to exercise the M2M (projected SA token) path instead. This is the aggregator's
+# mode; the operator's defaults to it via OPERATOR_M2M_AUTH_MODE below.
 M2M_AUTH_MODE ?= legacy
 # Operator's auth mode. Defaults to the aggregator's value so the two match unless
-# overridden. Override independently to test the supported mixed case where the
-# operator uses Basic Auth against an aggregator that also accepts Kubernetes tokens:
+# overridden. Override independently to test the supported mixed case where the operator
+# uses Basic Auth against an M2M-enabled aggregator:
 #   make ... M2M_AUTH_MODE=hybrid OPERATOR_M2M_AUTH_MODE=legacy
 OPERATOR_M2M_AUTH_MODE ?= $(M2M_AUTH_MODE)
 # Validation image tag

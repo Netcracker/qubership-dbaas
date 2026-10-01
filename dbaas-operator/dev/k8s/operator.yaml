@@ -120,8 +120,8 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      # Both auth sources are mounted; the M2M_AUTH_MODE env var below selects which one the
-      # operator actually uses (legacy → dbaas-security-configuration-secret, hybrid or k8s → the token).
+      # Both auth sources are mounted; the M2M_AUTH_MODE env var below selects
+      # which one the operator actually uses (legacy → dbaas-security-configuration-secret, hybrid or k8s → the token).
       volumes:
         - name: projected-tokens
           projected:
@@ -143,9 +143,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            # Aggregator auth mode. Defaults to legacy (Basic); kind-up.sh substitutes
-            # M2M_AUTH_MODE to flip the operator onto the Bearer-token path.
-            # In legacy mode the operator reads username/password from the mounted
+            # Aggregator auth mode. Defaults to basic (legacy); kind-up.sh substitutes
+            # M2M_AUTH_MODE to flip the operator onto the M2M Bearer-token path.
+            # In basic mode the operator reads username/password from the mounted
             # credentials Secret at /etc/dbaas/security (no extra env needed).
             - name: M2M_AUTH_MODE
               value: "${M2M_AUTH_MODE}"

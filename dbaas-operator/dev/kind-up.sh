@@ -13,11 +13,11 @@
 # Usage:
 #   ./dev/kind-up.sh                              # cluster "dbaas", Basic Auth (default)
 #   KIND_CLUSTER=my-cluster ./dev/kind-up.sh
-#   M2M_AUTH_MODE=k8s ./dev/kind-up.sh            # use the projected SA token instead
+#   M2M_AUTH_MODE=k8s ./dev/kind-up.sh            # use M2M (projected SA token) instead
 #
 # Auth mode: by default the operator authenticates to the aggregator-mock with HTTP
 # Basic Auth as the dbaas-operator user (matching the production default). Set
-# M2M_AUTH_MODE to hybrid or k8s to switch it to the Bearer-token path. The mock
+# M2M_AUTH_MODE=k8s to switch it to the M2M Bearer-token path. The mock
 # accepts either, so no mock reconfiguration is needed.
 #
 # After the script completes:
@@ -35,7 +35,7 @@ KIND_CLUSTER="${KIND_CLUSTER:-dbaas}"
 OPERATOR_IMAGE="dbaas-operator:dev"
 MOCK_IMAGE="aggregator-mock:dev"
 # Aggregator auth mode for the operator: legacy (default) → HTTP Basic Auth as the
-# dbaas-operator user; hybrid or k8s → projected SA token. Exported for envsubst below.
+# dbaas-operator user; hybrid or k8s → M2M projected SA token. Exported for envsubst below.
 export M2M_AUTH_MODE="${M2M_AUTH_MODE:-legacy}"
 
 # ── Colors ────────────────────────────────────────────────────────────────────

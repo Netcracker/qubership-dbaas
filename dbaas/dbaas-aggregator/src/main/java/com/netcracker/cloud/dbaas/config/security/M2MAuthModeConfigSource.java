@@ -6,11 +6,6 @@ import org.eclipse.microprofile.config.spi.ConfigSource;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Sets {@value #M2M_ENABLED_PROPERTY} from {@code M2M_AUTH_MODE}: {@code false} in legacy mode, {@code true} in hybrid
- * and k8s modes, which DBaaS treats alike. An unsupported {@code M2M_AUTH_MODE} fails the configuration, so DBaaS does
- * not start.
- */
 public class M2MAuthModeConfigSource implements ConfigSource {
     static final String M2M_ENABLED_PROPERTY = "dbaas.security.k8s.m2m.enabled";
 

@@ -142,13 +142,13 @@ interceptors, and structured request building.
 ### Authentication — dual mode
 
 The operator authenticates to dbaas-aggregator in one of two modes, selected by
-`M2M_AUTH_MODE`. Basic Auth works against the aggregator in any mode; the Bearer token needs
-the aggregator in `hybrid` or `k8s` (in `legacy` it rejects Bearer tokens outright):
+`M2M_AUTH_MODE` and **must match the aggregator's own setting** (a mismatch is
+rejected outright):
 
 - `legacy` (**default**) — **HTTP Basic Auth**. Credentials are read from `users.json`
   inside the mounted `dbaas-security-configuration-secret` (`/etc/dbaas/security/users.json`)
   and hot-reloaded on Secret change, so a rotation needs no pod restart.
-- `hybrid` or `k8s` — **Kubernetes projected service-account token** (Bearer) via the platform
+- `hybrid` or `k8s` — **Kubernetes projected service-account token** (Bearer / M2M) via the platform
   token source:
 
   ```go
@@ -597,7 +597,7 @@ Variables read by the operator binary:
 |---|---|---|
 | `CLOUD_NAMESPACE` | Operator's own namespace; a managed CR is reconciled only when its `spec.operatorNamespace` equals this | Yes |
 | `DBAAS_AGGREGATOR_URL` | Aggregator base URL (default: `http://dbaas-aggregator:8080`) | No |
-| `M2M_AUTH_MODE` | Auth mode. `legacy` (default) → HTTP Basic Auth (creds from `users.json` in the mounted `dbaas-security-configuration-secret`); `hybrid` or `k8s` → Bearer token, which needs the aggregator in `hybrid` or `k8s`. Any other value stops the operator at startup. | No |
+| `M2M_AUTH_MODE` | Auth mode; **must match the aggregator**. `legacy` (default) → HTTP Basic Auth (creds from `users.json` in the mounted `dbaas-security-configuration-secret`); `hybrid` or `k8s` → M2M Bearer token. | No |
 | `DBAAS_ROTATION_POLL_INTERVAL` | Poll period for the changed-databases feed used to propagate credential rotations (Go duration; empty → built-in default `30s`). | No |
 | `K8S_EVENTS_ENABLED` | Enable/disable Kubernetes event recording (`true`/`false`). | No |
 

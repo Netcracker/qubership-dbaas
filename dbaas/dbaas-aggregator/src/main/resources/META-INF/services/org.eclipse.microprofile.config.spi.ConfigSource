@@ -1,1 +1,2 @@
+com.netcracker.cloud.dbaas.config.PostgresConnectionConfigSource
 com.netcracker.cloud.dbaas.config.security.M2MAuthModeConfigSource

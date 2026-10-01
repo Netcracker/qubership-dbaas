@@ -550,7 +550,7 @@
       "$id": "#/properties/M2M_AUTH_MODE",
       "type": "string",
       "title": "The M2M_AUTH_MODE schema",
-      "description": "M2M authentication mode: legacy accepts only Basic, hybrid and k8s accept Basic and Kubernetes service account tokens",
+      "description": "Machine-to-machine authentication mode: legacy, hybrid, or k8s",
       "enum": [
         "legacy",
         "hybrid",

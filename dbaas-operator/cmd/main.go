@@ -117,10 +117,11 @@ func main() {
 		aggregatorURL = "http://dbaas-aggregator:8080"
 	}
 
-	// Authentication mode, from M2M_AUTH_MODE:
+	// Authentication mode mirrors the aggregator's M2M_AUTH_MODE:
 	//   hybrid, k8s → Kubernetes projected service-account token (Bearer / M2M);
 	//   legacy      → HTTP Basic Auth with credentials from the mounted security Secret.
-	// The aggregator rejects a Bearer token outright in legacy mode. Defaults to legacy (Basic Auth).
+	// The aggregator rejects a Bearer token outright in legacy mode, so the
+	// operator must match the cluster's setting. Defaults to legacy (Basic Auth).
 	m2mAuthMode, err := security.ReadM2MAuthMode()
 	if err != nil {
 		setupLog.Errorf("%v", err)
