@@ -1,0 +1,193 @@
+@startuml
+title declarative physical database registration
+
+skinparam sequenceGroupFontSize 15
+skinparam sequenceFontSize 40
+
+participant "Kubernetes API" as K8s
+participant "DBaaS Operator" as Operator
+participant "DBaaS Adapter" as Adapter
+participant "DBaaS Aggregator" as Aggregator
+database "DBaaS Registry" as Registry
+
+K8s -> Operator: reconcile PhysicalDatabase\n(created, spec changed, refresh annotation, or periodic re-sync)
+
+opt operatorNamespace belongs another operator instance
+  Operator --> K8s: skip the resource, write no status
+
+  else another CR claims same adapterAddress
+    Operator --> K8s: CR status: InvalidConfiguration - Ready=False, Stalled=True, Reason=RegistrationConflict
+
+end 
+
+Operator -> K8s: read the adapter credentials Secret
+K8s --> Operator: adapter credentials or error
+
+opt secret is absent, key is missing or RBAC denies the read
+  Operator --> K8s: CR status: BackingOff - Ready=False, Stalled=False, Reason=SecretError
+end
+
+Operator -> Adapter: get information about physical database\nGET /api/v2/physical_database\n(adapterAddress, credentials)
+Adapter --> Operator: physical database information or error\n(physicalDatabaseId, type, supportedRoles, features, labels, roHost, apiVersions)
+
+note over Operator, Adapter
+  Placeholder endpoint — not yet implemented by the adapter.
+  Shown as an example of how a v2-capable adapter exposes
+  its physical database descriptor.
+  The response fields map to the aggregator registration request body.
+end note
+
+opt response is 401, 403
+  Operator --> K8s: CR status: BackingOff - Ready=False, Statlled=False, Reason=Unauthorized
+
+  else 500 <= response
+    Operator --> K8s: CR status: BackingOff - Ready=False, Stalled=False, Reason=AdapterError
+
+end
+
+opt another CR claims same physicalDatabaseId
+  Operator --> K8s: CR status: InvalidConfiguration - Ready=False, Stalled=True, Reason=RegistrationConflict
+end 
+
+Operator -> Aggregator: register physical database (existing endpoint)\nPUT /api/v3/dbaas/{type}/physical_databases/{phydbid}?internalMigration=true\n(from CR: adapterAddress, credentials)\n(from adapter: physicalDatabaseId, type, supportedRoles, features, labels, roHost, apiVersions)
+Aggregator -> Registry: find physical database by {phydbid}
+Registry --> Aggregator: return physical database or null 
+Aggregator -> Registry: find physical database by adapter address
+Registry --> Aggregator: return physical database or null
+
+alt physical database is registered
+  Aggregator -> Registry: find lock by {phydbid}
+  Registry --> Aggregator: return lock or null
+
+  opt lock found
+    Registry --> Aggregator: return lock
+    Aggregator --> Operator: return 202: migration in process
+    Operator --> K8s: CR status: WaitingForDependency - Ready=False, Stalled=False, Reason=RoleMigrationStarted
+  end
+
+  
+  alt adapter address or {phydbid} doesnt match the registration
+   
+    Aggregator --> Operator: return 409 (CORE-DBAAS-4011): registration conflicts with an existing one 
+    Operator --> K8s: CR status: InvalidConfiguration - Ready=False, Stalled=True, Reason=AggregatorRejected
+   
+    else adapter address and {phydbid} match the registration
+      
+      alt features.multiusers is true, migration required
+        Aggregator -> Registry: find instruction by {phydbid}
+        Registry --> Aggregator: return intruction or null 
+
+        alt instruction not found
+          Aggregator -> Registry: save instruction
+          Registry --> Aggregator: instruction saved
+
+          else instruction is found
+
+            alt instruction has error message
+              Aggregator -> Registry: delete instruction
+              Registry --> Aggregator: instruction deleted
+              Aggregator --> Operator: return 500: suitable error message
+              Operator --> K8s: CR status: phase BackingOff - Ready=False, Stalled=False, Reason=AggregatorError 
+            end
+
+        end
+
+        opt internalMigration is true 
+          
+          Aggregator -> Registry: insert lock
+          Registry --> Aggregator: lock created
+          
+          group async
+    
+            loop while instruction contains logical DBs
+              Aggregator -> Aggregator: get next portion\n(max 100 logical dbs)
+              
+              loop per logical db
+                Aggregator -> Aggregator: calculate missed roles
+                
+                loop per missed role
+                  Aggregator -> Adapter: PUT {adapter.address}/api/v2/dbaas/adapter/{type}/users\ncreate user for role\n(dbName and role)
+                  
+                  alt if response is success
+                    Adapter --> Aggregator: created connection
+                    Aggregator -> Aggregator: save connection to temporary list
+                    
+                    else response is not success
+                      Adapter --> Aggregator: bad response
+                      
+                      break
+                        Aggregator -> Aggregator: save error message and break loop
+                      end
+
+                  end
+
+                end
+
+                break if error occurs
+                  Aggregator -> Aggregator: break the loop
+                end
+
+                Aggregator -> Registry: increase lock time
+                Registry -> Aggregator: lock time increased
+
+              end
+              group @Transactional - save batch
+                Aggregator -> Registry: save users for all migrated logical DBs
+                Registry --> Aggregator: users saved
+
+                Aggregator -> Registry: remove migrated logical logical\ndatabases from instruction
+                Registry --> Aggregator: batch removed
+
+                opt if migration failed
+                  Aggregator -> Registry: save error message in instruction
+                  Registry --> Aggregator: instruction saved
+
+                  break 
+                    Aggregator -> Aggregator: break the loop
+                  end
+
+                end
+
+                opt if no more logical databases in instruction 
+                  Aggregator -> Registry: update physical database
+                  Registry --> Aggregator: physical database updated
+
+                  Aggregator -> Registry: delete instruction
+                  Registry -> Aggregator: instruction deleted
+                end
+
+              end
+
+            end
+            
+            Aggregator -> Registry: remove lock
+            Registry --> Aggregator: lock remove
+          
+          end
+          
+          Registry --> Aggregator: return lock
+          Aggregator --> Operator: return 202: migration in process
+          Operator --> K8s: CR status: WaitingForDependency - Ready=False, Stalled=False, Reason=RoleMigrationStarted
+
+        end
+        
+        else features.multiusers is false or migration not required
+          
+          opt registration data changed
+            Aggregator -> Registry: update physical database\n(adapter address, credentials, roles, features, labels)
+            Registry --> Aggregator: physical database updated
+          end
+          
+          Aggregator --> Operator: return 200: physical database is updated
+          Operator --> K8s: Succeeded - Ready=True, Stalled=False, Reason=PhysicalDatabaseRegistered
+      end
+
+  end
+  
+  else physical database is not registered
+    Aggregator -> Registry: save PhysicalDatabase
+    Registry --> Aggregator: PhysicalDatabase saved
+    Aggregator --> Operator: return 201: PhysicalDatabase saved 
+    Operator --> K8s: CR status: Succeeded — Ready=True, Stalled=False, Reason=PhysicalDatabaseRegistered
+end
+@enduml
