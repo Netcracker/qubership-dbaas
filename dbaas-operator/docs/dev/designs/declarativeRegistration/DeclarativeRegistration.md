@@ -7,9 +7,9 @@
 `{type}` is the database engine name (e.g., `postgresql`, `mongodb`).
 `{phydbid}` is the adapter-assigned identifier for the physical database cluster.
 
-![phdbreg.svg](/dbaas-operator/docs/dev/designs/declarativeRegistration/diagrams/PhDBReg.svg)
+![phdbreg.svg](diagrams/aggregator-registration.svg)
 
-Source: [`/phdbreg.svg`](/dbaas-operator/docs/dev/designs/declarativeRegistration/diagrams/PhDBReg.svg)
+Source: [`/phdbreg.svg`](diagrams/aggregator-registration.svg)
 
 > Roles migration flow defined [below](#continuation-cycle)
 
@@ -119,9 +119,9 @@ aggregator never initiates a batch, and nothing expires an instruction row that 
 
 #### Continuation cycle
 
-![role-migration.svg](/dbaas-operator/docs/dev/designs/declarativeRegistration/diagrams/role-migration.svg)
+![role-migration.svg](diagrams/aggregator-adapter-migration.svg)
 
-Source: [`/role-migration.svg`](/dbaas-operator/docs/dev/designs/declarativeRegistration/diagrams/role-migration.svg)
+Source: [`/role-migration.svg`](diagrams/aggregator-adapter-migration.svg)
 
 On each step the adapter posts the results of the previous batch to
 `/{phydbid}/instruction/{instructionid}/additional-roles`, with `success[]`, `failure`, or both.
@@ -342,24 +342,18 @@ the last `POST .../additional-roles` empties the plan and deletes the row in one
 
 ## Suggested PhysicalDatabase behaviour
 
-![operator-registration.svg](/dbaas-operator/docs/dev/designs/declarativeRegistration/diagrams/operator-registration.svg)
+![declarative-registration.svg](diagrams/declarative-registration.svg)
 
-Source: [operator-registration.svg](/dbaas-operator/docs/dev/designs/declarativeRegistration/diagrams/operator-registration.svg)
-
-### Migration cycle
-
-**Migration Cycle is designing**
+Source: [declarative-registration.svg](diagrams/declarative-registration.svg)
 
 ## Suggested PhysicalDatabase CR
 
 `PhysicalDatabase` declares a physical database (a DBMS cluster plus its dbaas adapter) that
 dbaas-aggregator should know about. The operator does **not** install the adapter or the DBMS — both must already be
-running. It reads the adapter's Basic Auth credentials from a Secret and issues the same
-`PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}` call the adapter makes when it self-registers.
+running.
 
 > **Registration outlives the CR** - deleting the CR stops managing the registration but does not remove it, because a
-> physical
-> database carries logical databases.
+> physical database carries logical databases.
 
 > **Self-registration cannot always be switched off.** While the adapter keeps registering, it and the operator both
 > `PUT` their own view of the same row, each write makes the other's `isDbActual` comparison fail, and the row churns
@@ -376,8 +370,8 @@ metadata:
   namespace: dbaas-db-adapters
 type: Opaque
 stringData:
-  username: "dbaas-aggregator"             # matched by credentialsSecretRef.keys[].key: username
-  password: "<adapter-password>"           # matched by credentialsSecretRef.keys[].key: password
+  username: "dbaas-aggregator"
+  password: "<adapter-password>"
 ---
 apiVersion: dbaas.netcracker.com/v1
 kind: PhysicalDatabase
@@ -386,86 +380,41 @@ metadata:
   namespace: dbaas-db-adapters
 spec:
   operatorNamespace: dbaas-system
-  type: postgresql                       # required; the {type} path segment
-  physicalDatabaseId: core-postgresql    # required; the {phydbid} path segment, adapter-assigned
-  # labels:                              # optional; matched by per-microservice balancing rules
-  #   clusterName: postgres-core         # neither key nor value may contain "="
   adapterAddress: http://pg-dbaas-adapter.postgres:8080   # required; a scheme and a host
-  supportedRoles: # required; unique non-blank names, minItems: 1
-    - admin
-    - rw
-    - ro
-  features: # required
-    multiUsers: true                   # required; boolean
-  #   extraFeatures:                   # optional; flattened onto the wire features map
-  #     tls: true
   credentialsSecretRef: # required; the ADAPTER's own Basic Auth pair
     name: dbaas-adapter-credentials    # required; Secret in the CR's namespace
-  # roHost: pg-patroni-ro.postgres     # optional; read-only database host
-  apiVersions: # required; mandatory since adapter contract 2.1
-    specs: # required; minItems: 1
-      - specRootUrl: /api              # required;
-        major: 2                       # required
-        minor: 1                       # required
-        supportedMajors: [ 1, 2 ]      # required; minItems: 1
 ```
 
-**status fields:**
+> **`observedGeneration` is the field used to determine whether the current
+> specification has reached a terminal reconciliation state.**
+>
+> The Operator updates `status.observedGeneration` only when reconciliation
+> reaches a terminal state for the current `metadata.generation`:
+> `Ready=True` or `Stalled=True`.
 
-| Field                        | Type     | Description                                                                                                                                                                                                                                                                      |
-|------------------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `status.instructionId`       | `string` | Instruction id from the aggregator's `202`. Required, because `POST .../additional-roles` answers with a bare array and never repeats the id, so it cannot be recovered from a later response. Empty when no migration is running. Mirrors `InternalDatabase.status.trackingId`. |
-| `status.migrationGeneration` | `int64`  | The `metadata.generation` that opened the running cycle. A mismatch with the current generation means the spec was edited mid-cycle. Zero when no migration is running. Mirrors `InternalDatabase.status.pendingOperationGeneration`.                                            |
 
-Nothing records progress through the plan. The aggregator returns the next portion in its own `202`, so the remaining
-work lives in the instruction row rather than in the CR.
+> **Force an immediate refresh**: when a referenced Secret changes and the CR and Secret have independent
+> lifecycles, updating the dbaas.netcracker.com/refresh annotation on the CR forces the controller to
+> reconcile the CR immediately instead of waiting for the next periodic resync. The controller re-reads the
+> Secret and re-registers the physical database with dbaas-aggregator.
 
-**`observedGeneration` is the field to automate against.** It advances only when a reconcile ends terminally —
-`Ready=True` or `Stalled=True` for the current generation. A running migration is `Ready=False` and `Stalled=False`, so
-`observedGeneration` stays behind `metadata.generation` for the whole cycle, which is exactly what "this spec has not
-reached the aggregator yet" means. `phase` is a display column.
+```bash
+kubectl annotate physicaldatabase <name> dbaas.netcracker.com/refresh="$(date +%s)" --overwrite
+```
 
 **Top-level spec fields:**
 
-| Field                            | Required | Mutable | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|----------------------------------|:--------:|:-------:|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `spec.operatorNamespace`         |   Yes    | **No**  | Which operator instance owns the CR; must equal that operator's `CLOUD_NAMESPACE`. Same rule as the seven CRs that already carry this field: an RFC-1123 label within `maxLength: 63`, immutable after creation.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `spec.type`                      |   Yes    | **No**  | Database engine type (e.g. `postgresql`, `opensearch`). Sent as the `{type}` path segment. Validated for shape only (`minLength: 1`), as in every other CR that carries a database type. Immutable after creation (CEL `self == oldSelf`): the aggregator finds a registration by `physicalDatabaseId` alone and never updates the stored type, so an in-place change returns `200` while the aggregator keeps the old type. The stored type is matched exactly, so `PostgreSQL` under a new `physicalDatabaseId` registers a physical database that `postgresql` lookups never find, and its first entry becomes `global` for that new type.                      |
-| `spec.physicalDatabaseId`        |   Yes    | **No**  | Adapter-assigned cluster identifier, sent as the `{phydbid}` path segment. The format is adapter-chosen — real values look like `core-postgresql`, `arangodb_arangodb`, `clickhouse:clickhouse`, `opensearch` — so it is validated for shape only, exactly as `NamespaceBalancingRule` and `PermanentBalancingRule` validate the same identifier. See **Identifier characters the CRD does not check** under [Pre-flight Checks](#pre-flight-checks). Immutable after creation. A new identifier with the same `adapter.address` is rejected with `409`; a new identifier with a new address registers a second physical database and leaves the first one behind. |
-| `spec.labels`                    |    No    |   Yes   | Free-form string map sent as the wire `labels`. A per-microservice balancing rule selects a physical database by one `key=value` label, so neither a key nor a value may contain `=`, and the rule must match exactly one physical database of its type. Namespace and permanent rules select by `physicalDatabaseId` and ignore labels.                                                                                                                                                                                                                                                                                                                           |
-| `spec.adapterAddress`            |   Yes    |   Yes   | Adapter base URL, sent as `adapterAddress`. Must match `^[^\s:/?#]+://[^\s/?#]+`: a scheme token, `://`, and a non-empty host. Scheme validity is not checked here. Changes when the adapter switches to TLS mode: the scheme becomes `https`, and the port may change with it. Left mutable on purpose: the aggregator accepts a change only when the host is unchanged and the scheme differs, so `http://a:8080` to `https://a:8443` passes while a port-only change gets `409`. Encoding that rule in CEL would duplicate a decision the aggregator owns; a rejected change surfaces as `AggregatorRejected`.                                                  |
-| `spec.supportedRoles`            |   Yes    |   Yes   | Roles the adapter can grant, sent as `metadata.supportedRoles`. At least one entry, unique (`x-kubernetes-list-type: set`), each non-blank and pattern `^[a-z0-9_-]+$` to apply only lower-cased characters                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `spec.features`                  |   Yes    |   Yes   | Adapter feature flags, sent as `metadata.features`. A typed object rather than a free-form map — see the note below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `spec.features.multiUsers`       |   Yes    |   Yes   | Whether the adapter can grant more than one role per logical database. A typed `*bool`, so the schema enforces presence and type and no CEL rule is needed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `spec.features.extraFeatures`    |    No    |   Yes   | Additional adapter flags, flattened onto the wire `features` map alongside `multiUsers`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `spec.credentialsSecretRef`      |   Yes    |   Yes   | Reference to the Secret holding the **adapter's own** Basic Auth credentials, sent as `httpBasicCredentials`. Operator is hardcoded to watch `username` and `password` names.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `spec.credentialsSecretRef.name` |   Yes    |   Yes   | Secret name. The Secret must be in the CR's namespace.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `spec.roHost`                    |    No    |   Yes   | Read-only host of the database cluster, sent as `metadata.roHost`. Optional and otherwise unvalidated, like the other pass-through host values in the operator's CRs. The aggregator never calls it: it adds the value as `roHost` to the connection properties it returns for logical databases on this physical database, and skips an empty string. Changes when the database switches to TLS mode.                                                                                                                                                                                                                                                             |
-| `spec.apiVersions`               |   Yes    |   Yes   | The adapter's declared API spec versions, sent as `metadata.apiVersions`. Optional in the aggregator API but mandatory since adapter contract 2.1, so the CR requires it. Mutable: `writeChanges` updates the stored value and `isDbActual` compares it, so an adapter upgrade from contract 2.1 to 2.2 is an ordinary spec edit. `specs` needs at least one entry, at least one entry must use `specRootUrl: /api`, and every entry needs `specRootUrl`, `major`, `minor`, and a non-empty `supportedMajors`.                                                                                                                                                     |
-
-> **`features` is a typed object, not a free-form map.** It follows `Classifier`: the key the aggregator dereferences
-> becomes a typed field, and anything else goes into an optional map that a `FeaturesFlatMap` helper flattens onto the
-> wire map, the way `ClassifierFlatMap` flattens `extraKeys`. `multiUsers` is a required `*bool`, so the schema enforces
-> both its presence and its type. `extraFeatures` is `key=value` mapping.
+| Field                            | Required | Mutable | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+|----------------------------------|:--------:|:-------:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `spec.operatorNamespace`         |   Yes    | **No**  | Which operator instance owns the CR; must equal that operator's `CLOUD_NAMESPACE`. Same rule as the seven CRs that already carry this field: an RFC-1123 label within `maxLength: 63`, immutable after creation.                                                                                                                                                                                                                                                                                                                        |
+| `spec.adapterAddress`            |   Yes    |   Yes   | Adapter base URL, sent as `adapterAddress`. Must match `^[^\s:/?#]+://[^\s/?#]+`: a scheme token, `://`, and a non-empty host. Scheme validity is not checked here. Changes when the adapter switches to TLS mode: the scheme becomes `https`, and the port may change with it. Left mutable on purpose: the aggregator accepts a change only when the host is unchanged and the scheme differs, so `http://a:8080` to `https://a:8443` passes while a port-only change gets `409`. A rejected change surfaces as `AggregatorRejected`. |
+| `spec.credentialsSecretRef`      |   Yes    |   Yes   | Reference to the Secret holding the **adapter's own** Basic Auth credentials, sent as `httpBasicCredentials`. Operator is hardcoded to watch `username` and `password` names.                                                                                                                                                                                                                                                                                                                                                           |
+| `spec.credentialsSecretRef.name` |   Yes    |   Yes   | Secret name. The Secret must be in the CR's namespace.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 > **Two different credential sets.** `spec.adapter.credentialsSecretRef` holds the credentials **dbaas-aggregator
 > uses to call the adapter**. The operator's own credentials for calling the aggregator are unrelated: they come from
 > `users.json` in the mounted `dbaas-security-configuration-secret`, or from an M2M token when
 > `KUBERNETES_M2M_ENABLED=true`. Neither is an environment variable.
-
-> **Why there is no `status` field in the spec.** The endpoint requires a wire `status` of `run` or `running`, and the
-> operator always sends `running`. An adapter built on `qubership-dbaas-adapter-core` sends `running` only on its first
-> request after startup, when its HTTP server may not be listening yet, so the aggregator skips the handshake. Every
-> later periodic request carries `run`, which makes the aggregator call back to the adapter to verify the identity
-> claim, and the operator cannot be the target of that callback. The two values are also mutually exclusive — `run`
-> fires the handshake while role migration demands `running` — so a CR pinned to `run` could never migrate roles.
-> Because `isDbActual` does not compare `status`, sending a constant is safe for idempotency. The cost is that the
-> aggregator skips adapter identity verification; the operator runs its own adapter probe instead (see
-> [Pre-flight Checks](#pre-flight-checks)).
-
-> **Why there is no `apiVersion` field in the spec.** The operator always sends `metadata.apiVersion` `v2`. The
-> aggregator creates the v2 adapter client only for the exact value `v2` and silently falls back to v1 for any other
-> string, and role migration requires `v2`. A v1 adapter cannot be registered through the CR.
 
 > **Adopting an adapter that already self-registered drops undeclared optional fields.** `isDbActual` compares
 > the optional `roHost` and `labels`. When the CR omits them and the stored row has them, the comparison fails and
@@ -481,65 +430,22 @@ the spec against other CRs and the Secret, and the controller probes the adapter
 
 **Schema and CEL rules (admission):**
 
-| Field                              | Rule                                                                                                                               | Aggregator behavior without the rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-|------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `spec.operatorNamespace`           | `minLength: 1`, `maxLength: 63`, `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, CEL `self == oldSelf`                                          | A value that cannot name a namespace never matches any operator's `CLOUD_NAMESPACE`, so no operator instance claims the CR and it sits with no status and no event. Copied from the seven CRs that already carry this field.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `spec.type`                        | `minLength: 1`, CEL `self == oldSelf`                                                                                              | `minLength` alone accepts a value of one space, which the aggregator stores as a type no lookup reproduces. The format itself stays the aggregator's, as it does for `ExternalDatabase.spec.type` and the three balancing rules — see **Identifier characters the CRD does not check** below.                                                                                                                                                                                                                                                                                                                                                                              |
-| `spec.physicalDatabaseId`          | `minLength: 1`, `\S`, CEL `self == oldSelf`                                                                                        | The same whitespace case as `spec.type`. `NamespaceBalancingRuleItem.physicalDatabaseId` and `PermanentBalancingRuleItem.physicalDatabaseId` check the same identifier the same way, so a value one CR accepts is accepted by all three.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `spec.labels`                      | values `minLength: 1`; CEL `self.all(k, k != '' && !k.contains('=') && !self[k].contains('='))`                                    | A key or a value containing `=` cannot be written as the `key=value` selector a `MicroserviceBalancingRule` takes (`^[^=]+=[^=]+$`), so the physical database registers and no per-microservice rule can ever select it.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `spec.adapter.address`             | `^[^\s:/?#]+://[^\s/?#]+`                                                                                                          | `validateRequest` rejects an address whose `URI.getHost()` or `URI.getScheme()` is null with `400 CORE-DBAAS-4045`, after the operator has already read the Secret and probed the adapter. The rule asks for a scheme token and a non-empty host and checks nothing else: an invalid scheme, a host `java.net.URI` refuses such as one containing `_`, and a trailing slash that makes the address a different adapter all stay with the aggregator.                                                                                                                                                                                                                       |
-| `spec.adapter.supportedRoles`      | `minItems: 1`, `x-kubernetes-list-type: set`, items `minLength: 1` and `^[^A-Z]+$`                                                 | `supportedRoles` field support only lower cased format.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `spec.adapter.features.multiusers` | Required `*bool` field on a typed object                                                                                           | `features.get("multiusers")` is unboxed without a null check, so an absent key surfaces as `500` on the first role change. A typed field also rejects `"true"`, which the wire `Map<String, Boolean>` cannot deserialize.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `spec.adapter.apiVersions`         | Required; `specs` has `minItems: 1`; each entry requires `specRootUrl`, `major`, `minor`, and `supportedMajors` with `minItems: 1` | Without `apiVersions` registration succeeds, but the adapter counts as not supporting the latest contract: `AdapterSupports.contract` and `PhysicalDatabasesService.checkSupportedVersion` return `false`, and startup logs a limited-mode warning. An entry with a missing field is worse: `contract` unboxes `major` and `minor` and dereferences `supportedMajors`, throwing `NullPointerException`, while `checkSupportedVersion` concatenates `major` and `minor` into a string and throws `NumberFormatException`. An `apiVersions` with no `specs` at all throws inside `validateAdaptersApiVersions`, a `@PostConstruct` method, so the aggregator fails to start. |
-| `spec.adapter.apiVersions.specs`   | CEL `self.exists(s, s.specRootUrl == '/api')`                                                                                      | `checkSupportedVersion` matches the literal `/api` and returns `false` for every other root, while `AdapterSupports.contract` ignores `specRootUrl` entirely. An adapter that declares only `/api/v2` passes admission and then gets two different answers about the same contract.                                                                                                                                                                                                                                                                                                                                                                                        |
+| Field                    | Rule                                                                                      | Aggregator behavior without the rule                                                                                                                                                                                         |
+|--------------------------|-------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `spec.operatorNamespace` | `minLength: 1`, `maxLength: 63`, `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, CEL `self == oldSelf` | A value that cannot name a namespace never matches any operator's `CLOUD_NAMESPACE`, so no operator instance claims the CR and it sits with no status and no event. Copied from the seven CRs that already carry this field. |
+| `spec.adapterAddress`    | `^[^\s:/?#]+://[^\s/?#]+`                                                                 | `validateRequest` rejects an address whose `URI.getHost()` or `URI.getScheme()` is null with `400 CORE-DBAAS-4045`.                                                                                                          |
 
 **Controller checks (no network):**
 
 | Check                                                                    | Operator outcome                                                                      |
 |--------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
 | Another CR claims the same `physicalDatabaseId`                          | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=RegistrationConflict` |
-| Another CR claims the same `adapter.address`                             | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=RegistrationConflict` |
+| Another CR claims the same `adapterAddress`                              | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=RegistrationConflict` |
 | The Secret is absent, a key is missing or empty, or RBAC denies the read | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=SecretError`                   |
 
 The older claimant wins a conflict, by `creationTimestamp` and then by UID. The aggregator keys a registration by
 `physicalDatabaseId` alone, so two CRs with the same identifier and different types would overwrite one row. Addresses
 are compared as exact strings, as the aggregator compares them.
-
-**Adapter probe:**
-
-The operator sends `status: running`, so the aggregator skips its handshake. Without a probe, an adapter that is down,
-rejects the credentials, or serves a different cluster is registered with `201`. The aggregator's scheduled adapter
-health check flags an adapter that does not report `UP` within 2 minutes, but a different cluster surfaces only when the
-aggregator first calls the adapter to create a logical database.
-
-After reading the Secret, the controller sends the request the aggregator's handshake sends
-(`PhysicalDatabaseRegistrationHandshakeClient`): `GET {adapter.address}/api/v2/dbaas/adapter/{type}/physical_database`
-with the Secret's Basic Auth pair and the 30 s timeout the operator uses for aggregator calls. The path uses `v2`, as
-the aggregator's handshake does.
-
-| Probe result                                                                                                  | Operator outcome                                                                                        |
-|---------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
-| Connection refused, DNS failure, timeout, a status other than `200`/`401`/`403`, or a `200` body without `id` | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=AdapterUnavailable` (new constant)               |
-| `401` or `403`                                                                                                | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=AdapterUnauthorized` (new constant)              |
-| `200` with an `id` different from `spec.physicalDatabaseId`                                                   | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=AdapterIdentityMismatch` (new constant) |
-| `200` with a matching `id`                                                                                    | Continue to the `PUT`                                                                                   |
-
-A credentials failure backs off instead of stalling: the operator does not watch Secrets, so only a retry picks up a
-fixed password. After fixing an identity mismatch on the adapter side, change the `dbaas.netcracker.com/refresh`
-annotation to re-run the reconcile. The probe runs on every reconcile, so while the adapter is down the periodic
-re-sync does not send the `PUT` either, and the registered row keeps its last written values.
-
-**Left to the aggregator:**
-
-- **Conflicts with registered rows (`409`).** The operator sees CRs, not the aggregator's rows, so a row written by
-  adapter self-registration is invisible to it. `GET /api/v3/dbaas/{type}/physical_databases` would expose those rows,
-  but it calls `supports()` on every registered adapter and still races with a concurrent write. A failing `supports()`
-  call is caught and logged, so an unreachable adapter still appears in the listing, only without its `supports` map —
-  the call slows the listing down rather than breaking it.
-- **Address changes.** `isTLSUpdate` accepts a change only when the host is unchanged and the scheme differs. The only
-  reliable baseline is the stored row. A baseline kept in `status` is empty when the CR adopts an existing registration
-  and stale after a self-registration write, so an operator-side copy of the rule would reject valid changes.
-- **The operator's own credentials (`401`, `403`).** They belong to the operator deployment, not to a CR.
 
 ### How PhysicalDatabase Works
 
@@ -548,10 +454,10 @@ A reconcile is triggered when any of the following happens:
 - The CR is created.
 - The CR spec changes (`metadata.generation` increments).
 - The `dbaas.netcracker.com/refresh` annotation changes (manual re-sync).
-- Another `PhysicalDatabase` claiming the same `physicalDatabaseId` or the same `adapter.address` is
+- Another `PhysicalDatabase` claiming the same `physicalDatabaseId` or the same `adapterAddress` is
   created, deleted, or changed (sibling-conflict recovery).
 - A periodic re-sync: every successful reconcile re-enqueues itself after
-  `DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL`, a Go duration such as `30m` or `1h` set through the Helm value
+  `DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL`, a Go duration such as `30m` or `1h` set via the Helm value
   of the same name. Empty uses the built-in default (`10m`); a value that is unparseable or not positive is logged and
   ignored, and the default applies. The operator does not watch Secrets, so the re-sync is what picks up a rotated
   adapter password, and its `PUT` also restores a row changed outside the CR. A longer interval suits adapters whose
@@ -562,90 +468,41 @@ CR created (CRD schema and CEL rules passed at admission)
         │
         ▼
   Operator assignment check (`spec.operatorNamespace`)
-        │ assigned elsewhere → skip
+        │ assigned elsewhere → skip, write no status
         ▼
   phase = Processing
         │
         ▼
-  Pre-flight validation (controller-side)
-    another CR claims this physicalDatabaseId?                   ─▶ InvalidConfiguration (RegistrationConflict)
-    another CR claims this adapter.address?                      ─▶ InvalidConfiguration (RegistrationConflict)
-        (older claimant wins — by creationTimestamp, UID on tie)
+  Pre-flight validation
+    another CR claims the same adapterAddress? ────▶ InvalidConfiguration (RegistrationConflict)
         │
         ▼
   Read the adapter credentials Secret
-    Secret absent / key missing / value empty / RBAC denied      ─▶ BackingOff (SecretError)
+    Secret absent / key missing / RBAC denied ──────▶ BackingOff (SecretError)
         │
         ▼
-  Probe the adapter: GET {address}/api/v2/dbaas/adapter/{type}/physical_database
-    unreachable / timeout / other non-200 / no id in body        ─▶ BackingOff (AdapterUnavailable)
-    401 / 403                                                    ─▶ BackingOff (AdapterUnauthorized)
-    200 with id ≠ physicalDatabaseId                             ─▶ InvalidConfiguration (AdapterIdentityMismatch)
+  Probe the adapter: GET {address}/api/v2/physical_database
+    401 / 403 ──────────────────────────────────────▶ BackingOff (Unauthorized)
+    500+ ───────────────────────────────────────────▶ BackingOff (AdapterError)
         │
         ▼
-  PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}
-    (status = "running", so the aggregator skips the adapter handshake; apiVersion = "v2")
+  Pre-flight validation
+    another CR claims the same physicalDatabaseId? ─▶ InvalidConfiguration (RegistrationConflict)
         │
-        │   401                    ─▶ BackingOff (Unauthorized)
-        │   400/403/409/410/422    ─▶ InvalidConfiguration (AggregatorRejected)
-        │   5xx/network/timeout    ─▶ BackingOff (AggregatorError)
+        ▼
+  PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}?internalMigration=true
+  (physicalDatabaseId, type, adapterAddress, credentials, supportedRoles, features, labels, apiVersions)
+    401 ────────────────────────────────────────────▶ BackingOff (Unauthorized)
+    400 / 403 / 409 ────────────────────────────────▶ InvalidConfiguration (AggregatorRejected)
+    5xx / network ──────────────────────────────────▶ BackingOff (AggregatorError)
         │
-        │   201 Created — new row, global when first of its type
-        │   200 OK     — row updated, or already matched and nothing was written
+        ├── 200 OK / 201 Created
         │        │
         │        ▼
-        │   Succeeded (AdapterRegistered) ─▶ RequeueAfter re-sync interval (default 10m)
+        │   Succeeded — Ready=True / PhysicalDatabaseRegistered
         │
-        │   202 Accepted — (Not designed) instruction id and the first portion of logical databases
-        │                 ─▶ WaitingForDependency (RoleMigrationStarted), Stalled=true;
-        │                    instruction id and migration generation stored in status
+        └── 202 Accepted — role migration in process
+                 │
+                 ▼
+            WaitingForDependency — Ready=False, Stalled=False / RoleMigrationStarted
 ```
-
-### Possible behaviour of changing the spec during a role migration (Not designed)
-
-A cycle outlives several reconciles, so a spec edit can land in the middle of one. It is not rejected at admission — a
-CEL rule on `spec` cannot see whether a migration is running — so the controller absorbs it.
-
-**The edit reaches the aggregator after the cycle, not during it.** While an instruction row exists the aggregator
-discards the payload of every registration `PUT` and keeps the request it parked when the cycle started, so an edit
-cannot reach the physical database until the cycle ends. The controller sees it as
-`status.migrationGeneration != metadata.generation` and reports `Ready=False` with reason `SpecChangeDeferred`, keeping
-`phase: WaitingForDependency` and `Stalled=False`. `status.migrationGeneration` keeps the generation that opened the
-cycle; advancing it would erase the signal.
-
-**The cycle continues against the current spec.** The plan says which logical databases to work on; the CR says which
-roles they should end up with, and the controller follows the CR as edited. That keeps the follow-up minimal: a role
-added mid-cycle is created right away, so the next `PUT` builds a plan covering only the logical databases missing from
-the first one, and a role removed mid-cycle is never created, so the next `PUT` finds an empty plan and takes the `200`
-path. Carrying the original role list instead would guarantee a second full cycle and another status field to hold it.
-
-**Completing a cycle never reports success directly.** `completeMigrationProcedure` applies the request parked when the
-cycle opened, and every registration `PUT` sent meanwhile was discarded, so the physical database ends the cycle holding
-that parked payload. It may well match the CR, and usually does — but the controller cannot tell from here, and an
-unchanged `metadata.generation` does not settle it:
-
-- a rotated adapter password does not bump the generation — the operator does not watch Secrets and picks a new
-  password up on the next re-sync, whose `PUT` the cycle discarded;
-- the instruction may have been opened by the adapter's own registration `PUT` rather than the operator's, parking the
-  adapter's view of the row — its labels, `roHost`, credentials and `apiVersions` — instead of the CR's.
-
-So `200` always lands on `phase: Processing` with the conditions left non-terminal: the controller clears
-`status.instructionId` and `status.migrationGeneration` and requeues at once. The next reconcile sends the registration
-`PUT` with the current spec, `isDbActual` decides whether anything still has to be written, and `Succeeded` is reported
-from there. The cost is one extra reconcile per completed migration; the gain is that `Ready=True` always means the
-aggregator holds what the CR declares.
-
-| Step                       | `metadata.generation` | `status.migrationGeneration` | `phase`                | `Ready` reason         |
-|----------------------------|-----------------------|------------------------------|------------------------|------------------------|
-| Cycle running              | G1                    | G1                           | `WaitingForDependency` | `RoleMigrationStarted` |
-| Spec edited                | **G2**                | G1                           | `WaitingForDependency` | `SpecChangeDeferred`   |
-| Cycle completed with `200` | G2                    | cleared                      | `Processing`           | —                      |
-| Registration `PUT` for G2  | G2                    | —                            | `Succeeded`            | `AdapterRegistered`    |
-
-The last two rows are not specific to an edited spec — a cycle that nobody touched ends the same way, with the
-generation unchanged.
-
-A second edit while the first is still deferred needs no special handling: `migrationGeneration` still differs from
-`metadata.generation`, and the controller simply picks up the newer spec. Failures behave as they do outside a deferral,
-only recorded against the newer generation — a role the adapter refuses ends the cycle with `RoleMigrationFailed`, and
-the next reconcile re-sends the registration `PUT`, from which the aggregator builds a fresh plan for the current spec.
