@@ -45,6 +45,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.service.DeletionService.MARKED_FOR_DROP;
 import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.*;
+import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -264,7 +265,7 @@ class DeletionServiceTest {
         WireMockResource.getServer().stubFor(
                 post(urlPathMatching("/api/v2/dbaas/adapter/" + DatabaseType.POSTGRESQL + "/resources/bulk-drop"))
                         .willReturn(aResponse()
-                                .withStatus(500)
+                                .withStatus(INTERNAL_SERVER_ERROR.getStatusCode())
                                 .withHeader("Content-Type", "application/json")
                                 .withBody("""
                                         {
@@ -273,7 +274,7 @@ class DeletionServiceTest {
                                         }
                                         """))
         );
-        
+
         Database database = new DatabaseBuilder()
                 .registry()
                 .build();
@@ -290,7 +291,7 @@ class DeletionServiceTest {
         Optional<LogicalDbOperationError> deletionError = logicalDbOperationErrorRepository.findAll().stream().filter(error -> error.getDatabase().getId().equals(database.getId())).findFirst();
         assertTrue(deletionError.isPresent());
         assertTrue(deletionError.get().getErrorMessage().contains("Adapter failure"));
-        assertEquals(500, deletionError.get().getHttpCode());
+        assertEquals(INTERNAL_SERVER_ERROR.getStatusCode(), deletionError.get().getHttpCode());
         verify(encryption, times(0)).deletePassword(any(Database.class));
         assertEquals(1, databaseRegistryDbaasRepository.findAnyLogDbRegistryTypeByNamespace(TEST_NS).size());
         Database updatedDatabase = databaseDbaasRepository.findById(database.getId()).get();

@@ -126,8 +126,6 @@ class PasswordRotationServiceTest {
                 .when(pgDefaultAdapter).ensureUser(ADMIN_USER_NAME, null, databaseName, Role.ADMIN.toString());
 
         PasswordChangeRequestV3 passwordChangeRequest = createPasswordChangeRequest(classifier, PG_TYPE);
-        // AdapterException is now caught per-CP and collected in the failed list.
-        // changeUserPassword wraps a non-empty failed list in PasswordChangeFailedException.
         Assertions.assertThrows(PasswordChangeFailedException.class,
                 () -> passwordRotationService.changeUserPassword(passwordChangeRequest, TEST_NS, Role.ADMIN.toString()),
                 "AdapterException should be collected in the failed list, then wrapped in PasswordChangeFailedException");

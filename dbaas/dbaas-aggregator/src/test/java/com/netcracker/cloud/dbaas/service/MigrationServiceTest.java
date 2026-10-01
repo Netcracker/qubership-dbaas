@@ -113,9 +113,6 @@ public class MigrationServiceTest {
         when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
         when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
         when(dbaasAdapter.identifier()).thenReturn(TEST_ADAPTER_ID);
-        // getRegisteredDatabases now catches AdapterException and returns Optional.empty().
-        // The registration logic treats Optional.empty() as "old adapter, skip validation"
-        // and proceeds with the registration request.
         when(dbaasAdapter.getDatabases()).thenThrow(new AdapterException(SERVICE_UNAVAILABLE.getStatusCode(), SERVICE_UNAVAILABLE.getReasonPhrase()));
         mockConnectionPropertiesResponse(dBaaService);
 

@@ -14,7 +14,6 @@ import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
-import lombok.Data;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -113,8 +112,6 @@ class DbaaSAdapterRESTClientTest {
         DatabasesBackup backup = new DatabasesBackup();
         backup.setLocalId("backup-404");
 
-        // A 404 means the delete-backup endpoint is not yet implemented on the adapter;
-        // the contract treats that as SUCCESS (nothing to delete).
         DeleteResult result = new DbaasAdapterRESTClientV2("", "pg", restClientV2, "", client).delete(backup);
         Assertions.assertEquals(Status.SUCCESS, result.getStatus(),
                 "A 404 from deleteBackup should record Status.SUCCESS on the DeleteResult, not propagate");
@@ -128,22 +125,7 @@ class DbaaSAdapterRESTClientTest {
 
         DbaasAdapterRESTClientV2 adapter = new DbaasAdapterRESTClientV2("", "pg", restClientV2, "", client);
 
-        // The generic catch (Exception e) in AbstractDbaasAdapterRESTClient.updateSettings() catches
-        // AdapterException and re-throws it. The caller receives the exception correctly; this is
-        // a regression test that verifies the re-throw path is not silently swallowed.
         Assertions.assertThrows(AdapterException.class,
                 () -> adapter.updateSettings("dbname", Map.of(), Map.of("key", "value")));
-    }
-
-    @Data
-    static class AdapterV1DescribeDatabaseResponse {
-        private Map<String, Object> connectionProperties;
-        private List<DbResource> resources;
-    }
-
-    @Data
-    static class AdapterV2DescribeDatabaseResponse {
-        private List<Map<String, Object>> connectionProperties;
-        private List<DbResource> resources;
     }
 }

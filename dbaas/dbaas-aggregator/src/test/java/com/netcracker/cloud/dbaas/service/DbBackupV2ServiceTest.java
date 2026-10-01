@@ -3965,9 +3965,7 @@ class DbBackupV2ServiceTest {
         assertThrows(BackupExecutionException.class,
                 () -> dbBackupV2Service.startLogicalBackup(logicalBackup));
 
-        // AdapterException is now handled by the RetryPolicy. The default retry count is 3,
-        // so Failsafe makes 1 initial attempt plus 3 retries = 4 total calls before giving up.
-        // The retry delay is overridden to 0 in test application.properties to keep the test fast.
+        // 1 initial attempt plus 3 retries = 4 total calls
         Mockito.verify(adapter, Mockito.times(4)).backupV2(any());
     }
 }

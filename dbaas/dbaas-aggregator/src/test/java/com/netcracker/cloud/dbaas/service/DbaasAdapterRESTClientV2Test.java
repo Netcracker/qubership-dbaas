@@ -167,7 +167,7 @@ class DbaasAdapterRESTClientV2Test {
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
 
         when(restClient.deleteBackup(any(), any()))
-                .thenThrow(new AdapterException(NOT_FOUND.getStatusCode(), "HTTP 404 Not Found"));
+                .thenThrow(new AdapterException(NOT_FOUND.getStatusCode(), NOT_FOUND.getReasonPhrase()));
         final DeleteResult actualRestoreResultWithNotFound = dbaasAdapterRESTClient.delete(databasesBackup);
         assertEquals(Status.SUCCESS, actualRestoreResultWithNotFound.getStatus());
         assertEquals("Endpoint to delete backup not implemented on adapter yet!", actualRestoreResultWithNotFound.getMessage());
