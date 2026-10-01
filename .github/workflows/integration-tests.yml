@@ -7,35 +7,47 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
+  scope:
+    name: Detect DBaaS integration scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+    steps:
+      - name: Detect applicable event
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          run=true
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            run=false
+            if [ "$PR_AUTHOR_ID" = "29139614" ] && [ "$PR_HEAD_REPOSITORY" = "$REPOSITORY" ]; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   integration-tests:
-    # PR runs are limited to Renovate PRs from this repository. The check matches the immutable
-    # account ID of renovate[bot] (29139614), not the login or the editable PR title.
-    if: |
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.user.id == 29139614 &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [scope]
+    if: ${{ needs.scope.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
       packages: read
-      pull-requests: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-
-      - name: Wait for PR image builds
-        id: image_builds
-        if: github.event_name == 'pull_request'
-        uses: ./.github/actions/wait-for-build-workflows
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          head-sha: ${{ github.event.pull_request.head.sha }}
-          pull-request-number: ${{ github.event.pull_request.number }}
 
       - name: Create kind config
         run: |
@@ -191,23 +203,49 @@ jobs:
 
       - name: Compute DBaaS image tag
         env:
+          EVENT_NAME: ${{ github.event_name }}
           SOURCE_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          SAFE_REF="${SOURCE_REF//\//-}"
-          if [ "$SAFE_REF" = "main" ]; then
-            IMAGE_TAG=latest
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            IMAGE_TAG="it-$GITHUB_RUN_ID"
           else
-            IMAGE_TAG="${SAFE_REF}-snapshot"
+            SAFE_REF="${SOURCE_REF//\//-}"
+            if [ "$SAFE_REF" = "main" ]; then
+              IMAGE_TAG=latest
+            else
+              IMAGE_TAG="${SAFE_REF}-snapshot"
+            fi
           fi
           echo "Calculated image tag: $IMAGE_TAG"
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
-      # PR runs test the images built from the PR revision and fail when an image is missing, so a
-      # dependency update is never validated against `latest`. Other events keep the `latest` fallback.
-      # The operator uses `latest` only when Go Build skipped itself because the PR changes nothing
-      # that goes into the operator image.
+      - name: Build PR images and load them into Kind
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn --batch-mode --no-transfer-progress -DskipTests \
+            -pl dbaas/dbaas-aggregator -am package
+          docker build \
+            -t "ghcr.io/netcracker/qubership-dbaas:$IMAGE_TAG" \
+            -f dbaas/Dockerfile dbaas
+          docker build \
+            -t "ghcr.io/netcracker/qubership-dbaas-operator:$IMAGE_TAG" \
+            dbaas-operator
+          docker build \
+            -t "ghcr.io/netcracker/qubership-dbaas-validation-image:$IMAGE_TAG" \
+            validation-image
+          kind load docker-image \
+            "ghcr.io/netcracker/qubership-dbaas:$IMAGE_TAG" \
+            "ghcr.io/netcracker/qubership-dbaas-operator:$IMAGE_TAG" \
+            "ghcr.io/netcracker/qubership-dbaas-validation-image:$IMAGE_TAG" \
+            --name kind
+
       - name: Resolve aggregator image
         id: aggregator_image
+        if: github.event_name != 'pull_request'
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas
@@ -218,15 +256,17 @@ jobs:
 
       - name: Resolve operator image
         id: operator_image
+        if: github.event_name != 'pull_request'
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas-operator
-          tag: ${{ steps.image_builds.outputs['operator-build'] == 'skipped' && 'latest' || env.IMAGE_TAG }}
+          tag: ${{ env.IMAGE_TAG }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           timeout-seconds: ${{ github.event_name == 'pull_request' && '120' || '0' }}
           fallback-tag: ${{ github.event_name != 'pull_request' && 'latest' || '' }}
 
-      - name: Set DBaaS image tags
+      - name: Set registry image tags
+        if: github.event_name != 'pull_request'
         env:
           AGGREGATOR_TAG: ${{ steps.aggregator_image.outputs['resolved-tag'] }}
           OPERATOR_TAG: ${{ steps.operator_image.outputs['resolved-tag'] }}
@@ -382,4 +422,21 @@ jobs:
         if: always() && steps.build_report.outputs.status == 'failed'
         run: |
           echo "::error::Integration tests failed (${{ steps.build_report.outputs.failed_count }} test(s))"
+          exit 1
+
+  integration-tests-gate:
+    name: DBaaS Integration Tests Gate
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [scope, integration-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require integration tests for Renovate PRs
+        if: >-
+          needs.scope.result != 'success' ||
+          (needs.scope.outputs.run != 'false' && needs.integration-tests.result != 'success')
+        run: |
+          echo "::error::DBaaS integration tests did not succeed"
           exit 1
