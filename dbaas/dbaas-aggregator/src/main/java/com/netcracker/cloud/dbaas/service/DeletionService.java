@@ -7,14 +7,17 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.LogicalDbOperationErrorRepository;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.ws.rs.WebApplicationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.ListUtils;
+import org.hibernate.StaleStateException;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -82,6 +85,65 @@ public class DeletionService {
         log.info("Mark {} registries for drop in '{}' namespace", registries.size(), namespace);
         registries.forEach(this::markRegistryForDropWithoutTransaction);
         return logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAll(registries);
+    }
+
+    /**
+     * Marks the given registries for drop and drops them, each in its own new
+     * transaction with a fresh read by id.
+     *
+     * <p>Restore sweeps pass a list that may be stale: in a busy namespace a
+     * concurrent request can legitimately delete a database between the caller's
+     * read and this sweep. Flushing an update for a vanished row inside the
+     * caller's long transaction aborts the whole restore with a stale-state
+     * conflict, so each registry is re-read and processed in isolation instead,
+     * and a registry that no longer exists is treated as already dropped.
+     *
+     * @return the number of registries actually dropped
+     */
+    public long markAndDropRegistriesSafe(String namespace, List<DatabaseRegistry> registries) {
+        List<UUID> ids = registries.stream().map(DatabaseRegistry::getId).filter(Objects::nonNull).toList();
+        log.info("Mark {} registries for drop in '{}' namespace and drop them one by one", ids.size(), namespace);
+        long dropped = 0;
+        for (UUID id : ids) {
+            try {
+                if (Boolean.TRUE.equals(QuarkusTransaction.requiringNew().call(() -> markAndDropRegistry(id)))) {
+                    dropped++;
+                }
+            } catch (RuntimeException e) {
+                if (!isStaleStateConflict(e) || registryStillExists(id)) {
+                    throw e;
+                }
+                log.info("Registry {} was deleted concurrently during the sweep in '{}' namespace, treating as already dropped", id, namespace);
+            }
+        }
+        log.info("Successfully dropped {} of {} databases in {}", dropped, ids.size(), namespace);
+        return dropped;
+    }
+
+    private boolean markAndDropRegistry(UUID registryId) {
+        Optional<DatabaseRegistry> fresh = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findDatabaseRegistryById(registryId);
+        if (fresh.isEmpty()) {
+            log.info("Registry {} is already deleted, skipping the drop", registryId);
+            return false;
+        }
+        DatabaseRegistry registry = fresh.get();
+        markRegistryForDropWithoutTransaction(registry);
+        logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveAnyTypeLogDb(registry);
+        return dropRegistrySafe(registry, false);
+    }
+
+    private boolean registryStillExists(UUID registryId) {
+        return QuarkusTransaction.requiringNew().call(() ->
+                logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findDatabaseRegistryById(registryId).isPresent());
+    }
+
+    private static boolean isStaleStateConflict(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof StaleStateException || t instanceof OptimisticLockException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Transactional
