@@ -1,4 +1,13 @@
 {{- if .Values.DBAAS_OPERATOR_ENABLED }}
+{{- $tlsEnabled := eq (lower (trim (toString .Values.INTERNAL_TLS_ENABLED))) "true" }}
+{{- $aggregatorURL := trim (toString (.Values.DBAAS_AGGREGATOR_URL | default "")) }}
+{{- if $tlsEnabled }}
+{{- if not $aggregatorURL }}
+{{- $aggregatorURL = "https://dbaas-aggregator:8443" }}
+{{- else if not (hasPrefix "https://" (lower $aggregatorURL)) }}
+{{- fail "DBAAS_AGGREGATOR_URL must use https:// when INTERNAL_TLS_ENABLED is true" }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -71,6 +80,15 @@ spec:
           secret:
             secretName: 'dbaas-security-configuration-secret'
         {{- end }}
+        {{- if .Values.DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME }}
+        # Only the CA bundle; the aggregator serving Secret and its private key stay out of this pod.
+        - name: aggregator-tls-ca
+          configMap:
+            name: '{{ .Values.DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME }}'
+            items:
+              - key: '{{ .Values.DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_KEY }}'
+                path: ca.crt
+        {{- end }}
       containers:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
@@ -82,6 +100,12 @@ spec:
             {{- else }}
             - name: dbaas-security-volume
               mountPath: /etc/dbaas/security
+              readOnly: true
+            {{- end }}
+            {{- if .Values.DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME }}
+            # No subPath, so ConfigMap updates reach the mounted file.
+            - name: aggregator-tls-ca
+              mountPath: /etc/dbaas/aggregator-tls
               readOnly: true
             {{- end }}
           # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
@@ -125,9 +149,13 @@ spec:
             # credentials Secret at /etc/dbaas/security (no extra env needed).
             - name: KUBERNETES_M2M_ENABLED
               value: '{{ .Values.KUBERNETES_M2M_ENABLED }}'
-            {{- if .Values.DBAAS_AGGREGATOR_URL }}
+            {{- if $aggregatorURL }}
             - name: DBAAS_AGGREGATOR_URL
-              value: '{{ .Values.DBAAS_AGGREGATOR_URL }}'
+              value: '{{ $aggregatorURL }}'
+            {{- end }}
+            {{- if .Values.DBAAS_AGGREGATOR_TLS_CA_CONFIG_MAP_NAME }}
+            - name: DBAAS_AGGREGATOR_TLS_CA_CERT_PATH
+              value: /etc/dbaas/aggregator-tls/ca.crt
             {{- end }}
           ports:
             - name: web

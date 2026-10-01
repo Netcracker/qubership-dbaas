@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 @Slf4j
@@ -28,18 +29,53 @@ public class JdbcUtils {
     public static final boolean DEFAULT_SSL_ENABLED = false;
     public static final String PROCESS_ORCHESTRATOR_DATASOURCE = "process-orchestrator";
 
-    private static final String CERTIFICATE_STORE_PATH = getParameterValue("CERTIFICATE_FILE_PATH", "/etc/tls");
-    private static final String CA_CERTIFICATE_URL = "file://" + CERTIFICATE_STORE_PATH + "/ca.crt";
-    private static final String SSL_URL_PARAMS = "&ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=" + CA_CERTIFICATE_URL;
+    static final String POSTGRES_TLS_ENABLED = "POSTGRES_TLS_ENABLED";
+    static final String POSTGRES_TLS_CA_CERT_PATH = "POSTGRES_TLS_CA_CERT_PATH";
+    // Before POSTGRES_TLS_ENABLED existed, this flag enabled PostgreSQL TLS. It now controls only the inbound HTTPS
+    // listener, so it is read here as a fallback for deployments that have not set POSTGRES_TLS_ENABLED yet.
+    static final String LEGACY_INTERNAL_TLS_ENABLED = "INTERNAL_TLS_ENABLED";
+
+    private static final String DEFAULT_CERTIFICATE_STORE_PATH = "/etc/tls";
+    private static final String SSL_URL_PARAMS = "&ssl=true&sslfactory=org.postgresql.ssl.SingleCertValidatingFactory&sslfactoryarg=file://";
     private static final String POD_SECRETS_PATH = "/etc/secrets/pod-secrets";
     private static final String ACTIVE_DR_MODE = "active";
 
     public static String resolveConnectionURL() {
-        String host = getParameterValue("POSTGRES_HOST", DEFAULT_HOST);
-        String port = getParameterValue("POSTGRES_PORT", DEFAULT_PORT);
-        String database = getParameterValue("POSTGRES_DATABASE", DEFAULT_DATABASE_NAME);
-        boolean ssl = Boolean.parseBoolean(getParameterValue("INTERNAL_TLS_ENABLED", Boolean.toString(DEFAULT_SSL_ENABLED)));
-        return buildConnectionURL(host, port, database, ssl);
+        return resolveConnectionURL(JdbcUtils::getParameterValue);
+    }
+
+    /**
+     * Builds the PostgreSQL JDBC URL from the given parameter lookup, which returns {@code null} for an unset parameter.
+     */
+    static String resolveConnectionURL(Function<String, String> parameters) {
+        String host = valueOrDefault(parameters, "POSTGRES_HOST", DEFAULT_HOST);
+        String port = valueOrDefault(parameters, "POSTGRES_PORT", DEFAULT_PORT);
+        String database = valueOrDefault(parameters, "POSTGRES_DATABASE", DEFAULT_DATABASE_NAME);
+        boolean ssl = resolvePostgresTlsEnabled(parameters);
+        String caCertificatePath = valueOrDefault(parameters, POSTGRES_TLS_CA_CERT_PATH,
+                valueOrDefault(parameters, "CERTIFICATE_FILE_PATH", DEFAULT_CERTIFICATE_STORE_PATH) + "/ca.crt");
+        return buildConnectionURL(host, port, database, ssl, caCertificatePath);
+    }
+
+    private static boolean resolvePostgresTlsEnabled(Function<String, String> parameters) {
+        String postgresTls = parameters.apply(POSTGRES_TLS_ENABLED);
+        if (postgresTls != null) {
+            return Boolean.parseBoolean(postgresTls.strip());
+        }
+        String legacyTls = parameters.apply(LEGACY_INTERNAL_TLS_ENABLED);
+        if (legacyTls != null) {
+            log.warn("{} is not set; using {}={} for the PostgreSQL connection. {} now controls only the inbound HTTPS "
+                            + "listener. Set {} explicitly.",
+                    POSTGRES_TLS_ENABLED, LEGACY_INTERNAL_TLS_ENABLED, legacyTls.strip(), LEGACY_INTERNAL_TLS_ENABLED,
+                    POSTGRES_TLS_ENABLED);
+            return Boolean.parseBoolean(legacyTls.strip());
+        }
+        return DEFAULT_SSL_ENABLED;
+    }
+
+    private static String valueOrDefault(Function<String, String> parameters, String name, String defaultValue) {
+        String value = parameters.apply(name);
+        return value != null ? value : defaultValue;
     }
 
     public static String resolveUsername() {
@@ -51,6 +87,11 @@ public class JdbcUtils {
     }
 
     public static String buildConnectionURL(String host, String port, String database, boolean ssl) {
+        String caCertificatePath = getParameterValue("CERTIFICATE_FILE_PATH", DEFAULT_CERTIFICATE_STORE_PATH) + "/ca.crt";
+        return buildConnectionURL(host, port, database, ssl, caCertificatePath);
+    }
+
+    static String buildConnectionURL(String host, String port, String database, boolean ssl, String caCertificatePath) {
         String url = String.format("jdbc:postgresql://%s:%s/%s", host, port, database);
         url += "?connectTimeout=10&socketTimeout=30";
 
@@ -59,8 +100,8 @@ public class JdbcUtils {
         }
 
         if (ssl) {
-            log.info("Using secured connection to postgres");
-            url += SSL_URL_PARAMS;
+            log.info("Using secured connection to postgres with CA certificate {}", caCertificatePath);
+            url += SSL_URL_PARAMS + caCertificatePath;
         } else {
             log.info("Using not secured connection to postgres");
         }
@@ -69,6 +110,11 @@ public class JdbcUtils {
     }
 
     private static String getParameterValue(String name, String defaultValue) {
+        String value = getParameterValue(name);
+        return value != null ? value : defaultValue;
+    }
+
+    private static String getParameterValue(String name) {
         String value = System.getProperty(name, System.getenv().get(name));
         if (value != null) {
             return value;
@@ -81,7 +127,7 @@ public class JdbcUtils {
                 log.warn("Failed to read secret file {}", secretFile, e);
             }
         }
-        return defaultValue;
+        return null;
     }
 
     public static List<Map<String, Object>> queryForList(Connection connection, String query) throws SQLException {

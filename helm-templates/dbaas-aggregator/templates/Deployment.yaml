@@ -1,6 +1,7 @@
 {{- $arg := .Values.APPLICATION_NAME | default "dbaas" -}}
 {{- $b64p := tpl (.Files.Get "data/policy.json") $ | b64enc }}
 {{- $sha1sum := sha1sum $b64p }}
+{{- $tlsEnabled := eq (lower (toString .Values.INTERNAL_TLS_ENABLED)) "true" }}
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -59,6 +60,16 @@ spec:
                                 path: SYM_KEY
                             -   key: default-key
                                 path: KS_DEFAULT_KEY
+      {{- if $tlsEnabled }}
+              - name: tls-certificate
+                secret:
+                    secretName: '{{ .Values.SERVICE_NAME }}-tls'
+                    items:
+                    -   key: tls.crt
+                        path: tls.crt
+                    -   key: tls.key
+                        path: tls.key
+      {{- end }}
         {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
             -   name: tmp
                 emptyDir: {}
@@ -88,6 +99,11 @@ spec:
                 -   name: pod-secrets
                     mountPath: /etc/secrets/pod-secrets
                     readOnly: true
+          {{- if $tlsEnabled }}
+                -   name: tls-certificate
+                    mountPath: /etc/tls
+                    readOnly: true
+          {{- end }}
             {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
                 -   name: tmp
                     mountPath: /tmp
@@ -114,6 +130,11 @@ spec:
                 -   name: web
                     containerPort: 8080
                     protocol: TCP
+              {{- if $tlsEnabled }}
+                -   name: https
+                    containerPort: 8443
+                    protocol: TCP
+              {{- end }}
                 env:
                 -   name : "DBAAS_SECURITY_CONFIGURATION_SECRET_SHA1SUM"
                     value: {{ $sha1sum }}
@@ -168,6 +189,14 @@ spec:
               {{- if .Values.KUBERNETES_M2M_AUDIENCE }}
                 -   name: KUBERNETES_M2M_AUDIENCE
                     value: '{{ .Values.KUBERNETES_M2M_AUDIENCE }}'
+              {{- end }}
+              {{- if $tlsEnabled }}
+                -   name: QUARKUS_PROFILE
+                    value: tls
+                -   name: CERTIFICATE_FILE_PATH
+                    value: /etc/tls
+                -   name: TLS_CERTIFICATE_RELOAD_PERIOD
+                    value: '{{ .Values.TLS_CERTIFICATE_RELOAD_PERIOD }}'
               {{- end }}
                 resources:
                     requests:
