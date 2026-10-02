@@ -24,7 +24,7 @@
         + [DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS](#dbaas_backup_restore_retry_delay_seconds)
         + [DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS](#dbaas_backup_restore_retry_attempts)
         + [DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED](#dbaas_security_namespace_isolation_enabled)
-        + [KUBERNETES_M2M_ENABLED](#kubernetes_m2m_enabled)
+        + [M2M_AUTH_MODE](#m2m_auth_mode)
         + [KUBERNETES_M2M_AUDIENCE](#kubernetes_m2m_audience)
         + [priorityClassName](#priorityClassName)
     * [CREDENTIALS](#credentials)
@@ -327,13 +327,13 @@ If DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED is set to true, dbaas-aggregator w
 |---------|----------------------------------------------------------|
 | true    | Set to true if need to enable namespace isolation |
 
-#### KUBERNETES_M2M_ENABLED
+#### M2M_AUTH_MODE
 
-If KUBERNETES_M2M_ENABLED is set to true, dbaas-aggregator will accept requests with Kubernetes service account tokens for M2M authentication.
+If M2M_AUTH_MODE is set to hybrid or k8s, dbaas-aggregator will accept requests with Kubernetes service account tokens for M2M authentication.
 
 | Default | Recommended                                              |
 |---------|----------------------------------------------------------|
-| false   | Set to true if need to enable kubernetes M2M      |
+| legacy  | Set to hybrid or k8s if need to enable kubernetes M2M |
 
 #### KUBERNETES_M2M_AUDIENCE
 

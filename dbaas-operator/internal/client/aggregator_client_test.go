@@ -253,7 +253,7 @@ func TestRegisterExternalDatabase_TokenFetchedPerRequest(t *testing.T) {
 	}
 }
 
-// ── Basic Auth mode (KUBERNETES_M2M_ENABLED=false) ────────────────────────────
+// ── Basic Auth mode (M2M_AUTH_MODE=legacy) ─────────────────────────────────────
 
 // TestBasicAuthClient_SendsBasicAuth verifies that a client built with
 // NewBasicAuthClient authenticates with HTTP Basic Auth (not a Bearer token).

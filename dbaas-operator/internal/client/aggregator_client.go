@@ -40,7 +40,7 @@ const defaultTimeout = 30 * time.Second
 
 // AggregatorClient is an HTTP client for the dbaas-aggregator REST API.
 // It authenticates in one of two mutually exclusive modes, selected at
-// construction to mirror the aggregator's KUBERNETES_M2M_ENABLED setting:
+// construction to mirror the aggregator's M2M_AUTH_MODE setting:
 //   - M2M (Bearer): a Kubernetes projected service account token with audience
 //     "dbaas", fetched fresh on every request via the tokensource library;
 //   - Basic Auth: a username/password pair loaded from the mounted security
@@ -84,7 +84,7 @@ func NewClientWithTokenFunc(baseURL string, getToken func(ctx context.Context) (
 }
 
 // NewBasicAuthClient creates an AggregatorClient that authenticates with HTTP
-// Basic Auth. Used when M2M token auth is disabled (KUBERNETES_M2M_ENABLED=false),
+// Basic Auth. Used when M2M token auth is disabled (M2M_AUTH_MODE=legacy),
 // in which case the aggregator rejects Bearer tokens and expects Basic credentials.
 // The credentials can be hot-swapped at runtime via SetCredentials, so a mounted
 // Secret update is picked up without a pod restart.
@@ -112,7 +112,7 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		SetHeader("Accept", "application/json").
 		// Suppress resty's per-request "Using Basic Auth in HTTP mode is not
 		// secure, use HTTPS" warning. Operator→aggregator traffic is in-cluster
-		// and Basic Auth over HTTP is the intended default (KUBERNETES_M2M_ENABLED=false),
+		// and Basic Auth over HTTP is the intended default (M2M_AUTH_MODE=legacy),
 		// so the warning is pure noise logged on every call (incl. the rotation poll loop).
 		SetDisableWarn(true).
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {

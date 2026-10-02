@@ -11,6 +11,17 @@ on:
         # Without it the password arrives empty and the report email step fails (non-fatally).
         description: SMTP password used to email the test report.
   workflow_dispatch:
+    inputs:
+      m2m-auth-mode:
+        description: M2M_AUTH_MODE of the aggregator
+        type: choice
+        options: [hybrid, legacy, k8s]
+        default: hybrid
+      operator-m2m-auth-mode:
+        description: M2M_AUTH_MODE of dbaas-operator
+        type: choice
+        options: [legacy, hybrid, k8s]
+        default: legacy
   schedule:
     - cron: "0 2 * * *"  # Daily at 02:00 UTC
 
@@ -172,8 +183,8 @@ jobs:
         run: >
           make install
           CONFIG_FILE=local.mk
-          KUBERNETES_M2M_ENABLED=true
-          OPERATOR_M2M_ENABLED=false
+          M2M_AUTH_MODE=${{ inputs.m2m-auth-mode || 'hybrid' }}
+          OPERATOR_M2M_AUTH_MODE=${{ inputs.operator-m2m-auth-mode || 'legacy' }}
           PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
           REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 
