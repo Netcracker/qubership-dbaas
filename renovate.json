@@ -4,12 +4,10 @@
   "assigneesFromCodeOwners": true,
   "reviewersFromCodeOwners": true,
   "minimumReleaseAge": null,
-  "automerge": false,
-  "automergeType": "pr",
-  "platformAutomerge": true,
   "ignoreTests": false,
   "extends": [
     "github>Netcracker/qubership-core-infra:renovate-core-config",
+    "github>Netcracker/renovate-config:automerge",
     ":semanticCommitTypeAll(chore)"
   ],
   "packageRules": [
@@ -39,13 +37,15 @@
     },
     {
       "matchUpdateTypes": ["minor"],
-      "addLabels": ["type:minor"],
-      "automerge": true
+      "addLabels": ["type:minor"]
     },
     {
       "matchUpdateTypes": ["patch"],
-      "addLabels": ["type:patch"],
-      "automerge": true
+      "addLabels": ["type:patch"]
+    },
+    {
+      "matchUpdateTypes": ["pin", "digest", "pinDigest"],
+      "automerge": false
     },
     {
       "matchPackageNames": ["/quarkus/i"],
