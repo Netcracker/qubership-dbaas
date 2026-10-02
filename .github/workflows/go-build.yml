@@ -66,52 +66,7 @@ jobs:
       envtest-version: latest
       docker-config-file: 'docker-go-dev-config.json'
       go-module-dir: 'dbaas-operator'
-      # Pull requests build the Operator image in operator-pr-image and hand it
-      # to the integration tests as an Actions artifact instead of publishing to GHCR.
-      skip-docker: ${{ github.event_name == 'pull_request' }}
     secrets: inherit
-
-  # Builds the Operator image that integration-tests.yml and
-  # integration-tests-sample-service.yml load into Kind for this pull request.
-  # It runs on every pull request, including ones that skip the Go tests,
-  # so the integration tests always find an image for the current head.
-  operator-pr-image:
-    name: Build PR Operator image
-    if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    env:
-      IMAGE_TAG: pr-${{ github.event.pull_request.head.sha }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Build image
-        run: |
-          set -euo pipefail
-          docker build \
-            -t "ghcr.io/netcracker/qubership-dbaas-operator:$IMAGE_TAG" \
-            -f dbaas-operator/Dockerfile \
-            dbaas-operator
-
-      - name: Save image
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/pr-images"
-          docker save \
-            -o "$RUNNER_TEMP/pr-images/operator-image.tar" \
-            "ghcr.io/netcracker/qubership-dbaas-operator:$IMAGE_TAG"
-
-      - name: Upload image archive
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: dbaas-operator-pr-image
-          path: ${{ runner.temp }}/pr-images/operator-image.tar
-          if-no-files-found: error
-          retention-days: 3
 
   test-agent-packages:
     name: Test agent packages
@@ -195,7 +150,7 @@ jobs:
   go-build-gate:
     name: Go Build Gate
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [changes, build, test-agent-packages, verify-generated, operator-pr-image]
+    needs: [changes, build, test-agent-packages, verify-generated]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -204,7 +159,6 @@ jobs:
       - name: Require Go validation when applicable
         if: >-
           needs.changes.result != 'success' ||
-          needs.operator-pr-image.result != 'success' ||
           (needs.changes.outputs.run != 'false' &&
            (needs.build.result != 'success' ||
             needs.test-agent-packages.result != 'success' ||

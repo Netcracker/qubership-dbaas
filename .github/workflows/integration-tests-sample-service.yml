@@ -13,57 +13,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 2 * * *"  # Daily at 02:00 UTC
-  pull_request:
-    types: [opened, synchronize, reopened]
-
-# A new commit on a pull request cancels the run for the previous commit.
-# Other events get a group per run, so scheduled, manual, and called runs
-# keep their previous behavior.
-concurrency:
-  group: >-
-    sample-services-integration-tests-${{ github.event_name == 'pull_request'
-    && format('pr-{0}', github.event.pull_request.number)
-    || format('run-{0}', github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  scope:
-    name: Detect sample-service integration scope
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    outputs:
-      run: ${{ steps.detect.outputs.run }}
-    steps:
-      - name: Detect applicable event
-        id: detect
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
-          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          run=true
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            run=false
-            if [ "$PR_AUTHOR_ID" = "29139614" ] && [ "$PR_HEAD_REPOSITORY" = "$REPOSITORY" ]; then
-              run=true
-            fi
-          fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-
   sample-services-integration-tests:
-    needs: [scope]
-    if: ${{ needs.scope.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: read
-      # Reads the producer workflow runs and downloads their image artifacts.
-      actions: read
 
     env:
       # Both sample images are built in-job and loaded straight into kind (no registry, no
@@ -90,105 +46,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-
-      # On pull requests, the images come from the maven-build.yaml and
-      # go-build.yml runs for the exact PR head commit. They are never pulled
-      # from GHCR, and a missing or failed producer run fails this job.
-      - name: Find producer workflow runs
-        id: producers
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-
-          find_run() {
-            local workflow="$1" run_id attempt
-            for attempt in $(seq 1 40); do
-              run_id=$(gh api \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=100" \
-                --jq '.workflow_runs | sort_by(.created_at) | last | .id // empty')
-              if [ -n "$run_id" ]; then
-                echo "$run_id"
-                return 0
-              fi
-              echo "Waiting for a $workflow run on $HEAD_SHA (attempt $attempt)" >&2
-              sleep 15
-            done
-            echo "::error::No $workflow pull_request run exists for $HEAD_SHA" >&2
-            return 1
-          }
-
-          maven_run_id=$(find_run maven-build.yaml)
-          go_run_id=$(find_run go-build.yml)
-          echo "maven-build.yaml run: $maven_run_id"
-          echo "go-build.yml run: $go_run_id"
-          echo "maven-run-id=$maven_run_id" >> "$GITHUB_OUTPUT"
-          echo "go-run-id=$go_run_id" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for Maven build
-        if: github.event_name == 'pull_request'
-        uses: netcracker/qubership-workflow-hub/actions/wait-for-workflow@0eefd4976131d113c986281eed8bc642b6da303d # v2.8.1
-        with:
-          workflow: ${{ steps.producers.outputs.maven-run-id }}
-          token: ${{ github.token }}
-          timeout: 120
-          poll-interval: 30
-
-      - name: Wait for Go build
-        if: github.event_name == 'pull_request'
-        uses: netcracker/qubership-workflow-hub/actions/wait-for-workflow@0eefd4976131d113c986281eed8bc642b6da303d # v2.8.1
-        with:
-          workflow: ${{ steps.producers.outputs.go-run-id }}
-          token: ${{ github.token }}
-          timeout: 60
-          poll-interval: 30
-
-      - name: Download Maven image archive
-        if: github.event_name == 'pull_request'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: dbaas-pr-images
-          path: ${{ runner.temp }}/pr-images/maven
-          run-id: ${{ steps.producers.outputs.maven-run-id }}
-          github-token: ${{ github.token }}
-
-      - name: Download Operator image archive
-        if: github.event_name == 'pull_request'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: dbaas-operator-pr-image
-          path: ${{ runner.temp }}/pr-images/go
-          run-id: ${{ steps.producers.outputs.go-run-id }}
-          github-token: ${{ github.token }}
-
-      - name: Load PR images into Docker
-        if: github.event_name == 'pull_request'
-        env:
-          IMAGE_TAG: pr-${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-
-          load_archive() {
-            local archive="$1"
-            shift
-            local loaded image
-            loaded=$(docker load --input "$archive")
-            echo "$loaded"
-            for image in "$@"; do
-              if ! grep -Fxq "Loaded image: $image" <<<"$loaded"; then
-                echo "::error::$archive does not contain $image"
-                exit 1
-              fi
-            done
-          }
-
-          load_archive "$RUNNER_TEMP/pr-images/maven/dbaas-images.tar" \
-            "ghcr.io/netcracker/qubership-dbaas:$IMAGE_TAG" \
-            "ghcr.io/netcracker/qubership-dbaas-validation-image:$IMAGE_TAG"
-          load_archive "$RUNNER_TEMP/pr-images/go/operator-image.tar" \
-            "ghcr.io/netcracker/qubership-dbaas-operator:$IMAGE_TAG"
 
       - name: Create kind config
         run: |
@@ -265,66 +122,17 @@ jobs:
             install: false
           EOF_PATRONI
 
-      - name: Compute DBaaS image tag
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          SOURCE_REF: ${{ github.head_ref || github.ref_name }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: Resolve DBaaS image tag
         run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            IMAGE_TAG="pr-$PR_HEAD_SHA"
+          SAFE_REF="${GITHUB_REF_NAME//\//-}"
+          if [ "$SAFE_REF" = "main" ]; then
+            IMAGE_TAG=latest
           else
-            SAFE_REF="${SOURCE_REF//\//-}"
-            if [ "$SAFE_REF" = "main" ]; then
-              IMAGE_TAG=latest
-            else
-              IMAGE_TAG="${SAFE_REF}-snapshot"
-            fi
+            IMAGE_TAG="${SAFE_REF}-snapshot"
           fi
-          echo "Calculated image tag: $IMAGE_TAG"
-          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "Using DBaaS image tag: $IMAGE_TAG"
           echo "TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "DBAAS_OPERATOR_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
-
-      - name: Load PR images into Kind
-        if: github.event_name == 'pull_request'
-        run: |
-          kind load docker-image \
-            "ghcr.io/netcracker/qubership-dbaas:$IMAGE_TAG" \
-            "ghcr.io/netcracker/qubership-dbaas-operator:$IMAGE_TAG" \
-            "ghcr.io/netcracker/qubership-dbaas-validation-image:$IMAGE_TAG" \
-            --name kind
-
-      - name: Resolve aggregator image
-        id: aggregator_image
-        if: github.event_name != 'pull_request'
-        uses: ./.github/actions/wait-for-image-tag
-        with:
-          package: qubership-dbaas
-          tag: ${{ env.IMAGE_TAG }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          timeout-seconds: "0"
-          fallback-tag: latest
-
-      - name: Resolve operator image
-        id: operator_image
-        if: github.event_name != 'pull_request'
-        uses: ./.github/actions/wait-for-image-tag
-        with:
-          package: qubership-dbaas-operator
-          tag: ${{ env.IMAGE_TAG }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          timeout-seconds: "0"
-          fallback-tag: latest
-
-      - name: Set registry image tags
-        if: github.event_name != 'pull_request'
-        env:
-          AGGREGATOR_TAG: ${{ steps.aggregator_image.outputs['resolved-tag'] }}
-          OPERATOR_TAG: ${{ steps.operator_image.outputs['resolved-tag'] }}
-        run: |
-          echo "TAG=$AGGREGATOR_TAG" >> "$GITHUB_ENV"
-          echo "DBAAS_OPERATOR_TAG=$OPERATOR_TAG" >> "$GITHUB_ENV"
 
       - name: Build go test app image and load into kind
         run: |
@@ -802,22 +610,4 @@ jobs:
         if: always() && steps.build_report.outputs.status != 'success'
         run: |
           echo "::error::Sample service integration tests did not pass (status=${{ steps.build_report.outputs.status }}, failed tests=${{ steps.build_report.outputs.failed_count }})"
-          exit 1
-
-  sample-services-integration-tests-gate:
-    name: Sample Services Integration Tests Gate
-    if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [scope, sample-services-integration-tests]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Require sample-service integration tests for Renovate PRs
-        if: >-
-          needs.scope.result != 'success' ||
-          (needs.scope.outputs.run != 'false' &&
-           needs.sample-services-integration-tests.result != 'success')
-        run: |
-          echo "::error::Sample-service integration tests did not succeed"
           exit 1

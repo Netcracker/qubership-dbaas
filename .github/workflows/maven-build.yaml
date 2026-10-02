@@ -16,77 +16,18 @@ jobs:
       upload-artifact: true
       java-version: 25
       maven-command: 'verify'
-      # Pull requests build their images in pr-images and hand them to the
-      # integration tests as an Actions artifact instead of publishing to GHCR.
-      skip-docker: ${{ github.event_name == 'pull_request' }}
-
-  # Builds the images that integration-tests.yml and
-  # integration-tests-sample-service.yml load into Kind for this pull request.
-  # The Aggregator image reuses the jars from the mvn job's artifact. The
-  # reusable docker-build workflow downloads that single artifact into
-  # ./artifacts and builds the Aggregator from ./artifacts/dbaas, so this job
-  # uses the same layout.
-  pr-images:
-    name: Build PR images
-    if: ${{ github.event_name == 'pull_request' }}
-    needs: [mvn]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    env:
-      IMAGE_TAG: pr-${{ github.event.pull_request.head.sha }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Download Maven build artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: maven-snapshot-deploy-artifact
-          path: artifacts
-
-      - name: Build images
-        run: |
-          set -euo pipefail
-          docker build \
-            -t "ghcr.io/netcracker/qubership-dbaas:$IMAGE_TAG" \
-            -f dbaas/Dockerfile \
-            artifacts/dbaas
-          docker build \
-            -t "ghcr.io/netcracker/qubership-dbaas-validation-image:$IMAGE_TAG" \
-            -f validation-image/Dockerfile \
-            validation-image
-
-      - name: Save images
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/pr-images"
-          docker save \
-            -o "$RUNNER_TEMP/pr-images/dbaas-images.tar" \
-            "ghcr.io/netcracker/qubership-dbaas:$IMAGE_TAG" \
-            "ghcr.io/netcracker/qubership-dbaas-validation-image:$IMAGE_TAG"
-
-      - name: Upload image archive
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: dbaas-pr-images
-          path: ${{ runner.temp }}/pr-images/dbaas-images.tar
-          if-no-files-found: error
-          retention-days: 3
 
   maven-build-gate:
     name: Maven Build Gate
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [mvn, pr-images]
+    needs: [mvn]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
     steps:
-      - name: Require Maven build and PR images
-        if: needs.mvn.result != 'success' || needs.pr-images.result != 'success'
+      - name: Require Maven build
+        if: needs.mvn.result != 'success'
         run: |
-          echo "::error::Maven build or PR image build did not succeed"
+          echo "::error::Maven build did not succeed"
           exit 1
