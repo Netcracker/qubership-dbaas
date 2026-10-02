@@ -6,27 +6,31 @@ import com.netcracker.cloud.dbaas.dto.composite.CompositeStructureDto;
 import com.netcracker.cloud.dbaas.entity.pg.composite.CompositeStructure;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.composite.CompositeNamespaceService;
-import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.mockito.InjectSpy;
+import io.restassured.RestAssured;
 import io.restassured.common.mapper.TypeRef;
+import io.restassured.config.LogConfig;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.core.MediaType;
-
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.IntStream;
 
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.is;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @QuarkusTest
@@ -34,8 +38,11 @@ import static org.mockito.Mockito.*;
 @TestHTTPEndpoint(CompositeController.class)
 class CompositeControllerTest {
 
-    @InjectMock
+    @InjectSpy
     CompositeNamespaceService compositeService;
+
+    @Inject
+    EntityManager entityManager;
 
     @Test
     void testGetAllCompositeStructures_Success() {
@@ -67,8 +74,6 @@ class CompositeControllerTest {
                 .body(is("[]"));
 
         verify(compositeService).getAllCompositeStructures();
-        verifyNoMoreInteractions(compositeService);
-
     }
 
     @Test
@@ -121,7 +126,11 @@ class CompositeControllerTest {
 
     @Test
     void testSaveOrUpdateComposite_Success() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("test-id", Set.of("ns-1", "ns-2"));
+        compositeService.deleteCompositeStructure("ns-1");
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("ns-1")
+                .namespaces(Set.of("ns-1", "ns-2"))
+                .build();
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body((new ObjectMapper()).writeValueAsString(request))
@@ -132,12 +141,14 @@ class CompositeControllerTest {
         verify(compositeService).saveOrUpdateCompositeStructure(request);
         verify(compositeService).getBaselineByNamespace("ns-1");
         verify(compositeService).getBaselineByNamespace("ns-2");
-        verifyNoMoreInteractions(compositeService);
     }
 
     @Test
     void testSaveOrUpdateComposite_IdBlank() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("", Set.of("ns-1", "ns-2"));
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("")
+                .namespaces(Set.of("ns-1", "ns-2"))
+                .build();
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -152,7 +163,10 @@ class CompositeControllerTest {
 
     @Test
     void testSaveOrUpdateComposite_NamespacesEmpty() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("test-id", Collections.emptySet());
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("test-id")
+                .namespaces(Collections.emptySet())
+                .build();
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -167,7 +181,10 @@ class CompositeControllerTest {
 
     @Test
     void testSaveOrUpdateComposite_NamespaceConflict() throws JsonProcessingException {
-        CompositeStructureDto request = new CompositeStructureDto("test-id", Set.of("ns-1", "ns-2"));
+        CompositeStructureDto request = CompositeStructureDto.builder()
+                .id("test-id")
+                .namespaces(Set.of("ns-1", "ns-2"))
+                .build();
         when(compositeService.getBaselineByNamespace("ns-2")).thenReturn(Optional.of("existing-id"));
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
@@ -181,6 +198,28 @@ class CompositeControllerTest {
         verify(compositeService, never()).saveOrUpdateCompositeStructure(request);
     }
 
+    @Test
+    void testSaveOrUpdateComposite_WrongModifyIndex() throws JsonProcessingException {
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), 1L)))
+                .when().post()
+                .then()
+                .statusCode(NO_CONTENT.getStatusCode());
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), 2L)))
+                .when().post()
+                .then()
+                .statusCode(NO_CONTENT.getStatusCode());
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body((new ObjectMapper()).writeValueAsString(new CompositeStructureDto("ns-1", Set.of("ns-1", "ns-2"), 1L)))
+                .when().post()
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", is("Validation error: 'new modify index '1' should be greater than current index '2''"));
+    }
 
     @Test
     void testDeleteCompositeById_Success() {
@@ -194,7 +233,6 @@ class CompositeControllerTest {
 
         verify(compositeService).getCompositeStructure("test-id");
         verify(compositeService).deleteCompositeStructure("test-id");
-        verifyNoMoreInteractions(compositeService);
     }
 
     @Test
@@ -220,5 +258,39 @@ class CompositeControllerTest {
                 .then()
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
                 .body("message", is("Internal Server Error"));
+    }
+
+    @Test
+    void saveOrUpdateComposite_concurrent() {
+        RestAssured.config = RestAssured.config()
+                .logConfig(LogConfig.logConfig().enablePrettyPrinting(false));
+        List<CompletableFuture<Void>> futures =
+                IntStream.range(0, 100)
+                        .mapToObj(i ->
+                                CompletableFuture.runAsync(() -> {
+                                            CompositeStructureDto request = CompositeStructureDto.builder()
+                                                    .id("base")
+                                                    .namespaces(Set.of("ns-%d".formatted(i)))
+                                                    .modifyIndex(i == 50 ? 1000 : (long) ThreadLocalRandom.current().nextInt(1000))
+                                                    .build();
+                                            try {
+                                                given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                                                        .contentType(MediaType.APPLICATION_JSON)
+                                                        .body((new ObjectMapper()).writeValueAsString(request))
+                                                        .when().post();
+                                            } catch (JsonProcessingException e) {
+                                                fail("something went wrong", e);
+                                            }
+                                        }
+                                )
+                        ).toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        Object singleResult = entityManager.createNativeQuery(
+                        "SELECT MAX(modify_index) FROM composite_properties"
+                )
+                .getSingleResult();
+        assertEquals(BigDecimal.valueOf(1000), singleResult);
     }
 }
