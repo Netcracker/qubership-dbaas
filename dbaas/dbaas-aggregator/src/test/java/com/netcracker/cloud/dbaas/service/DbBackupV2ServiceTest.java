@@ -1469,16 +1469,14 @@ class DbBackupV2ServiceTest {
                 .thenReturn(response2);
 
         // Mocks to ensure user process
-        DbResource resource1 = new DbResource();
-        resource1.setId(UUID.randomUUID());
-        resource1.setKind("kind");
-        resource1.setName("newName");
+        DbResource resource1 = new DbResource("user", "newName");
+        DbResource resource2 = new DbResource("database", dbName);
         EnsuredUser user1 = new EnsuredUser();
         user1.setConnectionProperties(Map.of(
                 "username", "newName"
         ));
-        user1.setResources(List.of(resource1));
-        user1.setName("newName");
+        user1.setResources(List.of(resource1, resource2));
+        user1.setDbName(dbName);
 
         when(dbaasAdapter.ensureUser(null, null, newName, "admin")).thenReturn(user1);
 

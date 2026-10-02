@@ -83,6 +83,12 @@ public class DatabaseBuilder {
         return this;
     }
 
+    public DatabaseBuilder namespace(String namespace) {
+        database.setNamespace(namespace);
+        classifier.put(NAMESPACE, namespace);
+        return this;
+    }
+
     public DatabaseBuilder resource(DbResource resource) {
         database.getResources().add(resource);
         return this;
