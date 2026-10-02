@@ -17,10 +17,50 @@ Old generic YAML CR:
 - `kind: DBaaS`
 - `subKind: DatabaseDeclaration` or `subKind: DbPolicy`
 - declaration body under `spec`
-- Helm-template YAML may not parse as raw YAML because of unquoted `{{ ... }}` expressions or include lines under
-  labels. `apply_migration.py` blanks out a whole-document `{{- if ... }}` / `{{- end }}` guard automatically
-  before parsing and re-wraps it around the generated output; any other unparseable Helm construct blocks the run
-  (exit 4) instead of falling back to a converter pass that needs manual review.
+- Helm-template YAML does not parse as raw YAML because of unquoted `{{ ... }}` scalar expressions
+  and standalone action lines (`if`/`else`/`range`/`with`/`end`/`define`/`block`/`template`, or a
+  `{{- $x := ... }}` assignment). `apply_migration.py` never edits the source to work around this:
+  it composes a length-preserving masked copy (standalone actions blanked to spaces, inline
+  expressions replaced with same-length filler) purely to locate each document's byte span, then
+  reads that document's actual value from a second, disposable masked copy that single-quotes each
+  unquoted templated scalar so it loads as the exact expression text (see `_mask_for_spans` /
+  `_mask_for_value`). A whole-document `{{- if ... }}` / `{{- end }}` guard is preserved verbatim
+  around the generated output; a guard that does not bracket the entire document, or YAML that is
+  malformed for a reason unrelated to Helm, blocks the run (exit 4) instead of falling back to a
+  converter pass that needs manual review.
+
+## Capability guard (issue #776)
+
+A mixed cluster may not have the dbaas-operator CRDs installed. The plan's optional root-level
+`capabilityGuard` field (a capability string such as `"dbaas.netcracker.com/v1"`) makes the
+generated resource conditional on that capability being present, instead of assuming the operator
+is always installed:
+
+```gotemplate
+{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" }}
+... InternalDatabase / DatabaseAccessPolicy ...
+{{- end }}
+```
+
+nested inside any pre-existing whole-document guard the legacy source already carried (both
+conditions apply). Omitting `capabilityGuard` preserves the unwrapped, operator-only output exactly
+as before.
+
+When it is set, the legacy source is preserved -- its original bytes, comments and labels included
+-- instead of deleted, guarded to the operator-absent (negated) branch in place:
+
+```gotemplate
+{{- if not (.Capabilities.APIVersions.Has "dbaas.netcracker.com/v1") }}
+... original legacy declaration bytes, verbatim ...
+{{- end }}
+```
+
+The writer's own `--check`/`--apply` validation renders the chart twice when `capabilityGuard` is
+set: once with `--api-versions <capabilityGuard>` (the branch the generated resource actually lives
+in must render and pass the same target-CRD validation as always -- a guard that never evaluates
+true, e.g. from a typo, is itself flagged, since a render with nothing to validate would otherwise
+pass trivially), and once without (the generated resource must be completely absent from that
+render, proving the guard actually suppresses it rather than merely being present as inert text).
 
 Target CRDs:
 
@@ -96,6 +136,14 @@ Do not copy status blocks. `apply_migration.py` carries `metadata.labels` and `m
 the source verbatim -- they are ordinary Kubernetes metadata with no converter-owned mapping, and deployment
 tooling may depend on them surviving onto the generated CR.
 
+The one exception is the Core Operator's own `kind: DBaaS` wrapper: it stamps
+`app.kubernetes.io/processed-by-operator` and `deployer.cleanup/allow` onto the wrapper's own `metadata.labels`
+to track its processing/cleanup state, and those two labels are dropped from the generated native CR (they
+describe the wrapper, which no longer exists once the CR is native). Every other label -- application labels,
+Argo CD/deployment-tracking labels -- and every annotation are preserved unchanged. A *direct*, non-wrapper
+`DatabaseDeclaration`/`DbPolicy` (not carried inside a `kind: DBaaS` envelope) is never filtered this way, even
+if it happens to carry a same-named label: the filter only applies to the wrapper's own metadata.
+
 ## Validation checklist
 
 - Ensure no output manifest has `kind: DBaaS`.
@@ -104,8 +152,9 @@ tooling may depend on them surviving onto the generated CR.
 - Ensure no `InternalDatabase` has `spec.classifierConfig`.
 - Omit target `spec.classifier.namespace`; the operator derives it from `metadata.namespace`.
 - Ensure every `InternalDatabase` has `spec.classifier.microserviceName`, `spec.classifier.scope`, and `spec.type`.
-- Ensure every `DatabaseAccessPolicy` has `spec.microserviceName` and at least one of `spec.services`, `spec.policy`,
-  or `spec.disableGlobalPermissions: true`.
+- Ensure every `DatabaseAccessPolicy` has `spec.microserviceName` and at least one of `spec.services`,
+  `spec.policy`, or a *present* `spec.disableGlobalPermissions` field -- `disableGlobalPermissions: false` is
+  checked for presence, not truth; an explicit `false` is a valid, distinct policy from the field being absent.
 - Flag a `lazy` value that is not boolean after coercing string `"true"`/`"false"`.
 - Flag `lazy: true` combined with `initialInstantiation.approach: clone`.
 - Flag `initialInstantiation.approach: clone` without `sourceClassifier`.
