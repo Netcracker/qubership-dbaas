@@ -44,10 +44,6 @@
       "addLabels": ["type:patch"]
     },
     {
-      "matchUpdateTypes": ["pin", "digest", "pinDigest"],
-      "automerge": false
-    },
-    {
       "matchPackageNames": ["/quarkus/i"],
       "addLabels": ["group:quarkus"],
       "automerge": false
