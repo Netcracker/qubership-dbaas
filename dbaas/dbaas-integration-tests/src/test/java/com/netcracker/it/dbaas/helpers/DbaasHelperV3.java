@@ -1059,12 +1059,12 @@ public class DbaasHelperV3 {
 
     public DatabaseResponse createDatabase(String authorization, final String testClassifierValue, int expected, String type,
                                            List<String> initialScriptIds, String namespace, Boolean backupDisabled) throws IOException {
-        return createDatabase(authorization, testClassifierValue, expected, type, initialScriptIds, namespace, backupDisabled, null, "dbaas_autotests", null);
+        return createDatabase(authorization, testClassifierValue, expected, type, initialScriptIds, namespace, backupDisabled, null, namespace, null);
     }
 
     public DatabaseResponse createDatabase(String authorization, final String testClassifierValue, int expected, String type,
                                            List<String> initialScriptIds, String namespace, Boolean backupDisabled, Map<String, Object> settings) throws IOException {
-        return createDatabase(authorization, testClassifierValue, expected, type, initialScriptIds, namespace, backupDisabled, null, "dbaas_autotests", settings);
+        return createDatabase(authorization, testClassifierValue, expected, type, initialScriptIds, namespace, backupDisabled, null, namespace, settings);
     }
 
     public DatabaseResponse createDatabase(String authorization, final String testClassifierValue, int expected, String type,
