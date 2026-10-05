@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.dbaas.config.security.M2MAuthModeProducer;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
 import com.netcracker.cloud.dbaas.rest.SecureDbaasAdapterRestClientV2;
@@ -10,11 +11,11 @@ import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.security.filters.DynamicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
+import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import jakarta.ws.rs.Priorities;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 
 import java.lang.reflect.Proxy;
@@ -23,8 +24,8 @@ import java.util.concurrent.TimeUnit;
 
 @ApplicationScoped
 public class DbaasAdapterRESTClientFactory {
-    @ConfigProperty(name = "dbaas.security.k8s.m2m.enabled")
-    boolean m2mEnabled;
+    @Inject
+    M2MAuthMode m2mAuthMode;
 
     @Inject
     TimeMeasurementManager timeMeasurementManager;
@@ -44,6 +45,7 @@ public class DbaasAdapterRESTClientFactory {
     public DbaasAdapter createDbaasAdapterClientV2(String username, String password, String adapterAddress, String type,
                                                    String identifier, AdapterActionTrackerClient tracker, ApiVersion apiVersions) {
         BasicAuthFilter basicAuthFilter = new BasicAuthFilter(username, password);
+        boolean m2mEnabled = M2MAuthModeProducer.isKubernetesTokenEnabled(m2mAuthMode);
         KubernetesTokenAuthFilter kubernetesTokenAuthFilter = null;
         if (m2mEnabled) {
             kubernetesTokenAuthFilter = new KubernetesTokenAuthFilter(KubernetesServiceAccountToken::getToken);
