@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-management
+  namespace: '{{ .Values.NAMESPACE }}'
+spec:
+  template:
+    spec:
+      containers:
+        - name: site-management
+          image: site-management:latest
+          {{- if .Values.extraEnv }}
+          env:
+            - name: EXTRA
+              value: "1"
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: site-management-config
+        {{- range .Values.topologyVolumes }}
+        - name: {{ .name }}
+          configMap:
+            name: {{ .configMap }}
+        {{- end }}
