@@ -1083,5 +1083,402 @@ class ApplyMigrationTest(unittest.TestCase):
         self.assertIn("--repo-root", proc.stdout)
 
 
+DGP_ONLY_POLICY = {
+    "apiVersion": "nc.core.dbaas/v3",
+    "kind": "DbPolicy",
+    "microserviceName": "svc",
+    "disableGlobalPermissions": False,
+}
+
+
+@unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
+class DgpOnlyPolicyWriterTest(unittest.TestCase):
+    """Issue #776: the writer must migrate a legacy DbPolicy that carries
+    only disableGlobalPermissions, in both --check and --apply modes."""
+
+    def test_check_then_apply_migrates_dgp_only_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "deploy/dbaas-policy.json", json.dumps(DGP_ONLY_POLICY))
+            plan = root_plan(repo, "deploy", "deploy/dbaas-policy.json", "dbaas-operator-resources.yaml")
+
+            code, report = run(repo, plan, "check", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(report["status"], "valid")
+            self.assertFalse((repo / "deploy/dbaas-operator-resources.yaml").exists())
+            self.assertTrue((repo / "deploy/dbaas-policy.json").exists())
+
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(report["status"], "changed")
+            self.assertFalse((repo / "deploy/dbaas-policy.json").exists())
+            resource = yaml.safe_load(
+                (repo / "deploy/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(resource["kind"], "DatabaseAccessPolicy")
+            self.assertIs(resource["spec"]["disableGlobalPermissions"], False)
+
+
+def helm_root_plan(repo: Path, source_rel: str, output_rel: str, **overrides: Any) -> dict[str, Any]:
+    (repo / "chart/templates").mkdir(parents=True, exist_ok=True)
+    (repo / "chart/Chart.yaml").write_text("apiVersion: v2\nname: svc\nversion: 0.1.0\n", encoding="utf-8")
+    return root_plan(
+        repo, "chart", source_rel, output_rel, kind="helm", namespace="{{ .Values.NAMESPACE }}", **overrides
+    )
+
+
+@unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
+class HelmTemplateParsingTest(unittest.TestCase):
+    """Issue #776 phase 3: parse Helm-template YAML (if/else/range/with,
+    variable assignments, unquoted templated scalars) without preprocessing
+    the source first, using the offset-preserving span buffer plus the
+    parse-only value buffer (apply_migration._mask_for_spans /
+    _mask_for_value)."""
+
+    def test_unquoted_scalar_expressions_under_a_guard_parse(self) -> None:
+        body = (
+            "{{- if .Values.enabled }}\n"
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DatabaseDeclaration\n"
+            "declarations:\n"
+            "  - classifierConfig:\n"
+            "      classifier:\n"
+            "        microserviceName: {{ .Values.SERVICE_NAME }}\n"
+            "        scope: service\n"
+            "    type: postgresql\n"
+            "{{- end }}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            resource = yaml.safe_load(out.split("{{- if .Values.enabled }}", 1)[1].rsplit("{{- end }}", 1)[0])
+            self.assertEqual(
+                resource["spec"]["classifier"]["microserviceName"], "{{ .Values.SERVICE_NAME }}"
+            )
+
+    def test_expression_with_pipeline_and_function_parses(self) -> None:
+        body = (
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DbPolicy\n"
+            "microserviceName: {{ .Values.SERVICE_NAME | quote }}\n"
+            "disableGlobalPermissions: true\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            resource = yaml.safe_load((repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8"))
+            self.assertEqual(resource["spec"]["microserviceName"], "{{ .Values.SERVICE_NAME | quote }}")
+
+    def test_nested_range_inside_a_converted_document_blocks(self) -> None:
+        # A range over external services must never be silently collapsed
+        # into one static entry named after the loop variable: that entry's
+        # name ("{{ . }}") only means "the current service" inside the range
+        # Helm never gets to keep in the generated output -- real Helm would
+        # render "." as the root template context there instead, regardless
+        # of how many entries .Values.externalServices actually has (the
+        # fixture below models two, to make the point concrete: neither
+        # renders, since the whole conversion blocks). Block rather than
+        # emit that corrupted shape.
+        body = (
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DbPolicy\n"
+            "microserviceName: {{ .Values.SERVICE_NAME }}\n"
+            "services:\n"
+            "{{- range .Values.externalServices }}\n"
+            "  - name: {{ .name }}\n"
+            "    roles:\n"
+            "      - ro\n"
+            "{{- end }}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "check", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertTrue(any("nested Helm control flow" in e for e in report.get("errors", [])))
+            # A range nested inside an outer whole-document guard blocks the
+            # same way -- the outer guard's own if/end are stripped before
+            # this check runs, so it is the *inner* range that trips it, not
+            # the (separately supported) outer guard.
+            guarded_body = "{{- if .Values.enabled }}\n" + body + "{{- end }}\n"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{guarded_body}")
+            plan2 = helm_root_plan(
+                repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml"
+            )
+            code2, report2 = run(repo, plan2, "check", tmp)
+            self.assertEqual(code2, 4, report2.get("__stderr"))
+            self.assertTrue(any("nested Helm control flow" in e for e in report2.get("errors", [])))
+
+    def test_nested_with_inside_a_converted_document_blocks(self) -> None:
+        body = (
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DbPolicy\n"
+            "microserviceName: {{ .Values.SERVICE_NAME }}\n"
+            "{{- with .Values.defaultRoles }}\n"
+            "disableGlobalPermissions: true\n"
+            "{{- end }}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "check", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertTrue(any("nested Helm control flow" in e for e in report.get("errors", [])))
+
+    def test_multiple_documents_mixing_helm_constructs(self) -> None:
+        unrelated = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: keep-me\n"
+        declaration = (
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DatabaseDeclaration\n"
+            "declarations:\n"
+            "  - classifierConfig:\n"
+            "      classifier:\n"
+            "        microserviceName: {{ .Values.SERVICE_NAME }}\n"
+            "        scope: service\n"
+            "    type: postgresql\n"
+        )
+        text = f"---\n{unrelated}---\n{declaration}"
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", text)
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            remaining = (repo / "chart/templates/dbaas.yaml").read_text(encoding="utf-8")
+            self.assertEqual(remaining, f"---\n{unrelated}")
+
+    def test_comments_and_crlf_line_endings_parse(self) -> None:
+        body = (
+            "{{- if .Values.enabled }}\r\n"
+            "# a leading comment inside the guard\r\n"
+            "apiVersion: nc.core.dbaas/v3\r\n"
+            "kind: DbPolicy\r\n"
+            "microserviceName: {{ .Values.SERVICE_NAME }} # trailing comment\r\n"
+            "disableGlobalPermissions: true\r\n"
+            "{{- end }}\r\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\r\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            # A trailing YAML comment must never be captured into the quoted
+            # templated value -- "{{ .Values.SERVICE_NAME }} # trailing
+            # comment" must load as exactly "{{ .Values.SERVICE_NAME }}",
+            # never "{{ .Values.SERVICE_NAME }} # trailing comment" (which
+            # changes policy identity and would be ineffective once the
+            # legacy source is removed).
+            out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            inner = out.split("{{- if .Values.enabled }}", 1)[1].rsplit("{{- end }}", 1)[0]
+            resource = yaml.safe_load(inner)
+            self.assertEqual(resource["spec"]["microserviceName"], "{{ .Values.SERVICE_NAME }}")
+
+    def test_trailing_comment_after_unquoted_classifier_expression_is_not_captured(self) -> None:
+        # Same defect, isolated to a nested classifier field (not the
+        # whole-document guard path above) and without CRLF in the mix.
+        body = (
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DatabaseDeclaration\n"
+            "declarations:\n"
+            "  - classifierConfig:\n"
+            "      classifier:\n"
+            "        microserviceName: {{ .Values.SERVICE_NAME }} # trailing comment\n"
+            "        scope: service\n"
+            "    type: postgresql\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            resource = yaml.safe_load(
+                (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                resource["spec"]["classifier"]["microserviceName"], "{{ .Values.SERVICE_NAME }}"
+            )
+
+    def test_quoted_settings_preserve_literal_hash_after_expression(self) -> None:
+        body = (
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DatabaseDeclaration\n"
+            "declarations:\n"
+            "  - classifierConfig:\n"
+            "      classifier:\n"
+            "        microserviceName: svc\n"
+            "        scope: service\n"
+            "    type: postgresql\n"
+            "    settings:\n"
+            '      doubleQuoted: "{{ .Values.NAME }} # double"\n'
+            "      singleQuoted: '{{ .Values.NAME }} # single'\n"
+            "      quotedWithRealComment: '{{ .Values.NAME }}' # a real, external comment\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            resource = yaml.safe_load(
+                (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(resource["spec"]["settings"]["doubleQuoted"], "{{ .Values.NAME }} # double")
+            self.assertEqual(resource["spec"]["settings"]["singleQuoted"], "{{ .Values.NAME }} # single")
+            self.assertEqual(resource["spec"]["settings"]["quotedWithRealComment"], "{{ .Values.NAME }}")
+
+    def test_malformed_yaml_unrelated_to_helm_still_fails(self) -> None:
+        # A literal tab used for indentation is invalid YAML regardless of any
+        # Helm content; masking must not paper over a genuine syntax error.
+        body = "apiVersion: nc.core.dbaas/v3\nkind: DbPolicy\n\tdisableGlobalPermissions: true\n"
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
+            code, report = run(repo, plan, "check", tmp)
+            self.assertEqual(code, 4, report.get("__stderr"))
+            self.assertTrue(any("not valid YAML" in e for e in report.get("errors", [])))
+
+
+GUARD = "dbaas.netcracker.com/v1"
+
+
+@unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
+class CapabilityGuardTest(unittest.TestCase):
+    """Issue #776 phase 4: the optional capabilityGuard plan field wraps the
+    generated resource in a ".Capabilities.APIVersions.Has" guard and
+    preserves the legacy source under the negated (operator-absent) branch
+    instead of deleting it. Omitting it preserves existing behavior."""
+
+    def test_omitting_capability_guard_preserves_existing_behavior(self) -> None:
+        content = json.dumps(
+            {"apiVersion": "nc.core.dbaas/v3", "kind": "DbPolicy", "disableGlobalPermissions": True}
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas-policy.json", content)
+            the_plan = helm_root_plan(
+                repo, "chart/templates/dbaas-policy.json", "templates/dbaas-operator-resources.yaml"
+            )
+            code, report = run(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertFalse((repo / "chart/templates/dbaas-policy.json").exists())
+            out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            self.assertNotIn(".Capabilities.APIVersions.Has", out)
+
+    def test_generated_resource_guarded_and_legacy_source_preserved_under_else(self) -> None:
+        content = json.dumps(
+            {"apiVersion": "nc.core.dbaas/v3", "kind": "DbPolicy", "disableGlobalPermissions": True}
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            source_path = write(repo, "chart/templates/dbaas-policy.json", content)
+            the_plan = helm_root_plan(
+                repo, "chart/templates/dbaas-policy.json", "templates/dbaas-operator-resources.yaml",
+                capabilityGuard=GUARD,
+            )
+            code, report = run(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+
+            out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            self.assertTrue(out.startswith(f'---\n{{{{- if .Capabilities.APIVersions.Has "{GUARD}" }}}}\n'))
+            self.assertIn("kind: DatabaseAccessPolicy", out)
+            self.assertIn("{{- end }}", out)
+
+            # The legacy source is preserved, not deleted, guarded to the
+            # operator-absent (negated) branch -- original bytes verbatim.
+            self.assertTrue(source_path.exists())
+            preserved = source_path.read_text(encoding="utf-8")
+            self.assertTrue(
+                preserved.startswith(f'{{{{- if not (.Capabilities.APIVersions.Has "{GUARD}") }}}}\n')
+            )
+            self.assertIn(content, preserved)
+            self.assertTrue(preserved.rstrip("\n").endswith("{{- end }}"))
+
+    def test_repeated_apply_does_not_duplicate_capability_fallback_guard(self) -> None:
+        content = (
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DbPolicy\n"
+            "disableGlobalPermissions: true\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            source_path = write(repo, "chart/templates/dbaas-policy.yaml", content)
+            the_plan = helm_root_plan(
+                repo,
+                "chart/templates/dbaas-policy.yaml",
+                "templates/dbaas-operator-resources.yaml",
+                capabilityGuard=GUARD,
+            )
+            code, report = run(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+
+            preserved = source_path.read_text(encoding="utf-8")
+            output_path = repo / "chart/templates/dbaas-operator-resources.yaml"
+            repeated_plan = helm_root_plan(
+                repo,
+                "chart/templates/dbaas-policy.yaml",
+                "templates/dbaas-operator-resources.yaml",
+                capabilityGuard=GUARD,
+                outputSha256=sha256(output_path),
+            )
+            code2, report2 = run(repo, repeated_plan, "apply", tmp)
+            self.assertEqual(code2, 0, report2.get("__stderr"))
+            self.assertEqual(report2["status"], "unchanged")
+            self.assertEqual(source_path.read_text(encoding="utf-8"), preserved)
+            self.assertEqual(
+                output_path.read_text(encoding="utf-8").count(
+                    f'{{{{- if .Capabilities.APIVersions.Has "{GUARD}" }}}}'
+                ),
+                1,
+            )
+
+    def test_capability_guard_nests_around_an_existing_whole_document_guard(self) -> None:
+        body = (
+            "{{- if .Values.enabled }}\n"
+            "apiVersion: nc.core.dbaas/v3\n"
+            "kind: DbPolicy\n"
+            "disableGlobalPermissions: true\n"
+            "{{- end }}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", f"---\n{body}")
+            the_plan = helm_root_plan(
+                repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml",
+                capabilityGuard=GUARD,
+            )
+            code, report = run(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stderr"))
+            out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            self.assertIn(f'{{{{- if .Capabilities.APIVersions.Has "{GUARD}" }}}}', out)
+            self.assertIn("{{- if .Values.enabled }}", out)
+            self.assertEqual(out.count("{{- end }}"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

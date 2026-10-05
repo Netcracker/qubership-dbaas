@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-server
+  namespace: '{{ .Values.NAMESPACE }}'
+spec:
+  template:
+    spec:
+      containers:
+        - name: config-server
+          image: config-server:latest
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+            {{- if .Values.extraMount }}
+            - name: extra
+              mountPath: /etc/extra
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: config-server-config
+        {{- if .Values.extraVolume }}
+        - name: extra
+          configMap:
+            name: extra-config
+        {{- end }}
