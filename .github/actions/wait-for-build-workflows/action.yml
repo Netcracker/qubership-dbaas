@@ -1,0 +1,130 @@
+name: Wait for PR image builds
+description: Waits for the image-producing workflows that the pull request triggers.
+
+inputs:
+  github-token:
+    description: Token used to query pull request files and workflow runs.
+    required: true
+  repository:
+    description: Repository in owner/name format.
+    required: true
+  head-sha:
+    description: Pull request head commit SHA.
+    required: true
+  pull-request-number:
+    description: Pull request number.
+    required: true
+  timeout-seconds:
+    description: Maximum time to wait for the build workflows.
+    required: false
+    default: "1800"
+  poll-interval-seconds:
+    description: Delay between workflow status checks.
+    required: false
+    default: "30"
+
+outputs:
+  aggregator-build:
+    description: Maven Build result used for image resolution (success or skipped).
+    value: ${{ steps.wait.outputs['aggregator-build'] }}
+  operator-build:
+    description: Go Build result used for image resolution (success or skipped).
+    value: ${{ steps.wait.outputs['operator-build'] }}
+
+runs:
+  using: composite
+  steps:
+    - id: wait
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ inputs.repository }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        PR_NUMBER: ${{ inputs.pull-request-number }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
+      run: |
+        set -euo pipefail
+
+        changed_files=$(gh api --paginate \
+          "repos/$REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+          --jq '.[].filename')
+
+        operator_build_required=true
+        if [ -n "$changed_files" ]; then
+          # Keep this filter aligned with pull_request.paths-ignore in go-build.yml.
+          operator_build_files=$(printf '%s\n' "$changed_files" \
+            | grep -Ev '^dbaas-operator/(docs|dev)/' || true)
+          if [ -z "$operator_build_files" ]; then
+            operator_build_required=false
+            echo "Go Build is skipped because all changed files match its paths-ignore rules."
+          fi
+        fi
+
+        deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+        for attempt in $(seq 1 $(( TIMEOUT_SECONDS / POLL_INTERVAL_SECONDS + 1 ))); do
+          runs=$(gh api \
+            "repos/$REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" \
+            --jq '[.workflow_runs[] | select(
+              .path == ".github/workflows/maven-build.yaml" or
+              .path == ".github/workflows/go-build.yml"
+            )]')
+
+          maven_run=$(printf '%s' "$runs" | jq -c \
+            '[.[] | select(.path == ".github/workflows/maven-build.yaml")] | sort_by(.created_at) | last')
+          go_run=$(printf '%s' "$runs" | jq -c \
+            '[.[] | select(.path == ".github/workflows/go-build.yml")] | sort_by(.created_at) | last')
+
+          maven_status=$(printf '%s' "$maven_run" | jq -r '.status // "missing"')
+          go_status=$(printf '%s' "$go_run" | jq -r '.status // "missing"')
+          echo "attempt $attempt: maven=$maven_status go=$go_status"
+
+          required_run_missing=false
+          [ "$maven_status" = "missing" ] && required_run_missing=true
+          if [ "$operator_build_required" = true ] && [ "$go_status" = "missing" ]; then
+            required_run_missing=true
+          fi
+
+          if [ "$required_run_missing" = false ]; then
+            maven_conclusion=$(printf '%s' "$maven_run" | jq -r '.conclusion // ""')
+            if [ "$maven_status" = "completed" ] \
+                && [ "$maven_conclusion" != "success" ] \
+                && [ "$maven_conclusion" != "skipped" ]; then
+              echo "::error::Maven Build finished with conclusion: $maven_conclusion"
+              exit 1
+            fi
+
+            go_conclusion=skipped
+            if [ "$go_status" != "missing" ]; then
+              go_conclusion=$(printf '%s' "$go_run" | jq -r '.conclusion // ""')
+              if [ "$go_status" = "completed" ] \
+                  && [ "$go_conclusion" != "success" ] \
+                  && [ "$go_conclusion" != "skipped" ]; then
+                echo "::error::Go Build finished with conclusion: $go_conclusion"
+                exit 1
+              fi
+            fi
+
+            go_complete=false
+            if [ "$operator_build_required" = false ] && [ "$go_status" = "missing" ]; then
+              go_complete=true
+            elif [ "$go_status" = "completed" ]; then
+              go_complete=true
+            fi
+
+            if [ "$maven_status" = "completed" ] && [ "$go_complete" = true ]; then
+              echo "aggregator-build=$maven_conclusion" >> "$GITHUB_OUTPUT"
+              echo "operator-build=$go_conclusion" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::Timed out waiting for PR image build workflows"
+            exit 1
+          fi
+          sleep "$POLL_INTERVAL_SECONDS"
+        done
+
+        echo "::error::Timed out waiting for PR image build workflows"
+        exit 1
