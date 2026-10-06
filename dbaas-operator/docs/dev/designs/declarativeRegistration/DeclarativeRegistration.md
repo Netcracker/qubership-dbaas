@@ -279,10 +279,10 @@ Responses of **`PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}`**
 
 | HTTP Code          | Situation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Error code                                                                               | Operator outcome                                                                       |
 |--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| `200 OK`           | Physical database already registered; roles unchanged. All properties match (`isDbActual=true`) — no update written — or at least one property differs (`isDbActual=false`) — aggregator updates: `adapterAddress`, `httpBasicCredentials.username`, `httpBasicCredentials.password`, `labels`, `metadata.apiVersion`, `metadata.apiVersions`, `metadata.supportedRoles`, `metadata.features`, `metadata.roHost`, plus `phydbid` when the stored record is still `unidentified` (legacy rows only — no current code path sets that flag, and `isDbActual` does not compare it, so the identifier is repaired only when some other property differs as well). A write also resets the cached adapter client and the cached physical database, so rotated credentials take effect at once. | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=AdapterRegistered` (new constant) |
-| `200 OK`           | Physical database already registered; roles changed but `multiusers` is explicitly `false` — migration is not triggered. `isDbActual` check applies as above, so `writeChanges` still persists the new `supportedRoles` even though no users are created for them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=AdapterRegistered` (new constant) |
-| `200 OK`           | Physical database already registered; roles changed, `multiusers=true`, but all logical databases already have the required roles (`getLogicalDatabasesForMigration` returns an empty list) — migration is not needed. `isDbActual` check applies as above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=AdapterRegistered` (new constant) |
-| `201 Created`      | Physical database did not exist — neither `phydbid` nor `adapterAddress` is known — registered successfully. `supportedRoles` are lowercased before saving, the password is encrypted, and the first physical database of a given type is flagged `global` automatically. The flag is computed at creation only and never revisited, but deletion guards it: `DELETE` answers `406` while the global physical database still has siblings of its type, so the flag has to be moved with `PUT /{phydbid}/global` first. Only the last physical database of a type can be deleted while global. `Location` points at the new resource.                                                                                                                                                     | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=AdapterRegistered` (new constant) |
+| `200 OK`           | Physical database already registered; roles unchanged. All properties match (`isDbActual=true`) — no update written — or at least one property differs (`isDbActual=false`) — aggregator updates: `adapterAddress`, `httpBasicCredentials.username`, `httpBasicCredentials.password`, `labels`, `metadata.apiVersion`, `metadata.apiVersions`, `metadata.supportedRoles`, `metadata.features`, `metadata.roHost`, plus `phydbid` when the stored record is still `unidentified` (legacy rows only — no current code path sets that flag, and `isDbActual` does not compare it, so the identifier is repaired only when some other property differs as well). A write also resets the cached adapter client and the cached physical database, so rotated credentials take effect at once. | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=PhysicalDatabaseRegistered`       |
+| `200 OK`           | Physical database already registered; roles changed but `multiusers` is explicitly `false` — migration is not triggered. `isDbActual` check applies as above, so `writeChanges` still persists the new `supportedRoles` even though no users are created for them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=PhysicalDatabaseRegistered`       |
+| `200 OK`           | Physical database already registered; roles changed, `multiusers=true`, but all logical databases already have the required roles (`getLogicalDatabasesForMigration` returns an empty list) — migration is not needed. `isDbActual` check applies as above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=PhysicalDatabaseRegistered`       |
+| `201 Created`      | Physical database did not exist — neither `phydbid` nor `adapterAddress` is known — registered successfully. `supportedRoles` are lowercased before saving, the password is encrypted, and the first physical database of a given type is flagged `global` automatically. The flag is computed at creation only and never revisited, but deletion guards it: `DELETE` answers `406` while the global physical database still has siblings of its type, so the flag has to be moved with `PUT /{phydbid}/global` first. Only the last physical database of a type can be deleted while global. `Location` points at the new resource.                                                                                                                                                     | —                                                                                        | `Succeeded` — `Ready=True`, `Stalled=False`, `Reason=PhysicalDatabaseRegistered`       |
 | `202 Accepted`     | Physical database exists, roles differ, `multiusers=true`, at least one logical database needs new roles, `status="running"` and `apiVersion="v2"`. Nothing is written to the physical database record on this path: the request is parked in `physical_database_instruction.physical_db_reg_request` and applied only when the cycle completes.                                                                                                                                                                                                                                                                                                                                                                                                                                         | —                                                                                        | `WaitingForDependency` — `Ready=False`, `Stalled=False`, `Reason=RoleMigrationStarted` |
 | `400 Bad Request`  | Request body cannot be deserialized: invalid JSON, wrong field type, or a required field (`metadata`, `status`, `apiVersion`, `supportedRoles`, `features`) is explicitly `null`. An **absent** required field is not caught here — see the 500 rows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | No error code — plain string: `"Not able to deserialize data provided."`                 | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=AggregatorRejected`    |
 | `400 Bad Request`  | `adapterAddress` is malformed: `host` or `scheme` is missing (e.g. `"localhost:8080"`, `"http://"`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `CORE-DBAAS-4045` — Adapter address name has wrong format                                | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=AggregatorRejected`    |
@@ -411,6 +411,25 @@ kubectl annotate physicaldatabase <name> dbaas.netcracker.com/refresh="$(date +%
 | `spec.credentialsSecretRef`      |   Yes    |   Yes   | Reference to the Secret holding the **adapter's own** Basic Auth credentials, sent as `httpBasicCredentials`. Operator is hardcoded to watch `username` and `password` names.                                                                                                                                                                                                                                                                                                                                                           |
 | `spec.credentialsSecretRef.name` |   Yes    |   Yes   | Secret name. The Secret must be in the CR's namespace.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
+**Status fields reported by the adapter:**
+
+The operator copies the answer of the last successful probe into the status, next to the common `phase`,
+`observedGeneration`, `conditions`, and `lastRequestId`. A later failed probe leaves these fields as they are.
+
+| Field                       | Sent to the aggregator as | Description                                                                                         |
+|-----------------------------|---------------------------|-----------------------------------------------------------------------------------------------------|
+| `status.physicalDatabaseId` | `{phydbid}` path segment  | Adapter-assigned identifier of the cluster. Key of the sibling-conflict check.                      |
+| `status.type`               | `{type}` path segment     | Database engine type, e.g. `postgresql`.                                                            |
+| `status.labels`             | `labels`                  | Physical database labels.                                                                           |
+| `status.supportedRoles`     | `metadata.supportedRoles` | Roles the adapter can create for logical databases.                                                 |
+| `status.features`           | `metadata.features`       | Feature flags. The operator requires `multiusers`, which the aggregator reads without a null check. |
+| `status.readOnlyHost`       | `metadata.roHost`         | Read-only host of the cluster.                                                                      |
+| `status.apiVersions`        | `metadata.apiVersions`    | Adapter API contract.                                                                               |
+
+The status schema carries no validation rules: the API server validates status writes, and a rejected write would
+drop the conditions too. An answer without `physicalDatabaseId`, `type`, `supportedRoles`, or `features.multiusers` is
+an `AdapterError` instead, and nothing is copied.
+
 > **Two different credential sets.** `spec.credentialsSecretRef` holds the credentials **dbaas-aggregator
 > uses to call the adapter**. The operator's own credentials for calling the aggregator are unrelated: they come from
 > `users.json` in the mounted `dbaas-security-configuration-secret`, or from an M2M token when
@@ -429,17 +448,19 @@ the spec against other CRs and the Secret, and the controller probes the adapter
 | `spec.operatorNamespace` | `minLength: 1`, `maxLength: 63`, `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, CEL `self == oldSelf` | A value that cannot name a namespace never matches any operator's `CLOUD_NAMESPACE`, so no operator instance claims the CR and it sits with no status and no event. Copied from the seven CRs that already carry this field. |
 | `spec.adapterAddress`    | `^[^\s:/?#]+://[^\s/?#]+`                                                                 | `validateRequest` rejects an address whose `URI.getHost()` or `URI.getScheme()` is null with `400 CORE-DBAAS-4045`.                                                                                                          |
 
-**Controller checks (no network):**
+**Controller checks:**
 
-| Check                                                                    | Operator outcome                                                                      |
-|--------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
-| Another CR claims the same `physicalDatabaseId`                          | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=RegistrationConflict` |
-| Another CR claims the same `adapterAddress`                              | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=RegistrationConflict` |
-| The Secret is absent, a key is missing or empty, or RBAC denies the read | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=SecretError`                   |
+| Check                                                                       | Operator outcome                                                                      |
+|-----------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| Another CR claims the same `spec.adapterAddress` (before the Secret read)   | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=RegistrationConflict` |
+| The Secret is absent, a key is missing or empty, or RBAC denies the read    | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=SecretError`                   |
+| Another CR reports the same `status.physicalDatabaseId` (after the probe)   | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, `Reason=RegistrationConflict` |
 
 The older claimant wins a conflict, by `creationTimestamp` and then by UID. The aggregator keys a registration by
 `physicalDatabaseId` alone, so two CRs with the same identifier and different types would overwrite one row. Addresses
-are compared as exact strings, as the aggregator compares them.
+are compared as exact strings, as the aggregator compares them. The identifier is known only after a successful probe,
+so the check compares it with the `status.physicalDatabaseId` of the other CRs, and a change of that field re-enqueues
+the siblings just like a spec change.
 
 ### How PhysicalDatabase Works
 
@@ -475,10 +496,11 @@ CR created (CRD schema and CEL rules passed at admission)
     Secret absent / key missing / RBAC denied ──────▶ BackingOff (SecretError)
         │
         ▼
-  Probe the adapter: GET {address}/api/v2/physical_database
-  → response: physicalDatabaseId, type, supportedRoles, features, labels, roHost, apiVersions
-    401 / 403 ──────────────────────────────────────▶ BackingOff (Unauthorized)
-    500+ ───────────────────────────────────────────▶ BackingOff (AdapterError)
+  Probe the adapter: GET {address}/api/v2/adapter/physical_database
+  → response: physicalDatabaseId, type, supportedRoles, features, labels, readOnlyHost, apiVersions,
+    copied into the status
+    401 ────────────────────────────────────────────▶ BackingOff (Unauthorized)
+    404 / 503 ──────────────────────────────────────▶ BackingOff (AdapterError)
         │
         ▼
   Pre-flight validation
@@ -503,11 +525,58 @@ CR created (CRD schema and CEL rules passed at admission)
 
 #### Adapter information endpoint
 
-> **Placeholder — adapter implementation pending.** The `GET /api/v2/physical_database` step in the flow above is
-> illustrative. It represents the endpoint a v2-capable adapter exposes to report its physical database descriptor,
-> letting the operator forward that data to the aggregator without requiring those fields in the CR. New endpoint on operator side not implemented yet.
+Request `GET {adapterAddress}/api/v2/adapter/physical_database`
+
+Response:
+
+```json
+{
+  "physicalDatabaseId": "postgresql",
+  "type": "postgresql",
+  "labels": {
+    "clusterName": "postgres-core"
+  },
+  "apiVersions": {
+    "specs": [
+      {
+        "specRootUrl": "/api",
+        "major": 2,
+        "minor": 1,
+        "supportedMajors": [2]
+      }
+    ]
+  },
+  "features": {
+    "multiusers": true,
+    "tls": true
+  },
+  "supportedRoles": [
+    "admin",
+    "rw",
+    "ro"
+  ],
+  "readOnlyHost": "pg-patroni-ro.postgres"
+}
+```
+
+Responses and operator behavior:
+
+| HTTP Code                 | Situation                                            | Operator outcome                                                                                 |
+|---------------------------|------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `200 OK`                  | The adapter describes its physical database          | The answer is copied into the status, and the operator continues with the registration           |
+| `401 Unauthorized`        | The adapter rejects the credentials from the Secret  | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=Unauthorized`                             |
+| `404 Not Found`           | The endpoint is not available on this adapter        | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=AdapterError`                             |
+| `503 Service Unavailable` | The adapter is not ready yet                         | `BackingOff` — `Ready=False`, `Stalled=False`, `Reason=AdapterError`                             |
+
+A `200` without `physicalDatabaseId`, `type`, `supportedRoles`, or `features.multiusers` is handled like `503`, and so
+is an adapter that cannot be reached.
+
+> **Adapter implementation pending.** The operator calls `GET /api/v2/adapter/physical_database`, but no adapter serves
+> it yet. It is the endpoint a v2-capable adapter exposes to report its physical database descriptor, letting the
+> operator forward that data to the aggregator without requiring those fields in the CR.
 >
-> When implemented, the response must include every field the aggregator's registration request body accepts - [PhysicalDatabaseRegistryRequestV3](../../../../../dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/dto/v3/PhysicalDatabaseRegistryRequestV3.java)
+> The response must include every field the aggregator's registration request body accepts:
+> [PhysicalDatabaseRegistryRequestV3](../../../../../dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/dto/v3/PhysicalDatabaseRegistryRequestV3.java).
 
 #### `internalMigration` query parameter
 
@@ -516,4 +585,7 @@ The operator adds the optional `internalMigration=true` query parameter to signa
 migration internally — calling the adapter for new users directly — instead of delegating batches back to the adapter
 via `202 Accepted`.
 
-> **Aggregator-side internal migration is not yet implemented.** The `internalMigration` parameter will be optional and the self-driven migration path is pending implementation on the aggregator side.
+> **Aggregator-side internal migration is not implemented yet.** The operator already sends `internalMigration=true`.
+> Until the aggregator supports it, the parameter is ignored and the aggregator answers the adapter-driven `202`. The
+> operator does not read the `202` body: it reports `WaitingForDependency` and repeats the registration with a
+> growing delay (5 s doubling up to 1 min) until the aggregator answers `200`.
