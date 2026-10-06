@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.dto.*;
 import com.netcracker.cloud.dbaas.dto.backup.DeleteResult;
 import com.netcracker.cloud.dbaas.dto.backup.Status;
+import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.UserEnsureRequestV3;
@@ -12,16 +13,12 @@ import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
-import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.MultiValidationException;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
-import jakarta.ws.rs.InternalServerErrorException;
-import jakarta.ws.rs.NotFoundException;
-import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.NotAllowedException;
 import jakarta.ws.rs.core.Response;
-
-import org.jboss.resteasy.specimpl.BuiltResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,13 +32,11 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus.HEALTH_CHECK_STATUS_UP;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.eq;
+import static jakarta.ws.rs.core.Response.Status.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyString;
 
 @ExtendWith(MockitoExtension.class)
 class DbaasAdapterRESTClientV2Test {
@@ -172,7 +167,7 @@ class DbaasAdapterRESTClientV2Test {
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
 
         when(restClient.deleteBackup(any(), any()))
-                .thenThrow(new NotFoundException());
+                .thenThrow(new AdapterException(NOT_FOUND.getStatusCode(), NOT_FOUND.getReasonPhrase()));
         final DeleteResult actualRestoreResultWithNotFound = dbaasAdapterRESTClient.delete(databasesBackup);
         assertEquals(Status.SUCCESS, actualRestoreResultWithNotFound.getStatus());
         assertEquals("Endpoint to delete backup not implemented on adapter yet!", actualRestoreResultWithNotFound.getMessage());
@@ -183,10 +178,10 @@ class DbaasAdapterRESTClientV2Test {
         final DatabasesBackup databasesBackup = getDatabasesBackupSample();
 
         when(restClient.deleteBackup(any(), any()))
-                .thenThrow(new InternalServerErrorException());
+                .thenThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), INTERNAL_SERVER_ERROR.getReasonPhrase()));
         final DeleteResult actualRestoreResultWithError = dbaasAdapterRESTClient.delete(databasesBackup);
         assertEquals(Status.FAIL, actualRestoreResultWithError.getStatus());
-        assertEquals("Adapter returned 500 with error HTTP 500 Internal Server Error", actualRestoreResultWithError.getMessage());
+        assertEquals("Adapter returned 500 with error " + INTERNAL_SERVER_ERROR.getReasonPhrase(), actualRestoreResultWithError.getMessage());
     }
 
     @Test
@@ -264,9 +259,10 @@ class DbaasAdapterRESTClientV2Test {
 
         databaseRegistry.setResources(Collections.singletonList(new DbResource("test-db", "test-name")));
         databaseRegistry.getResources();
-        when(restClient.dropResources(any(String.class), eq(databaseRegistry.getResources()))).thenThrow(new WebApplicationException(Response.Status.SERVICE_UNAVAILABLE));
+        when(restClient.dropResources(any(String.class), eq(databaseRegistry.getResources())))
+                .thenThrow(new AdapterException(SERVICE_UNAVAILABLE.getStatusCode(), SERVICE_UNAVAILABLE.getReasonPhrase()));
 
-        Assertions.assertThrows(WebApplicationException.class, () -> {
+        Assertions.assertThrows(AdapterException.class, () -> {
             dbaasAdapterRESTClient.dropDatabase(databaseRegistry);
         });
     }
@@ -279,8 +275,9 @@ class DbaasAdapterRESTClientV2Test {
 
         databaseRegistry.setResources(Collections.singletonList(new DbResource("test-db", "test-name")));
         databaseRegistry.getResources();
-        when(restClient.dropResources(any(String.class), eq(databaseRegistry.getResources()))).thenThrow(new WebApplicationException(Response.Status.FORBIDDEN));
-        Assertions.assertThrows(WebApplicationException.class, () -> {
+        when(restClient.dropResources(any(String.class), eq(databaseRegistry.getResources())))
+                .thenThrow(new AdapterException(FORBIDDEN.getStatusCode(), FORBIDDEN.getReasonPhrase()));
+        Assertions.assertThrows(AdapterException.class, () -> {
             dbaasAdapterRESTClient.dropDatabase(databaseRegistry);
         });
     }
@@ -288,11 +285,11 @@ class DbaasAdapterRESTClientV2Test {
     @Test
     void testUpdateSettings() {
         String dbName = "test-db-name";
-        Map<String, Object> currentSettings = new HashMap<String, Object>() {{
+        Map<String, Object> currentSettings = new HashMap<>() {{
             put("setting-#1", Stream.of("item1", "item2").collect(Collectors.toList()));
             put("setting-#2", true);
         }};
-        Map<String, Object> newSettings = new HashMap<String, Object>() {{
+        Map<String, Object> newSettings = new HashMap<>() {{
             put("setting-#1", Stream.of("item3", "item4").collect(Collectors.toList()));
             put("setting-#2", true);
         }};
@@ -310,18 +307,15 @@ class DbaasAdapterRESTClientV2Test {
 
     @Test
     void testGetDatabasesMethodNotAllowed() {
+        when(restClient.getDatabases(eq(TEST_TYPE)))
+                .thenThrow(new AdapterException(METHOD_NOT_ALLOWED.getStatusCode(), METHOD_NOT_ALLOWED.getReasonPhrase()));
 
-        when(restClient.getDatabases(eq(TEST_TYPE))).thenThrow(new WebApplicationException(Response.Status.METHOD_NOT_ALLOWED));
-
-        try {
-            dbaasAdapterRESTClient.getDatabases();
-            Assertions.fail("Must catch NotAllowedException");
-        } catch (WebApplicationException e) {
-            Assertions.assertEquals(String.format("Method Not Allowed. DbaaS adapter with address %s does not have 'GET /api/v2/dbaas/adapter/%s/databases' API (getDatabases). You need to contact cloud administrator and update this adapter to a newer version.",
-                    TEST_ADAPTER_ADDRESS,
-                    TEST_TYPE),
-                    ((BuiltResponse) e.getResponse()).getReasonPhrase());
-        }
+        NotAllowedException ex = Assertions.assertThrows(NotAllowedException.class, dbaasAdapterRESTClient::getDatabases,
+                "A 405 from the adapter must be translated to NotAllowedException");
+        Assertions.assertEquals(String.format("Method Not Allowed. DbaaS adapter with address %s does not have 'GET /api/v2/dbaas/adapter/%s/databases' API (getDatabases). Contact your cloud administrator and upgrade this adapter to a newer version.",
+                        TEST_ADAPTER_ADDRESS,
+                        TEST_TYPE),
+                ex.getMessage());
     }
 
     @Test
@@ -346,7 +340,7 @@ class DbaasAdapterRESTClientV2Test {
         when(restClient.restorePassword(eq(TEST_TYPE), eq(request))).thenReturn(response);
 
         Response.StatusType responseStatus = dbaasAdapterRESTClient.restorePasswords(settings, connProps);
-        Assertions.assertEquals(Response.Status.ACCEPTED.getStatusCode(), responseStatus.getStatusCode());
+        Assertions.assertEquals(ACCEPTED.getStatusCode(), responseStatus.getStatusCode());
     }
 
     @Test
@@ -388,7 +382,7 @@ class DbaasAdapterRESTClientV2Test {
 
     private DatabasesBackup getDatabasesBackupSample() {
         final DatabasesBackup databasesBackup = new DatabasesBackup();
-        databasesBackup.setDatabases(Arrays.asList("any"));
+        databasesBackup.setDatabases(List.of("any"));
         return databasesBackup;
     }
 
@@ -399,8 +393,7 @@ class DbaasAdapterRESTClientV2Test {
     }
 
     private RestoreResult getRestoreResultSample() {
-        final RestoreResult restoreResult = new RestoreResult(TEST_IDENTIFIER);
-        return restoreResult;
+        return new RestoreResult(TEST_IDENTIFIER);
     }
 
     private AdapterHealthStatus getAdapterHealthStatusSample() {

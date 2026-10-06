@@ -1,16 +1,17 @@
 package com.netcracker.cloud.dbaas.rest;
 
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.security.filters.AuthFilterSetter;
 import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static jakarta.ws.rs.core.Response.Status.FORBIDDEN;
+import static jakarta.ws.rs.core.Response.Status.UNAUTHORIZED;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
@@ -50,10 +51,7 @@ class SecureDbaasAdapterRestClientV2Test {
         SecureDbaasAdapterRestClientV2 secureClient = new SecureDbaasAdapterRestClientV2(
                 restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSetter, true);
 
-        Response unauthorizedResponse = mock(Response.class);
-        when(unauthorizedResponse.getStatus()).thenReturn(401);
-        when(unauthorizedResponse.getStatusInfo()).thenReturn(getStatusType(401));
-        WebApplicationException unauthorizedException = new WebApplicationException(unauthorizedResponse);
+        AdapterException unauthorizedException = new AdapterException(UNAUTHORIZED.getStatusCode(), UNAUTHORIZED.getReasonPhrase());
 
         AdapterHealthStatus healthStatus = new AdapterHealthStatus("ok");
         when(restClient.getHealth())
@@ -73,13 +71,10 @@ class SecureDbaasAdapterRestClientV2Test {
         SecureDbaasAdapterRestClientV2 secureClient = new SecureDbaasAdapterRestClientV2(
                 restClient, basicAuthFilter, kubernetesTokenAuthFilter, authFilterSetter, true);
 
-        Response forbiddenResponse = mock(Response.class);
-        when(forbiddenResponse.getStatus()).thenReturn(403);
-        when(forbiddenResponse.getStatusInfo()).thenReturn(getStatusType(403));
-        WebApplicationException forbiddenException = new WebApplicationException(forbiddenResponse);
+        AdapterException forbiddenException = new AdapterException(FORBIDDEN.getStatusCode(), FORBIDDEN.getReasonPhrase());
         when(restClient.getHealth()).thenThrow(forbiddenException);
 
-        assertThrows(WebApplicationException.class, secureClient::getHealth);
+        assertThrows(AdapterException.class, secureClient::getHealth);
         verify(authFilterSetter, never()).setAuthFilter(any());
         verify(restClient, times(1)).getHealth();
     }
@@ -100,24 +95,5 @@ class SecureDbaasAdapterRestClientV2Test {
 
         secureClient.close();
         verify(restClient).close();
-    }
-
-    private Response.StatusType getStatusType(int code) {
-        return new Response.StatusType() {
-            @Override
-            public int getStatusCode() {
-                return 403;
-            }
-
-            @Override
-            public Response.Status.Family getFamily() {
-                return null;
-            }
-
-            @Override
-            public String getReasonPhrase() {
-                return "";
-            }
-        };
     }
 }
