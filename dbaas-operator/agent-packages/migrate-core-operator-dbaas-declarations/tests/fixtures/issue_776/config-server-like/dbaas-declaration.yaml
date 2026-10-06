@@ -1,0 +1,13 @@
+apiVersion: core.netcracker.com/v1
+kind: DBaaS
+subKind: DbPolicy
+metadata:
+  name: {{ .Values.SERVICE_NAME }}
+  namespace: {{ .Values.NAMESPACE }}
+  labels:
+    app.kubernetes.io/processed-by-operator: "true"
+    deployer.cleanup/allow: "true"
+    app.kubernetes.io/name: config-server
+    app.kubernetes.io/instance: config-server-release
+spec:
+  disableGlobalPermissions: true

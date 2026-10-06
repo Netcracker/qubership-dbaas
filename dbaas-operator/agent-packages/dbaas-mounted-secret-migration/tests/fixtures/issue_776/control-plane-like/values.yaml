@@ -1,0 +1,3 @@
+NAMESPACE: control-plane-ns
+SERVICE_NAME: control-plane
+API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas-operator:8080

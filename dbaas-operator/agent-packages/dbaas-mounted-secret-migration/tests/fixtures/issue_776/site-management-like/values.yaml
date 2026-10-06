@@ -1,0 +1,4 @@
+NAMESPACE: site-management-ns
+SERVICE_NAME: site-management
+extraEnv: false
+topologyVolumes: []

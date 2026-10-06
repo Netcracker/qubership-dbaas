@@ -50,6 +50,7 @@ kubectl delete -f "$RESOURCES/dsc-tenant-materialize.yaml" --ignore-not-found --
 kubectl delete -f "$RESOURCES/idb-success-sync.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
 kubectl delete -f "$RESOURCES/idb-tenant-materialize.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
 kubectl delete -f "$RESOURCES/dap-success.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
+kubectl delete -f "$RESOURCES/dap-disable-global-permissions.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
 kubectl delete -f "$RESOURCES/mbr-success.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
 kubectl delete -f "$RESOURCES/nbr-success.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
 kubectl delete -f "$RESOURCES/edb-with-secret.yaml" --ignore-not-found --wait=true --timeout=60s >/dev/null
@@ -105,7 +106,9 @@ pass "both claims created Secrets; tenant classifier is preserved"
 
 section "4. DatabaseAccessPolicy"
 kubectl apply -f "$RESOURCES/dap-success.yaml" >/dev/null
+kubectl apply -f "$RESOURCES/dap-disable-global-permissions.yaml" >/dev/null
 wait_succeeded databaseaccesspolicy dap-success "$WORKLOAD_NS"
+wait_succeeded databaseaccesspolicy dap-disable-global-permissions "$WORKLOAD_NS"
 
 section "5. Namespace-scoped balancing rules"
 kubectl apply -f "$RESOURCES/mbr-success.yaml" >/dev/null

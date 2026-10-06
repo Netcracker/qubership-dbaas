@@ -1746,6 +1746,107 @@
               "sort": "desc"
             }
           }
+        },
+        {
+          "datasource": "$datasource",
+          "description": "Shows the number of databases that are registered in DBaaS but absent from adapter database lists.",
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 34
+          },
+          "id": 115,
+          "targets": [
+            {
+              "expr": "max(dbaas_registration_databases_lost_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
+              "format": "time_series",
+              "interval": "",
+              "intervalFactor": 1,
+              "legendFormat": "lost databases",
+              "refId": "A"
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Registry discrepancy count over time",
+          "type": "timeseries",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "decimals": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "barAlignment": 0,
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "spanNulls": true,
+                "showPoints": "never",
+                "pointSize": 5,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "axisPlacement": "auto",
+                "axisLabel": "databases",
+                "axisColorMode": "text",
+                "axisCenteredZero": false,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "hideFrom": {
+                  "tooltip": false,
+                  "viz": false,
+                  "legend": false
+                },
+                "lineStyle": {
+                  "fill": "solid"
+                },
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 0
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "showLegend": true,
+              "placement": "bottom",
+              "calcs": [
+                "min",
+                "max",
+                "mean",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "13.0.6"
         }
       ],
       "title": "Adapter Statistics",
@@ -4441,113 +4542,12 @@
       "type": "row"
     },
     {
-      "datasource": "$datasource",
-      "description": "Shows the number of databases that are registered in DBaaS but absent from adapter database lists.",
-      "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 49
-      },
-      "id": 115,
-      "targets": [
-        {
-          "expr": "max(dbaas_registration_databases_lost_number{container=\"$service_name\", namespace=\"$namespace\"} OR on() vector(0))",
-          "format": "time_series",
-          "interval": "",
-          "intervalFactor": 1,
-          "legendFormat": "lost databases",
-          "refId": "A"
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Registry discrepancy count over time",
-      "type": "timeseries",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0,
-          "decimals": 0,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "linear",
-            "barAlignment": 0,
-            "lineWidth": 1,
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "spanNulls": true,
-            "showPoints": "never",
-            "pointSize": 5,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "axisPlacement": "auto",
-            "axisLabel": "databases",
-            "axisColorMode": "text",
-            "axisCenteredZero": false,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "lineStyle": {
-              "fill": "solid"
-            },
-            "thresholdsStyle": {
-              "mode": "line"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "showLegend": true,
-          "placement": "bottom",
-          "calcs": [
-            "min",
-            "max",
-            "mean",
-            "lastNotNull"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "pluginVersion": "13.0.6"
-    },
-    {
       "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 56
+        "y": 49
       },
       "id": 122,
       "panels": [
@@ -4558,7 +4558,7 @@
             "h": 5,
             "w": 24,
             "x": 0,
-            "y": 57
+            "y": 50
           },
           "id": 116,
           "targets": [
@@ -4604,7 +4604,7 @@
             "h": 5,
             "w": 8,
             "x": 0,
-            "y": 62
+            "y": 55
           },
           "id": 123,
           "targets": [
@@ -4650,7 +4650,7 @@
             "h": 5,
             "w": 8,
             "x": 8,
-            "y": 62
+            "y": 55
           },
           "id": 124,
           "targets": [
@@ -4696,7 +4696,7 @@
             "h": 5,
             "w": 8,
             "x": 16,
-            "y": 62
+            "y": 55
           },
           "id": 125,
           "targets": [
@@ -4742,7 +4742,7 @@
             "h": 5,
             "w": 8,
             "x": 0,
-            "y": 67
+            "y": 60
           },
           "id": 126,
           "targets": [
@@ -4788,7 +4788,7 @@
             "h": 5,
             "w": 8,
             "x": 8,
-            "y": 67
+            "y": 60
           },
           "id": 121,
           "targets": [

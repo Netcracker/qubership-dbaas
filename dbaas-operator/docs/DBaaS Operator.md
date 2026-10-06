@@ -474,13 +474,13 @@ When `restrictedEnvironment: false` (the default), the chart creates:
 | Resource | Name | Scope | Purpose |
 |----------|------|-------|---------|
 | `ServiceAccount` | `dbaas-operator` | Namespaced (operator namespace) | Pod identity |
-| `ClusterRole` | `dbaas-operator` | Cluster-wide | Access to dbaas CRs and Event recording across reconciled namespaces (**no `secrets`** — Secret access is namespaced, see below) |
-| `ClusterRoleBinding` | `dbaas-operator-<NAMESPACE>` (e.g. `dbaas-operator-dbaas-system`, truncated to 63 characters) | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
+| `ClusterRole` | `<NAMESPACE>-dbaas-operator` (e.g. `dbaas-system-dbaas-operator`, truncated to 63 characters) | Cluster-wide | Access to dbaas CRs and Event recording across reconciled namespaces (**no `secrets`** — Secret access is namespaced, see below) |
+| `ClusterRoleBinding` | `<NAMESPACE>-dbaas-operator`, the same name as the `ClusterRole` | Cluster-wide | Binds `ClusterRole` to the `ServiceAccount` |
 | `Role` | `dbaas-operator` | Namespaced (operator namespace) | Leader-election leases and event recording |
 | `RoleBinding` | `dbaas-operator` | Namespaced (operator namespace) | Binds `Role` to the `ServiceAccount` |
 
-Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader-election leases and
-`PermanentBalancingRule` reconciliation stay in the operator namespace, so they use a namespace-scoped `Role`.
+Only permissions that genuinely require cluster-wide access are in the `ClusterRole`. Leader-election leases stay in
+the operator namespace, so they use a namespace-scoped `Role`.
 Events are written to the namespace of the involved object: the `Role` covers operator-namespace objects, while the
 `ClusterRole` covers objects reconciled in other namespaces.
 
@@ -547,8 +547,7 @@ Both extra arguments are load-bearing:
 #### Permission Reference
 
 The tables below explain *why* each permission is needed; the authoritative rule
-set is the linked templates above (and the `+kubebuilder:rbac` markers they are
-generated from).
+set is the linked templates above.
 
 **ClusterRole** (cluster-wide access):
 
@@ -583,9 +582,6 @@ generated from).
 |-----------|----------|-------|-----------------|
 | `coordination.k8s.io` | `leases` | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` | Leader election lock (required when `LEADER_ELECT=true`) |
 | `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events for involved objects in the operator namespace (required when `K8S_EVENTS_ENABLED=true`) |
-| `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read the singleton permanent balancing rule CR **in the operator namespace only** (informer scoped there); `patch` adds/removes the cleanup finalizer |
-| `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
-| `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
 
 > **Note:** Events are enabled by default. The chart omits the `events` rules from both the `Role` and `ClusterRole`
 > when `K8S_EVENTS_ENABLED=false`; hand-written RBAC may omit them in that mode as well. The `leases` rule is **not**
@@ -1075,9 +1071,9 @@ spec:
 | Field | Required | Mutable | Description |
 |-------|:--------:|:-------:|-------------|
 | `spec.microserviceName` | Yes | **No** | The microservice that owns this policy. Sent as `metadata.microserviceName` in the aggregator payload. Immutable after creation (CRD CEL rule `self == oldSelf`): repointing the same CR at a different microservice would silently rewrite role grants under the original Kubernetes object and lose the audit link to who created the policy. Create a new CR for a different service. |
-| `spec.services` | At least one of `services` or `policy` | Yes | Per-microservice role assignments. |
-| `spec.policy` | At least one of `services` or `policy` | Yes | Default role rules per database type, applied to services not listed in `services`. |
-| `spec.disableGlobalPermissions` | No | Yes | When `true`, opts out of dbaas-aggregator's default global permission grants. Defaults to `false`. |
+| `spec.services` | No (see constraint) | Yes | Per-microservice role assignments. |
+| `spec.policy` | No (see constraint) | Yes | Default role rules per database type, applied to services not listed in `services`. |
+| `spec.disableGlobalPermissions` | No (see constraint) | Yes | When `true`, opts out of dbaas-aggregator's default global permission grants. Defaults to `false`. |
 
 **`spec.services[]` fields:**
 
@@ -1094,17 +1090,16 @@ spec:
 | `defaultRole` | Yes | Role assigned to any microservice not explicitly listed in `services`. |
 | `additionalRole` | No | Extra roles that may be granted beyond `defaultRole`. Interpretation is adapter-specific. |
 
-> **Constraint:** at least one of `spec.services` or `spec.policy` must be non-empty. A CR with both fields absent is
-> rejected by the controller with `InvalidSpec` before the aggregator is contacted.
+> **Constraint (CRD admission):** at least one of `spec.services`, `spec.policy`, or `spec.disableGlobalPermissions`
+> must be set. A CR that omits all three is rejected by the API server with HTTP 422 before the object is stored.
 
 #### How DatabaseAccessPolicy Works
 
 Each time the spec changes (i.e., `metadata.generation` increments), the controller:
 
 1. Checks `spec.operatorNamespace` against `CLOUD_NAMESPACE` (skips if assigned elsewhere).
-2. Validates that at least one of `services` or `policy` is non-empty.
-3. Sends a `POST /api/declarations/v1/apply` request to dbaas-aggregator with `subKind: DbPolicy`.
-4. Updates `status.phase` and `status.conditions` based on the outcome.
+2. Sends a `POST /api/declarations/v1/apply` request to dbaas-aggregator with `subKind: DbPolicy`.
+3. Updates `status.phase` and `status.conditions` based on the outcome.
 
 ```text
 CR created / spec changed
@@ -1114,10 +1109,6 @@ CR created / spec changed
         │ assigned elsewhere → skip
         ▼
   phase = Processing
-        │
-        ▼
-  Pre-flight validation
-    services and policy both empty? ────────────────▶ InvalidConfiguration (InvalidSpec)
         │
         ▼
   Call dbaas-aggregator POST /api/declarations/v1/apply
@@ -1139,14 +1130,11 @@ dbaas-aggregator. Kind-specific reasons:
 |--------|-----------|---------|
 | `PolicyApplied` | `Ready=True` | Policy successfully applied through dbaas-aggregator |
 
-`InvalidSpec` has a single cause for this kind: both `services` and `policy` are empty.
-
 **Full state matrix:**
 
 | Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
 |----------|---------|:-------:|----------|:---------:|
 | Applied (200) | `Succeeded` | `True` | `PolicyApplied` | `False` |
-| Both `services` and `policy` empty | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
 | Aggregator 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
 | Aggregator 400 / 403 / 409 / 410 / 422 | `InvalidConfiguration` | `False` | `AggregatorRejected` | `True` |
 | Aggregator 5xx / network | `BackingOff` | `False` | `AggregatorError` | `False` |
@@ -1188,6 +1176,20 @@ spec:
       defaultRole: readonly
       additionalRole:
         - admin
+```
+
+**Disable global permission grants only (no explicit role assignments):**
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseAccessPolicy
+metadata:
+  name: my-policy
+  namespace: my-namespace
+spec:
+  operatorNamespace: dbaas-system
+  microserviceName: my-service
+  disableGlobalPermissions: true
 ```
 
 **Check status:**
@@ -2271,7 +2273,7 @@ or leaves them unset:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `NAMESPACE` | string | `default` | Namespace the chart renders into. Load-bearing beyond naming: the `ClusterRoleBinding` subject and the `ClusterRoleBinding` name are built from it, so it must be set explicitly (`--namespace` alone is not read by these templates). |
+| `NAMESPACE` | string | `default` | Namespace the chart renders into. Load-bearing beyond naming: the `ClusterRoleBinding` subject and the `ClusterRole` and `ClusterRoleBinding` names (`<NAMESPACE>-dbaas-operator`) are built from it, so it must be set explicitly (`--namespace` alone is not read by these templates). |
 | `IMAGE_REPOSITORY` / `TAG` | string | env-specific | Operator image and tag. |
 | `PAAS_PLATFORM` | string | `KUBERNETES` | Target platform. Allowed values: `KUBERNETES`, `OPENSHIFT`. Controls security-context settings and, together with `PAAS_VERSION`, the `HorizontalPodAutoscaler` API version. |
 | `REPLICAS` | integer | `1` | Number of operator pod replicas. Set `LEADER_ELECT=true` when using more than one. |

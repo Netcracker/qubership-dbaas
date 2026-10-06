@@ -914,9 +914,26 @@ public class OperatorIT extends AbstractIT {
 
                     var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(), List.of());
 
+                    KubernetesClientException ex = assertThrows(KubernetesClientException.class,
+                            () -> createCR(CRD_DATABASE_ACCESS_POLICY, cr));
+                    assertEquals(422, ex.getCode());
+                    assertTrue(ex.toString().contains("at least one of"));
+                }
+
+                @Test
+                void testDatabaseAccessPolicyOnlyDisableGlobalPermissionsSet() {
+                    String crName = generateName();
+                    String microserviceName = generateName();
+
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, null, null, true);
+
                     createCR(CRD_DATABASE_ACCESS_POLICY, cr);
-                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_INVALID_CONFIGURATION, STATUS_FALSE, REASON_INVALID_SPEC, STATUS_TRUE);
-                    helperV3.getAccessRoles(NAMESPACE, microserviceName, 404);
+                    waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
+
+                    var roles = helperV3.getAccessRoles(NAMESPACE, microserviceName, 200);
+                    assertEquals(Boolean.TRUE, roles.getDisableGlobalPermissions());
+                    assertTrue(roles.getServices() == null || roles.getServices().isEmpty());
+                    assertTrue(roles.getPolicies() == null || roles.getPolicies().isEmpty());
                 }
 
                 @Test
@@ -987,10 +1004,7 @@ public class OperatorIT extends AbstractIT {
                     String microserviceName = generateName();
 
                     var service = Map.of("name", "svc-a", "roles", List.of("admin"));
-                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), null);
-
-                    Map<String, Object> spec = (Map<String, Object>) cr.getAdditionalProperties().get("spec");
-                    spec.put("disableGlobalPermissions", true);
+                    var cr = buildDatabaseAccessPolicyCR(crName, microserviceName, List.of(service), null, true);
 
                     createCR(CRD_DATABASE_ACCESS_POLICY, cr);
                     waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, cr, PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
