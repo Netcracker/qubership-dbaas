@@ -18,6 +18,11 @@ concurrency:
 
 jobs:
   run-tests:
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+      pull-requests: read
     uses: ./.github/workflows/integration-tests.yml
     # Called workflows inherit vars but not secrets, so without this the report
     # email step silently fails on an empty EMAIL_PASSWORD.
