@@ -6,11 +6,11 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class M2MAuthModeConfigSourceTest {
+class M2MAuthModeProducerTest {
 
     @ParameterizedTest
     @CsvSource({"LEGACY, false", "HYBRID, true", "K8S, true"})
-    void setsM2MEnabledPropertyFromMode(M2MAuthMode mode, String expected) {
-        assertEquals(expected, new M2MAuthModeConfigSource(mode).getValue("dbaas.security.k8s.m2m.enabled"));
+    void kubernetesTokenEnabledFollowsMode(M2MAuthMode mode, boolean expected) {
+        assertEquals(expected, M2MAuthModeProducer.isKubernetesTokenEnabled(mode));
     }
 }
