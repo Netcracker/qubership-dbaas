@@ -32,6 +32,11 @@ change the plan (or the source) and re-run the writer.
    root, plus any `helmValues` the chart needs to render at all), the output file, and every source
    file with the SHA-256 of the exact bytes you inspected. Read [mapping.md](references/mapping.md)
    for the field-by-field conversion this plan feeds into; do not restate it here.
+   For a mixed cluster where the dbaas-operator CRDs may not be installed, set the optional
+   `capabilityGuard` field (e.g. `"dbaas.netcracker.com/v1"`) so the generated resource only renders
+   when that capability is present and the legacy source is preserved -- not deleted -- guarded to
+   the operator-absent branch instead (see mapping.md's "Capability guard" section). Omitting it
+   keeps every prior behavior unchanged.
 3. **Check.** Run `apply_migration.py --repo-root <repo> --plan <plan.json> --check`. This computes
    every change, materializes it into an isolated temporary tree per root, and validates it there --
    including rendering a helm root with `helm template` -- without touching the real repository.
@@ -64,7 +69,10 @@ Always blocking, before anything is written:
 - a source path used more than once, or equal to a generated output path;
 - an unrecognized field on a `DatabaseDeclaration`/`DbPolicy`, a non-boolean `lazy` or
   `disableGlobalPermissions`, a missing `classifierConfig.classifier`, or a `DatabaseAccessPolicy`
-  with neither `services` nor `policy`;
+  with neither `services` nor `policy` nor a present `disableGlobalPermissions` field -- a legacy
+  policy carrying only `disableGlobalPermissions` (`true` **or** `false`) is valid on its own;
+  presence of the field is what is checked, not its truth value, since an explicit `false` is a
+  real, different policy from the field being omitted entirely;
 - a legacy classifier that already has a literal `extraKeys` key (ambiguous against the wire-form
   key this converter introduces);
 - a resource's default name that is templated, or mixes literal text with a Helm expression --
@@ -86,7 +94,12 @@ Always blocking, before anything is written:
 - Derive required `DatabaseAccessPolicy.spec.microserviceName` from the owning service only when
   the source context is unambiguous; otherwise ask the user.
 - Set `operatorNamespace` to the namespace of the operator instance that will manage the generated
-  resources -- ask when that is not known; it is not necessarily the workload namespace.
+  resources -- ask when that is not known; it is not necessarily the workload namespace, and never
+  assume `dbaas-system`. For a Helm root, when the chart exposes a namespaced Kubernetes service
+  address as `API_DBAAS_ADDRESS` (e.g. `http://dbaas-aggregator.dbaas-operator:8080`), derive it
+  with `{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}`
+  (the second DNS label of the host) instead of a literal; require an explicit, verified value when
+  the address is external, single-label, empty, or otherwise cannot identify the namespace.
 - Preserve `physicalDatabaseId` verbatim; it pins only new-creation databases and is ignored for
   `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`.
 - Choose stable, DNS-compatible resource names (or explicit `nameOverrides`) and check for

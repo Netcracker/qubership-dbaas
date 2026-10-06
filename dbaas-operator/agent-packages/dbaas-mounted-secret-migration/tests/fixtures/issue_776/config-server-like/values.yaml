@@ -1,0 +1,4 @@
+NAMESPACE: config-server-ns
+SERVICE_NAME: config-server
+extraMount: false
+extraVolume: false

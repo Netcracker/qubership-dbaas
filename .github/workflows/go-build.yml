@@ -9,22 +9,57 @@ on:
   push:
     branches:
       - main
-    # Skip the operator build for commits that touch only operator docs/dev helpers.
-    # paths-ignore skips the run only when EVERY changed file matches; a mixed
-    # docs-plus-code commit still builds.
-    paths-ignore:
-      - 'dbaas-operator/docs/**'
-      - 'dbaas-operator/dev/**'
   pull_request:
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - 'dbaas-operator/docs/**'
-      - 'dbaas-operator/dev/**'
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: Detect Go build changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect applicable changes
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] \
+              || [ -z "$BASE_SHA" ] \
+              || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$RUNNER_TEMP/go-build-changed-files.txt"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$changed_files"
+          cat "$changed_files"
+
+          applicable_files="$RUNNER_TEMP/go-build-applicable-files.txt"
+          if grep -Ev '^dbaas-operator/(docs|dev)/' "$changed_files" > "$applicable_files"; then
+            cat "$applicable_files"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build and test
+    needs: [changes]
+    if: needs.changes.outputs.run != 'false'
     uses: Netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@ed95ad948025728db1e613a3e1a4e6a11186f541 # v2.6.2
     with:
       install-envtest: true
@@ -35,6 +70,8 @@ jobs:
 
   test-agent-packages:
     name: Test agent packages
+    needs: [changes]
+    if: needs.changes.outputs.run != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -80,6 +117,8 @@ jobs:
   # the source said "dbdap", breaking every documented `kubectl get dbdap`.
   verify-generated:
     name: Verify generated artifacts
+    needs: [changes]
+    if: needs.changes.outputs.run != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -107,3 +146,23 @@ jobs:
             echo "::error::Generated artifacts are stale. Run 'make manifests generate sync-helm-crds' in dbaas-operator/ and commit the result."
             exit 1
           fi
+
+  go-build-gate:
+    name: Go Build Gate
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [changes, build, test-agent-packages, verify-generated]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require Go validation when applicable
+        if: >-
+          needs.changes.result != 'success' ||
+          (needs.changes.outputs.run != 'false' &&
+           (needs.build.result != 'success' ||
+            needs.test-agent-packages.result != 'success' ||
+            needs.verify-generated.result != 'success'))
+        run: |
+          echo "::error::Go validation did not succeed"
+          exit 1
