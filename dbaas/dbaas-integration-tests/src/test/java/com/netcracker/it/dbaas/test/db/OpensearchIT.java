@@ -48,7 +48,7 @@ class OpensearchIT extends AbstractIT {
     void testCreateGeneratedPrefixAndDelete() throws IOException {
         var namespace = helperV3.generateTestNamespace();
         Map<String, Object> settingsMap = Collections.singletonMap("resourcePrefix", true);
-        DatabaseResponse createdDatabase = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "opensearch-test", 201, OPENSEARCH_TYPE, null, namespace, true, null, "", settingsMap);
+        DatabaseResponse createdDatabase = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "opensearch-test", 201, OPENSEARCH_TYPE, null, namespace, true, null, null, settingsMap);
         log.debug("createdDatabase = {}", createdDatabase);
         String dbaasPrefix = createdDatabase.getConnectionPropertyAsString("resourcePrefix");
         String username = createdDatabase.getConnectionPropertyAsString("username");
