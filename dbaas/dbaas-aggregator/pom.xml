@@ -18,6 +18,7 @@
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
         <flyway.version>13.3.0</flyway.version>
         <shedlock.version>7.10.1</shedlock.version>
+        <swagger-maven-plugin.version>2.2.54</swagger-maven-plugin.version>
         <sonar.coverage.exclusions>
             src/main/java/db/migration/postgresql/**/*,
             src/main/java/com/netcracker/cloud/dbaas/entity/**/*,
@@ -214,6 +215,12 @@
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+            <version>${swagger-maven-plugin.version}</version>
+        </dependency>
+
         <!-- Test dependencies -->
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -288,6 +295,29 @@
                         <arg>-Amapstruct.defaultComponentModel=cdi</arg>
                     </compilerArgs>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-maven-plugin-jakarta</artifactId>
+                <version>${swagger-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-adapter-contract-spec</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>resolve</goal>
+                        </goals>
+                        <configuration>
+                            <outputFileName>adapter-contract</outputFileName>
+                            <outputPath>${project.basedir}/../../docs/api</outputPath>
+                            <outputFormat>YAML</outputFormat>
+                            <resourceClasses>
+                                <resourceClass>com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2</resourceClass>
+                            </resourceClasses>
+                            <prettyPrint>true</prettyPrint>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>io.quarkus</groupId>

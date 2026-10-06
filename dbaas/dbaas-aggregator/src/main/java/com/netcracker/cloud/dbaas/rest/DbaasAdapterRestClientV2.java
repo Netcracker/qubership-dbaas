@@ -11,6 +11,12 @@ import com.netcracker.cloud.dbaas.entity.dto.backupV2.RestoreAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.vertx.core.impl.NoStackTraceTimeoutException;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -24,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+@OpenAPIDefinition(info = @Info(title = "DBaaS Adapter REST Client V2", version = "2.3"))
 @Retry(delay = 1, delayUnit = ChronoUnit.SECONDS, maxRetries = 5,
         retryOn = {SocketTimeoutException.class, NoStackTraceTimeoutException.class})
 public interface DbaasAdapterRestClientV2 extends AutoCloseable {
@@ -37,8 +44,8 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     Response handshake(@PathParam("type") String type);
 
     @GET
-    @Path("/api/v2/dbaas/adapter/physical_database/force_registration")    
-    Response forceRegistration();    
+    @Path("/api/v2/dbaas/adapter/physical_database/force_registration")
+    Response forceRegistration();
 
     @GET
     @Path("/api/v2/dbaas/adapter/{type}/supports")
@@ -127,6 +134,7 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @Path("/api/v2/dbaas/adapter/{type}/users/{username}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
+    @Operation(hidden = true)
     EnsuredUser ensureUser(@PathParam("type") String type, @PathParam("username") String username,
                            UserEnsureRequest request);
 
@@ -135,6 +143,7 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     EnsuredUser ensureUser(@PathParam("type") String type, @PathParam("username") String username,
+                           @RequestBody(content = @Content(schema = @Schema(oneOf = {UserEnsureRequest.class, UserEnsureRequestV3.class})))
                            UserEnsureRequestV3 request);
 
     @PUT
@@ -142,12 +151,14 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     EnsuredUser ensureUser(@PathParam("type") String type,
+                           @RequestBody(content = @Content(schema = @Schema(oneOf = {UserEnsureRequestV3.class, GetOrCreateUserAdapterRequest.class})))
                            UserEnsureRequestV3 request);
 
     @PUT
     @Path("/api/v2/dbaas/adapter/{type}/users")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
+    @Operation(hidden = true)
     EnsuredUser createUser(@PathParam("type") String type,
                            GetOrCreateUserAdapterRequest request);
 

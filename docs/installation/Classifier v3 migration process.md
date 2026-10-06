@@ -81,7 +81,7 @@ won't be created during the fourth step.
 
 Send a request to DBaaS to update classifier. You should specify an old classifier from the log, a new v3 classifier
 which will be used by microservice and put `fromV1orV2ToV3` to `true`. You can find more about the API here:
-[Update existing logical database classifier](../rest-api.md#update-existing-database-classifier)
+[Update existing logical database classifier](../api/rest-api.md#update-existing-database-classifier)
 
 #### 5. Update service with new classifier
 

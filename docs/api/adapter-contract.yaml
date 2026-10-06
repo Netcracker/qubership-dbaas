@@ -1,0 +1,867 @@
+openapi: 3.0.1
+info:
+  title: DBaaS Adapter REST Client V2
+  version: "2.3"
+paths:
+  /api/v2/dbaas/adapter/{dbType}/backups/backup:
+    post:
+      operationId: backupV2
+      parameters:
+      - name: dbType
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              $ref: "#/components/schemas/BackupAdapterRequest"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalBackupAdapterResponse"
+  /api/v2/dbaas/adapter/{type}/databases/{dbName}/metadata:
+    put:
+      operationId: changeMetaData
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: dbName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: object
+              additionalProperties:
+                type: object
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*': {}
+  /api/v2/dbaas/adapter/{type}/backups/collect:
+    post:
+      operationId: collectBackup
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: allowEviction
+        in: query
+        schema:
+          type: boolean
+      - name: keep
+        in: query
+        schema:
+          type: string
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: array
+              items:
+                type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+  /api/v2/dbaas/adapter/{type}/databases:
+    get:
+      operationId: getDatabases
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*':
+              schema:
+                uniqueItems: true
+                type: array
+                items:
+                  type: string
+    post:
+      operationId: createDatabase
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdapterDatabaseCreateRequest"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedDatabaseV3"
+  /api/v2/dbaas/adapter/{type}/backups/{backupId}:
+    delete:
+      operationId: deleteBackup
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*':
+              schema:
+                type: string
+  /api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}:
+    get:
+      operationId: trackBackupV2
+      parameters:
+      - name: dbType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storageName
+        in: query
+        schema:
+          type: string
+      - name: blobPath
+        in: query
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalBackupAdapterResponse"
+    delete:
+      operationId: deleteBackupV2
+      parameters:
+      - name: dbType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: blobPath
+        in: query
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /api/v2/dbaas/adapter/{type}/describe/databases:
+    post:
+      operationId: describeDatabases
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: connectionProperties
+        in: query
+        schema:
+          type: boolean
+      - name: resources
+        in: query
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: array
+              items:
+                type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/DescribedDatabase"
+  /api/v2/dbaas/adapter/{type}/resources/bulk-drop:
+    post:
+      operationId: dropResources
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/DbResource"
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*': {}
+  /api/v2/dbaas/adapter/{type}/users:
+    put:
+      operationId: ensureUser
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/UserEnsureRequestV3"
+              - $ref: "#/components/schemas/GetOrCreateUserAdapterRequest"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnsuredUser"
+  /api/v2/dbaas/adapter/{type}/users/{username}:
+    put:
+      operationId: ensureUser_1
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: username
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/UserEnsureRequest"
+              - $ref: "#/components/schemas/UserEnsureRequestV3"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnsuredUser"
+  /api/v2/dbaas/adapter/physical_database/force_registration:
+    get:
+      operationId: forceRegistration
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*': {}
+  /health:
+    get:
+      operationId: getHealth
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AdapterHealthStatus"
+  /api/v2/dbaas/adapter/{type}/physical_database:
+    get:
+      operationId: handshake
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*': {}
+  /api/v2/dbaas/adapter/{type}/backups/{backupId}/restoration:
+    post:
+      operationId: restoreBackup
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              $ref: "#/components/schemas/RestoreRequest"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+  /api/v2/dbaas/adapter/{type}/backups/{backupId}/restore:
+    post:
+      operationId: restoreBackup_1
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: regenerateNames
+        in: query
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: array
+              items:
+                type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+  /api/v2/dbaas/adapter/{type}/users/restore-password:
+    post:
+      operationId: restorePassword
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestorePasswordsAdapterRequest"
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*': {}
+  /api/v2/dbaas/adapter/{dbType}/backups/backup/{backupId}/restore:
+    post:
+      operationId: restoreV2
+      parameters:
+      - name: dbType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: dryRun
+        in: query
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              $ref: "#/components/schemas/RestoreAdapterRequest"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalRestoreAdapterResponse"
+  /api/v2/dbaas/adapter/{type}/supports:
+    get:
+      operationId: supports
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: boolean
+  /api/v2/dbaas/adapter/{type}/backups/track/{action}/{track}:
+    get:
+      operationId: trackBackup
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: track
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+  /api/v2/dbaas/adapter/{dbType}/backups/restore/{restoreId}:
+    get:
+      operationId: trackRestoreV2
+      parameters:
+      - name: dbType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: restoreId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storageName
+        in: query
+        schema:
+          type: string
+      - name: blobPath
+        in: query
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalRestoreAdapterResponse"
+  /api/v2/dbaas/adapter/{type}/databases/{dbName}/settings:
+    put:
+      operationId: updateSettings
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: dbName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsAdapterRequest"
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*':
+              schema:
+                type: string
+components:
+  schemas:
+    BackupDatabaseResponse:
+      type: object
+      properties:
+        databaseName:
+          type: string
+        status:
+          type: string
+        size:
+          type: integer
+          format: int64
+        duration:
+          type: integer
+          format: int64
+        path:
+          type: string
+        errorMessage:
+          type: string
+        creationTime:
+          type: string
+          format: date-time
+    LogicalBackupAdapterResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        errorMessage:
+          type: string
+        backupId:
+          type: string
+        creationTime:
+          type: string
+          format: date-time
+        completionTime:
+          type: string
+          format: date-time
+        storageName:
+          type: string
+        blobPath:
+          type: string
+        databases:
+          type: array
+          items:
+            $ref: "#/components/schemas/BackupDatabaseResponse"
+    BackupAdapterRequest:
+      type: object
+      properties:
+        storageName:
+          type: string
+        blobPath:
+          type: string
+        databases:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+    TrackedAction:
+      type: object
+      properties:
+        trackId:
+          type: string
+        status:
+          type: string
+          enum:
+          - SUCCESS
+          - PROCEEDING
+          - FAIL
+        action:
+          type: string
+          enum:
+          - BACKUP
+          - RESTORE
+        adapterId:
+          type: string
+        details:
+          type: object
+          additionalProperties:
+            type: object
+        changedNameDb:
+          type: object
+          additionalProperties:
+            type: string
+        trackPath:
+          type: string
+        finished:
+          type: boolean
+        createdTimeMs:
+          type: integer
+          format: int64
+        whenStarted:
+          type: string
+          format: date-time
+        whenChecked:
+          type: string
+          format: date-time
+        whenFinished:
+          type: string
+          format: date-time
+        trackLog:
+          type: string
+    ConnectionDescription:
+      type: object
+      properties:
+        fields:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/FieldDescription"
+    CreatedDatabaseV3:
+      type: object
+      properties:
+        connectionProperties:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: object
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DbResource"
+        name:
+          type: string
+        adapterId:
+          type: string
+        connectionDescription:
+          $ref: "#/components/schemas/ConnectionDescription"
+    DbResource:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+    FieldDescription:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - PASSWORD
+    AdapterDatabaseCreateRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: object
+        namePrefix:
+          type: string
+          description: My best parameter
+        settings:
+          type: object
+          additionalProperties:
+            type: object
+        initScriptIdentifiers:
+          type: array
+          items:
+            type: string
+        password:
+          type: string
+        username:
+          type: string
+        dbName:
+          type: string
+      description: The request to create database for REST dbaas adapter
+    DescribedDatabase:
+      type: object
+      properties:
+        connectionProperties:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: object
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DbResource"
+    EnsuredUser:
+      type: object
+      properties:
+        name:
+          type: string
+        connectionProperties:
+          type: object
+          additionalProperties:
+            type: object
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DbResource"
+        created:
+          type: boolean
+    UserEnsureRequestV3:
+      type: object
+      properties:
+        role:
+          type: string
+        dbName:
+          type: string
+        password:
+          type: string
+    GetOrCreateUserAdapterRequest:
+      type: object
+      properties:
+        dbName:
+          type: string
+        role:
+          type: string
+        userNamePrefix:
+          type: string
+    UserEnsureRequest:
+      type: object
+      properties:
+        dbName:
+          type: string
+        password:
+          type: string
+    AdapterHealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+    Database:
+      type: object
+      properties:
+        namespace:
+          type: string
+        microservice:
+          type: string
+        name:
+          type: string
+        prefix:
+          type: string
+    RestoreRequest:
+      type: object
+      properties:
+        databases:
+          type: array
+          items:
+            $ref: "#/components/schemas/Database"
+        regenerateNames:
+          type: boolean
+    RestorePasswordsAdapterRequest:
+      type: object
+      properties:
+        settings:
+          type: object
+          additionalProperties:
+            type: object
+        connectionProperties:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: object
+    LogicalRestoreAdapterResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        errorMessage:
+          type: string
+        restoreId:
+          type: string
+        creationTime:
+          type: string
+          format: date-time
+        completionTime:
+          type: string
+          format: date-time
+        storageName:
+          type: string
+        blobPath:
+          type: string
+        databases:
+          type: array
+          items:
+            $ref: "#/components/schemas/RestoreDatabaseResponse"
+    RestoreDatabaseResponse:
+      type: object
+      properties:
+        previousDatabaseName:
+          type: string
+        databaseName:
+          type: string
+        status:
+          type: string
+        path:
+          type: string
+        microserviceName:
+          type: string
+        namespace:
+          type: string
+        prefix:
+          type: string
+        duration:
+          type: integer
+          format: int64
+        errorMessage:
+          type: string
+        creationTime:
+          type: string
+          format: date-time
+    RestoreAdapterRequest:
+      type: object
+      properties:
+        storageName:
+          type: string
+        blobPath:
+          type: string
+        databases:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+    UpdateSettingsAdapterRequest:
+      type: object
+      properties:
+        currentSettings:
+          type: object
+          additionalProperties:
+            type: object
+        newSettings:
+          type: object
+          additionalProperties:
+            type: object
