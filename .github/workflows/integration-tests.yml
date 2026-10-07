@@ -3,6 +3,17 @@ name: DBaaS Integration Tests
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      m2m-auth-mode:
+        description: M2M_AUTH_MODE of the aggregator
+        type: choice
+        options: [hybrid, legacy, k8s]
+        default: hybrid
+      operator-m2m-auth-mode:
+        description: M2M_AUTH_MODE of dbaas-operator
+        type: choice
+        options: [legacy, hybrid, k8s]
+        default: legacy
   pull_request:
     types: [opened, synchronize]
 
@@ -229,7 +240,7 @@ jobs:
 
       - name: Deploy DBaaS
         working-directory: bootstrap
-        run: make install CONFIG_FILE=local.mk KUBERNETES_M2M_ENABLED=true OPERATOR_M2M_ENABLED=false PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
+        run: make install CONFIG_FILE=local.mk M2M_AUTH_MODE=${{ inputs.m2m-auth-mode || 'hybrid' }} OPERATOR_M2M_AUTH_MODE=${{ inputs.operator-m2m-auth-mode || 'legacy' }} PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 
       - name: Wait for postgres-backup-daemon
         run: |
