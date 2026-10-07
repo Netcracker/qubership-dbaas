@@ -1,0 +1,74 @@
+name: Resolve GHCR image tag
+description: >
+  Checks a netcracker GHCR package for an image tag. Waits for the tag or returns a fallback tag
+  after the timeout.
+
+inputs:
+  package:
+    description: GHCR package name under the netcracker org (e.g. "qubership-dbaas").
+    required: true
+  tag:
+    description: Image tag to wait for.
+    required: true
+  github-token:
+    description: Token used to query the GHCR registry.
+    required: true
+  timeout-seconds:
+    description: Give up after this many seconds. Use 0 for one check.
+    required: false
+    default: "900"
+  fallback-tag:
+    description: Tag to use when the requested tag is unavailable. An empty value fails the action.
+    required: false
+    default: ""
+  poll-interval-seconds:
+    description: Delay between polls.
+    required: false
+    default: "30"
+
+outputs:
+  resolved-tag:
+    description: The requested tag if found, or the fallback tag.
+    value: ${{ steps.resolve.outputs.resolved-tag }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PACKAGE: ${{ inputs.package }}
+        TAG: ${{ inputs.tag }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        FALLBACK_TAG: ${{ inputs.fallback-tag }}
+        POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
+      run: |
+        image_tag_exists() {
+          local token
+          token=$(curl -fsSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://ghcr.io/token?scope=repository:netcracker/$PACKAGE:pull" \
+            | jq -r .token)
+          curl -fsL -o /dev/null \
+            -H "Authorization: Bearer $token" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/netcracker/$PACKAGE/manifests/$TAG"
+        }
+
+        DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
+        echo "Waiting for netcracker/$PACKAGE:$TAG"
+        until image_tag_exists; do
+          if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+            if [ -n "$FALLBACK_TAG" ]; then
+              echo "::warning::Image tag $TAG not found for netcracker/$PACKAGE; falling back to $FALLBACK_TAG"
+              echo "resolved-tag=$FALLBACK_TAG" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Timed out waiting for netcracker/$PACKAGE:$TAG"
+            exit 1
+          fi
+          sleep "$POLL_INTERVAL_SECONDS"
+        done
+        echo "Found netcracker/$PACKAGE:$TAG"
+        echo "resolved-tag=$TAG" >> "$GITHUB_OUTPUT"

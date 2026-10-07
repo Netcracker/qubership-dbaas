@@ -71,6 +71,21 @@ SILENTLY_DROPPED_METADATA_FIELDS = {
     "managedFields",
     "selfLink",
 }
+# The Core Operator's `kind: DBaaS` wrapper stamps these two labels onto every
+# wrapped resource itself, not onto the declaration/policy the wrapper
+# carries -- they describe the wrapper's own processing state (has the Core
+# Operator already handled this object; may its cleanup delete it) and have
+# no meaning once the wrapper is gone and the declaration is a native,
+# unwrapped dbaas-operator CR. Ordinary application labels, Argo CD/tracking
+# labels, and annotations are not wrapper-only and are never filtered here.
+# A label with one of these exact names on a *direct* (non-`kind: DBaaS`)
+# DbPolicy/DatabaseDeclaration is a real, unrelated label and is preserved --
+# only the wrapper's own metadata.labels are filtered (see is_wrapper in
+# target_metadata()).
+WRAPPER_ONLY_LABELS = {
+    "app.kubernetes.io/processed-by-operator",
+    "deployer.cleanup/allow",
+}
 
 
 class TemplatedNameRequired(Exception):
@@ -247,7 +262,8 @@ def convert_item(
     if metadata_value is not None and not isinstance(metadata_value, dict):
         errors.append(f"Document {doc_index}: metadata must be an object")
         return []
-    if kind == "DBaaS":
+    is_wrapper = kind == "DBaaS"
+    if is_wrapper:
         body = dict(body_value)
         metadata = dict(metadata_value or {})
     else:
@@ -285,12 +301,17 @@ def convert_item(
                     args,
                     warnings,
                     errors,
+                    is_wrapper=is_wrapper,
                 )
             )
         return resources
 
     if legacy_kind_lower == "dbpolicy":
-        return [convert_db_policy(body, metadata, doc_index, item_index, args, warnings, errors)]
+        return [
+            convert_db_policy(
+                body, metadata, doc_index, item_index, args, warnings, errors, is_wrapper=is_wrapper
+            )
+        ]
 
     warnings.append(f"Document {doc_index}: skipped unsupported kind/subKind {legacy_kind!r}")
     return []
@@ -306,6 +327,7 @@ def convert_database_declaration(
     warnings: list[str],
     errors: list[str],
     override_name: str | None = None,
+    is_wrapper: bool = False,
 ) -> dict[str, Any]:
     reject_unknown_fields(
         declaration,
@@ -328,6 +350,7 @@ def convert_database_declaration(
         errors,
         disambiguate_parent=multiple_declarations,
         override_name=override_name,
+        is_wrapper=is_wrapper,
     )
     target_classifier = convert_classifier(
         classifier, args.service_name, errors, f"DatabaseDeclaration #{declaration_index} classifier"
@@ -617,8 +640,10 @@ def _validate_access_policy(spec: dict[str, Any], errors: list[str]) -> None:
         errors.append("spec.disableGlobalPermissions must be a boolean")
     services = spec.get("services")
     policy = spec.get("policy")
-    if not services and not policy:
-        errors.append("spec.services or spec.policy must be non-empty")
+    if not services and not policy and "disableGlobalPermissions" not in spec:
+        errors.append(
+            "spec.services or spec.policy must be non-empty, or spec.disableGlobalPermissions must be present"
+        )
     if services is not None:
         if not isinstance(services, list):
             errors.append("spec.services must be an array")
@@ -732,6 +757,7 @@ def convert_db_policy(
     warnings: list[str],
     errors: list[str],
     override_name: str | None = None,
+    is_wrapper: bool = False,
 ) -> dict[str, Any]:
     reject_unknown_fields(body, DB_POLICY_FIELDS, "DatabaseAccessPolicy", errors)
     source_microservice_name = body.get("microserviceName") or label_value(
@@ -767,14 +793,23 @@ def convert_db_policy(
         else:
             spec["disableGlobalPermissions"] = coerced
 
-    if not spec.get("services") and not spec.get("policy"):
-        errors.append("DatabaseAccessPolicy must have a non-empty services or policy list")
+    if not spec.get("services") and not spec.get("policy") and "disableGlobalPermissions" not in spec:
+        errors.append(
+            "DatabaseAccessPolicy must have a non-empty services or policy list, or disableGlobalPermissions present"
+        )
 
     return {
         "apiVersion": "dbaas.netcracker.com/v1",
         "kind": "DatabaseAccessPolicy",
         "metadata": target_metadata(
-            old_metadata, args, "database-access-policy", doc_index, item_index, errors, override_name=override_name
+            old_metadata,
+            args,
+            "database-access-policy",
+            doc_index,
+            item_index,
+            errors,
+            override_name=override_name,
+            is_wrapper=is_wrapper,
         ),
         "spec": spec,
     }
@@ -859,6 +894,7 @@ def target_metadata(
     errors: list[str],
     disambiguate_parent: bool = False,
     override_name: str | None = None,
+    is_wrapper: bool = False,
 ) -> dict[str, Any]:
     namespace = old_metadata.get("namespace")
     if namespace is not None and not isinstance(namespace, str):
@@ -898,7 +934,13 @@ def target_metadata(
         bad_values = sorted(k for k, v in value.items() if not isinstance(v, str))
         if bad_values:
             errors.append(f"metadata.{key} values must be strings; non-string at key(s): {', '.join(bad_values)}")
-        elif value:
+            continue
+        if key == "labels" and is_wrapper:
+            # Only the kind: DBaaS wrapper's own labels are filtered -- a direct,
+            # non-wrapper DbPolicy/DatabaseDeclaration carrying a same-named label
+            # is a real, unrelated label (see WRAPPER_ONLY_LABELS) and is preserved.
+            value = {k: v for k, v in value.items() if k not in WRAPPER_ONLY_LABELS}
+        if value:
             metadata[key] = value
     return metadata
 

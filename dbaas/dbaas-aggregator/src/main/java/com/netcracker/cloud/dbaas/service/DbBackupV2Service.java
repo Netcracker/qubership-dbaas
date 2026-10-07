@@ -19,7 +19,7 @@ import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
+
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
@@ -1816,7 +1816,8 @@ public class DbBackupV2Service {
     private RetryPolicy<Object> buildRetryPolicy(String operation, String entityType, String entityId, String adapterId) {
         String context = String.format("%s operation [%s=%s, adapter=%s]", operation, entityType, entityId, adapterId);
         return new RetryPolicy<>()
-                .handle(WebApplicationException.class)
+                .handle(AdapterException.class)
+                .abortIf((_, e) -> e != null && is4xxError(e))
                 .withMaxRetries(retryAttempts)
                 .withDelay(retryDelay)
                 .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",

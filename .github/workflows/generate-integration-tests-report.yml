@@ -11,6 +11,7 @@ permissions:
   issues: write
   actions: read
   packages: read
+  pull-requests: read
 
 concurrency:
   group: "integration-tests-report"

@@ -3,18 +3,14 @@ package com.netcracker.cloud.dbaas.service;
 import com.netcracker.cloud.dbaas.config.security.M2MAuthModeProducer;
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
 import com.netcracker.cloud.dbaas.monitoring.interceptor.TimeMeasurementManager;
-import com.netcracker.cloud.dbaas.rest.SecureDbaasAdapterRestClientV2;
+import com.netcracker.cloud.dbaas.rest.*;
 import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
-import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClient;
-import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientLoggingFilter;
-import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import com.netcracker.cloud.dbaas.security.filters.DynamicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
 import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-
 import jakarta.ws.rs.Priorities;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 
@@ -27,6 +23,9 @@ public class DbaasAdapterRESTClientFactory {
     @Inject
     M2MAuthMode m2mAuthMode;
 
+    @ConfigProperty(name = "dbaas.adapter.client.timeout-seconds", defaultValue = "180")
+    long adapterTimeoutSeconds;
+
     @Inject
     TimeMeasurementManager timeMeasurementManager;
 
@@ -35,8 +34,9 @@ public class DbaasAdapterRESTClientFactory {
         BasicAuthFilter authFilter = new BasicAuthFilter(username, password);
         DbaasAdapterRestClient restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
                 .register(authFilter)
-                .connectTimeout(3, TimeUnit.MINUTES)
-                .readTimeout(3, TimeUnit.MINUTES)
+                .register(new AdapterResponseExceptionMapper())
+                .connectTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
                 .build(DbaasAdapterRestClient.class);
         return (DbaasAdapter) Proxy.newProxyInstance(DbaasAdapter.class.getClassLoader(), new Class[]{DbaasAdapter.class},
                 timeMeasurementManager.provideTimeMeasurementInvocationHandler(new DbaasAdapterRESTClient(adapterAddress, type, restClient, identifier, tracker)));
@@ -55,8 +55,9 @@ public class DbaasAdapterRESTClientFactory {
         DbaasAdapterRestClientV2 restClient = RestClientBuilder.newBuilder().baseUri(URI.create(adapterAddress))
                 .register(dynamicAuthFilter, Priorities.AUTHENTICATION)
                 .register(new DbaasAdapterRestClientLoggingFilter())
-                .connectTimeout(3, TimeUnit.MINUTES)
-                .readTimeout(3, TimeUnit.MINUTES)
+                .register(new AdapterResponseExceptionMapper())
+                .connectTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(adapterTimeoutSeconds, TimeUnit.SECONDS)
                 .build(DbaasAdapterRestClientV2.class);
 
         SecureDbaasAdapterRestClientV2 secureRestClient = new SecureDbaasAdapterRestClientV2(restClient, basicAuthFilter, kubernetesTokenAuthFilter, dynamicAuthFilter, m2mEnabled);

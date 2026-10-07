@@ -1,7 +1,6 @@
 package com.netcracker.cloud.dbaas.utils;
 
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 
 public final class RestClientExceptionUtil {
 
@@ -11,13 +10,8 @@ public final class RestClientExceptionUtil {
     public static String extractErrorMessage(Throwable throwable) {
         Throwable cause = throwable;
         while (cause != null) {
-            if (cause instanceof WebApplicationException webEx) {
-                Response response = webEx.getResponse();
-                try {
-                    return response.readEntity(String.class);
-                } catch (Exception readEx) {
-                    return "Unable to read response body: " + readEx.getMessage();
-                }
+            if (cause instanceof AdapterException e) {
+                return e.getErrorMessage();
             }
             cause = cause.getCause();
         }
@@ -26,11 +20,9 @@ public final class RestClientExceptionUtil {
 
     public static boolean is4xxError(Throwable throwable) {
         Throwable cause = throwable;
-
         while (cause != null) {
-            if (cause instanceof WebApplicationException ex) {
-                Response res = ex.getResponse();
-                return 400 <= res.getStatus() && res.getStatus() < 500;
+            if (cause instanceof AdapterException e) {
+                return e.getHttpCode() >= 400 && e.getHttpCode() < 500;
             }
             cause = cause.getCause();
         }

@@ -13,13 +13,14 @@ import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.NotExistingConnectionPropertiesException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
+
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -117,8 +118,8 @@ public class UserService {
                         cp.get("role").toString()
                 );
                 response.getSuccessfully().add(new SuccessfullRestore(cp));
-            } catch (WebApplicationException ex) {
-                response.getUnsuccessfully().add(new UnsuccessfulRestore(cp, ex.getMessage()));
+            } catch (AdapterException ex) {
+                response.getUnsuccessfully().add(new UnsuccessfulRestore(cp, ex.getErrorMessage()));
             }
         }
         return response;
