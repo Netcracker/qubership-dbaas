@@ -12,6 +12,7 @@ import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Priorities;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 
 import java.lang.reflect.Proxy;
