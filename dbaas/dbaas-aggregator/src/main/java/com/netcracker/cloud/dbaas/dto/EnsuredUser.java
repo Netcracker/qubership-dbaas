@@ -12,7 +12,7 @@ import java.util.Map;
 @AllArgsConstructor
 @NoArgsConstructor
 public class EnsuredUser {
-    private String name;
+    private String dbName;
     private Map<String, Object> connectionProperties;
     private List<DbResource> resources;
     private Boolean created;
