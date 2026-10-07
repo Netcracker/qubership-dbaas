@@ -8,9 +8,9 @@ import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3ListCP;
 import com.netcracker.cloud.dbaas.dto.v3.RegisterDatabaseRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,8 +25,9 @@ import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static jakarta.ws.rs.core.Response.Status.FORBIDDEN;
+import static jakarta.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -62,7 +63,6 @@ public class MigrationServiceTest {
     private final String ROLE_RW = "rw";
 
     @Test
-
     void testRegisterRequestValidation() {
         final RegisterDatabaseRequestV3 wrongAdapterId = getRegisterDatabaseRequestSample();
         wrongAdapterId.setAdapterId("wrong-adapter-id");
@@ -106,6 +106,21 @@ public class MigrationServiceTest {
         verify(dbaasAdapter).getDatabases();
         verify(dbaasAdapter).identifier();
         verifyNoMoreInteractions(databaseRegistryDbaasRepository, physicalDatabasesService, dbaasAdapter);
+    }
+
+    @Test
+    void testRegisterDatabasesWithAdapterId_adapterException_handledGracefully() {
+        when(physicalDatabasesService.getAdapterById(TEST_ADAPTER_ID)).thenReturn(dbaasAdapter);
+        when(physicalDatabasesService.getByAdapterId(TEST_ADAPTER_ID)).thenReturn(getPhysicalDatabaseSample(TEST_ADAPTER_ID, TEST_PHYDBID));
+        when(dbaasAdapter.identifier()).thenReturn(TEST_ADAPTER_ID);
+        when(dbaasAdapter.getDatabases()).thenThrow(new AdapterException(SERVICE_UNAVAILABLE.getStatusCode(), SERVICE_UNAVAILABLE.getReasonPhrase()));
+        mockConnectionPropertiesResponse(dBaaService);
+
+        final List<RegisterDatabaseRequestV3> registerDatabaseRequestList = Collections.singletonList(getRegisterDatabaseRequestSample());
+
+        assertDoesNotThrow(
+                () -> migrationService.registerDatabases(registerDatabaseRequestList, API_VERSION.V1, false),
+                "AdapterException from getDatabases should be absorbed as Optional.empty(), not propagate");
     }
 
     @Test
@@ -353,7 +368,7 @@ public class MigrationServiceTest {
 
         final List<RegisterDatabaseRequestV3> registerDatabaseRequestList = Collections.singletonList(getRegisterDatabaseRequestSample());
 
-        when(dbaasAdapter.getDatabases()).thenThrow(new ForbiddenException());
+        when(dbaasAdapter.getDatabases()).thenThrow(new AdapterException(FORBIDDEN.getStatusCode(), FORBIDDEN.getReasonPhrase()));
         mockConnectionPropertiesResponse(dBaaService);
         final RegisterDatabaseResponseBuilder registerDatabaseResponseBuilder = migrationService.registerDatabases(registerDatabaseRequestList, API_VERSION.V1, false);
         assertEquals(Response.Status.OK.getStatusCode(), registerDatabaseResponseBuilder.buildAndResponse().getStatus());

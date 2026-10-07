@@ -10,11 +10,11 @@ import com.netcracker.cloud.dbaas.entity.dto.backupV2.LogicalRestoreAdapterRespo
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.RestoreAdapterRequest;
 import com.netcracker.cloud.dbaas.entity.pg.DbResource;
 import com.netcracker.cloud.dbaas.entity.pg.backup.TrackedAction;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.monitoring.AdapterHealthStatus;
 import com.netcracker.cloud.dbaas.security.filters.AuthFilterSetter;
 import com.netcracker.cloud.dbaas.security.filters.BasicAuthFilter;
 import com.netcracker.cloud.dbaas.security.filters.KubernetesTokenAuthFilter;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 
@@ -56,8 +56,8 @@ public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 
                 lastTokenAuthSetTime.set(Instant.now());
             }
             return supplier.get();
-        } catch (WebApplicationException e) {
-            if (isJwtEnabled && e.getResponse().getStatus() == Response.Status.UNAUTHORIZED.getStatusCode() && authFilterSetter.getAuthFilter() instanceof KubernetesTokenAuthFilter) {
+        } catch (AdapterException e) {
+            if (isJwtEnabled && e.getHttpCode() == Response.Status.UNAUTHORIZED.getStatusCode() && authFilterSetter.getAuthFilter() instanceof KubernetesTokenAuthFilter) {
                 log.info("Request with M2M authentication failed with 'UNAUTHORIZED'. Falling back to Basic authentication");
                 authFilterSetter.setAuthFilter(basicAuthFilter);
                 return supplier.get();

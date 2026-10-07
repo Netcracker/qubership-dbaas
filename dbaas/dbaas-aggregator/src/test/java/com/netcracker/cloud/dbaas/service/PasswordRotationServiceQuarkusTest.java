@@ -5,6 +5,7 @@ import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.PasswordChangeRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.PasswordChangeFailedException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -13,9 +14,6 @@ import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -23,6 +21,7 @@ import org.mockito.Mockito;
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.utils.DatabaseBuilder.*;
+import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -90,7 +89,8 @@ class PasswordRotationServiceQuarkusTest {
         newCp1.put("role", Role.ADMIN.toString());
 
         doReturn(buildEnsuredUser(newCp1)).when(adapter1).ensureUser(any(), any(), any(), any());
-        doThrow(new WebApplicationException(Response.Status.INTERNAL_SERVER_ERROR)).when(adapter2).ensureUser(any(), any(), any(), any());
+        doThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), INTERNAL_SERVER_ERROR.getReasonPhrase()))
+                .when(adapter2).ensureUser(any(), any(), any(), any());
 
         Mockito.when(physicalDatabasesService.getAllAdapters()).thenReturn(List.of(adapter1, adapter2));
 

@@ -37,6 +37,7 @@ import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.service.DeletionService.MARKED_FOR_DROP;
+import static jakarta.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -3943,5 +3944,28 @@ class DbBackupV2ServiceTest {
         FilterCriteriaEntity filterCriteria = new FilterCriteriaEntity();
         filterCriteria.setInclude(List.of(filter));
         return filterCriteria;
+    }
+
+    @Test
+    void testStartLogicalBackup_adapterException_exhaustsRetriesAndThrows() {
+        String adapterId = "test-adapter-retry";
+        DbaasAdapter adapter = Mockito.mock(DbaasAdapter.class);
+        when(physicalDatabasesService.getAdapterById(adapterId)).thenReturn(adapter);
+        when(adapter.backupV2(any())).thenThrow(new AdapterException(SERVICE_UNAVAILABLE.getStatusCode(), SERVICE_UNAVAILABLE.getReasonPhrase()));
+
+        Backup backup = new Backup();
+        backup.setStorageName(STORAGE_NAME);
+        backup.setBlobPath(BLOB_PATH);
+
+        LogicalBackup logicalBackup = new LogicalBackup();
+        logicalBackup.setId(UUID.randomUUID());
+        logicalBackup.setAdapterId(adapterId);
+        logicalBackup.setBackup(backup);
+
+        assertThrows(BackupExecutionException.class,
+                () -> dbBackupV2Service.startLogicalBackup(logicalBackup));
+
+        // 1 initial attempt plus 3 retries = 4 total calls
+        Mockito.verify(adapter, Mockito.times(4)).backupV2(any());
     }
 }

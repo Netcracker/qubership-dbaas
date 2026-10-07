@@ -12,8 +12,8 @@ import com.netcracker.cloud.dbaas.service.DbaasAdapterRESTClientV2;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.WebApplicationException;
-
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
+import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +36,7 @@ class AdapterActionTrackerClientTest {
         adapterBackupAction.setAction(TrackedAction.Action.BACKUP);
         adapterBackupAction.setTrackId("20230927T093425");
         DbaasAdapterRestClientV2 restClientV2 = mock(DbaasAdapterRestClientV2.class);
-        when(restClientV2.trackBackup(any(), any(), any())).thenThrow(new WebApplicationException());
+        when(restClientV2.trackBackup(any(), any(), any())).thenThrow(new AdapterException(Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), "Adapter failed to track"));
         DatabasesBackup backup = client.waitForBackup(adapterBackupAction, new DbaasAdapterRESTClientV2("", "", restClientV2, "", client));
         Assertions.assertEquals(Status.FAIL, backup.getStatus());
 

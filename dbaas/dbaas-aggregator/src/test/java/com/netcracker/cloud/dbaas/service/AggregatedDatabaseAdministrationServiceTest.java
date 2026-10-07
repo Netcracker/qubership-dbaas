@@ -5,6 +5,7 @@ import com.netcracker.cloud.dbaas.dto.v3.CreatedDatabaseV3;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseCreateRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.DatabaseResponseV3SingleCP;
 import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.NotSupportedServiceRoleException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
@@ -13,7 +14,6 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository
 import com.netcracker.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.narayana.jta.TransactionRunnerOptions;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
@@ -102,20 +102,35 @@ public class AggregatedDatabaseAdministrationServiceTest {
     }
 
     @Test
-    void whenCreateDatabaseFromRequest_catchWebApplicationException() {
+    void whenCreateDatabaseFromRequest_catchAdapterExceptionFromAdapter() {
         when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class))).thenThrow(new ConstraintViolationException("error", new PSQLException("exception", PSQLState.UNIQUE_VIOLATION), "constraint_name"));
         when(databaseRegistry.getDatabase()).thenReturn(database);
         when(dBaaService.findDatabaseByClassifierAndType(eq(createRequest.getClassifier()), eq(createRequest.getType()), eq(true))).thenReturn(databaseRegistry);
         String clientResponseBody = "this is internal server error from client";
 
-        WebApplicationException exception = new WebApplicationException("client message", Response.serverError().entity(clientResponseBody).build());
-
-        when(logicalDbSettingsService.updateSettings(eq(databaseRegistry), eq(createRequest.getSettings()))).thenThrow(exception);
+        when(logicalDbSettingsService.updateSettings(eq(databaseRegistry), eq(createRequest.getSettings())))
+                .thenThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), clientResponseBody));
 
         Response result = aggregatedDatabaseAdministrationService.createDatabaseFromRequest(createRequest, NAMESPACE, password, Role.ADMIN.toString(), null);
 
         Assertions.assertEquals(INTERNAL_SERVER_ERROR.getStatusCode(), result.getStatus());
         Assertions.assertTrue(Objects.requireNonNull(result.getEntity()).toString().contains(clientResponseBody));
+    }
+
+    @Test
+    void whenCreateDatabaseFromRequest_catchAdapterException() {
+        when(databaseRegistryDbaasRepository.saveAnyTypeLogDb(any(DatabaseRegistry.class)))
+                .thenThrow(new ConstraintViolationException("error", new PSQLException("exception", PSQLState.UNIQUE_VIOLATION), "constraint_name"));
+        when(databaseRegistry.getDatabase()).thenReturn(database);
+        when(dBaaService.findDatabaseByClassifierAndType(eq(createRequest.getClassifier()), eq(createRequest.getType()), eq(true))).thenReturn(databaseRegistry);
+
+        when(logicalDbSettingsService.updateSettings(eq(databaseRegistry), eq(createRequest.getSettings())))
+                .thenThrow(new AdapterException(INTERNAL_SERVER_ERROR.getStatusCode(), "adapter is down"));
+
+        Response result = aggregatedDatabaseAdministrationService.createDatabaseFromRequest(createRequest, NAMESPACE, password, Role.ADMIN.toString(), null);
+
+        Assertions.assertEquals(INTERNAL_SERVER_ERROR.getStatusCode(), result.getStatus());
+        Assertions.assertTrue(Objects.requireNonNull(result.getEntity()).toString().contains("Updating database failed with error:"));
     }
 
     @Test
