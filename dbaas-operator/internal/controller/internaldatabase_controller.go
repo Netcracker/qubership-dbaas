@@ -385,6 +385,10 @@ func validateInternalDatabaseSpec(dd *dbaasv1.InternalDatabase) string {
 	}
 
 	if dd.Spec.InitialInstantiation != nil {
+		if dd.Spec.InitialInstantiation.Approach == "" {
+			return "spec: initialInstantiation.approach must be set when initialInstantiation is present"
+		}
+
 		if dd.Spec.InitialInstantiation.Approach == "clone" &&
 			dd.Spec.InitialInstantiation.SourceClassifier == nil {
 			return "spec: initialInstantiation.sourceClassifier is required when approach=clone"
