@@ -50,6 +50,9 @@ spec:
         app.kubernetes.io/component: 'operator'
         app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
         app.kubernetes.io/technology: 'go'
+        {{ if .Values.AMBIENT_MESH_ENABLED }}
+        istio.io/dataplane-mode: ambient
+        {{ end }}
     spec:
       nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'

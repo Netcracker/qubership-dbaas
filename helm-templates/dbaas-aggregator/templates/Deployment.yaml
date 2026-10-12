@@ -25,6 +25,9 @@ spec:
         metadata:
             labels:
                 name: '{{ .Values.SERVICE_NAME }}'
+            {{ if .Values.AMBIENT_MESH_ENABLED }}
+                istio.io/dataplane-mode: ambient
+            {{ end }}
         spec:
             nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS }}'
