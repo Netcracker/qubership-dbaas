@@ -264,6 +264,31 @@ var _ = Describe("InternalDatabase Controller", func() {
 		})
 	})
 
+	Context("initialInstantiation without approach", func() {
+		It("sets Phase=InvalidConfiguration without calling the aggregator", func() {
+			spec := baseSpec()
+			spec.InitialInstantiation = &dbaasv1.InitialInstantiation{}
+			Expect(k8sClient.Create(ctx, &dbaasv1.InternalDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: ns},
+				Spec:       spec,
+			})).To(Succeed())
+
+			dd, result, err := reconcileAndFetch()
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(dd.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(capturedApplyBody).To(BeEmpty(), "aggregator must not be called")
+
+			ready := findCondition(dd.Status.Conditions, conditionTypeReady)
+			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
+			Expect(ready.Message).To(ContainSubstring("initialInstantiation.approach"))
+
+			expectRecordedEvent(fakeRecorder.Events, corev1.EventTypeWarning, EventReasonInvalidSpec)
+			expectNoRecordedEvent(fakeRecorder.Events)
+		})
+	})
+
 	Context("approach=clone without sourceClassifier", func() {
 		It("sets Phase=InvalidConfiguration without calling the aggregator", func() {
 			spec := baseSpec()
