@@ -260,7 +260,7 @@ If PRODUCTION_MODE is set to true, dropping databases in DBaaS is not allowed.
 
 `INTERNAL_TLS_ENABLED` controls application-level TLS for the connection from DBaaS Aggregator to its PostgreSQL
 storage. When enabled, the Aggregator validates the PostgreSQL server certificate against `ca.crt` in the directory set
-by `CERTIFICATE_FILE_PATH` (default `/etc/tls`).
+by `CERTIFICATE_FILE_PATH`.
 
 This parameter is independent of `AMBIENT_MESH_ENABLED`, which controls mesh-level mTLS between enrolled DBaaS
 workloads. If PostgreSQL is not enrolled in the mesh, Ambient Mesh does not encrypt the connection from the Aggregator
