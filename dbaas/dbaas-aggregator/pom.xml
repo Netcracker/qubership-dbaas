@@ -129,12 +129,12 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>4.3.4</version>
+            <version>4.3.5</version>
         </dependency>
         <dependency>
             <groupId>com.netcracker.core</groupId>
             <artifactId>process-engine</artifactId>
-            <version>1.6.4</version>
+            <version>1.6.5</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
