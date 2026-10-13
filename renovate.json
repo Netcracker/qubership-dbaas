@@ -47,6 +47,11 @@
       "matchPackageNames": ["/quarkus/i"],
       "addLabels": ["group:quarkus"],
       "automerge": false
+    },
+    {
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "addLabels": ["type:lock-file-maintenance"],
+      "automerge": true
     }
   ]
 }
