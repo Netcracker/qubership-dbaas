@@ -55,7 +55,7 @@ spec:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS}}'
       serviceAccountName: '{{ .Values.SERVICE_NAME }}'
       volumes:
-        {{- if ne (default "legacy" .Values.M2M_AUTH_MODE) "legacy" }}
+        {{- if eq .Values.M2M_AUTH_MODE "hybrid" "k8s" }}
         - name: projected-tokens
           projected:
             defaultMode: 292
@@ -75,7 +75,7 @@ spec:
         - name: '{{ .Values.SERVICE_NAME }}'
           image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
           volumeMounts:
-            {{- if ne (default "legacy" .Values.M2M_AUTH_MODE) "legacy" }}
+            {{- if eq .Values.M2M_AUTH_MODE "hybrid" "k8s" }}
             - name: projected-tokens
               mountPath: /var/run/secrets/tokens
               readOnly: true
