@@ -12,7 +12,7 @@ on:
         description: SMTP password used to email the test report.
   workflow_dispatch:
     inputs:
-      m2m-auth-mode:
+      aggregator-m2m-auth-mode:
         description: M2M_AUTH_MODE of the aggregator
         type: choice
         options: [hybrid, legacy, k8s]
@@ -234,7 +234,7 @@ jobs:
         run: >
           make install
           CONFIG_FILE=local.mk
-          M2M_AUTH_MODE=${{ inputs.m2m-auth-mode || 'hybrid' }}
+          M2M_AUTH_MODE=${{ inputs.aggregator-m2m-auth-mode || 'hybrid' }}
           OPERATOR_M2M_AUTH_MODE=${{ inputs.operator-m2m-auth-mode || 'legacy' }}
           PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
           REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
