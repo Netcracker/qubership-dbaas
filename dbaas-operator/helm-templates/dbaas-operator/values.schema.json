@@ -229,16 +229,17 @@
         true
       ]
     },
-    "KUBERNETES_M2M_ENABLED": {
-      "$id": "#/properties/KUBERNETES_M2M_ENABLED",
-      "type": "boolean",
-      "title": "The KUBERNETES_M2M_ENABLED schema",
-      "description": "Parameter specifies if M2M authentication with Kubernetes service account tokens is enabled",
-      "default": false,
-      "examples": [
-        true,
-        false
-      ]
+    "M2M_AUTH_MODE": {
+      "$id": "#/properties/M2M_AUTH_MODE",
+      "type": "string",
+      "title": "The M2M_AUTH_MODE schema",
+      "description": "Machine-to-machine authentication mode: legacy, hybrid, or k8s",
+      "enum": [
+        "legacy",
+        "hybrid",
+        "k8s"
+      ],
+      "default": "legacy"
     },
     "LOG_LEVEL": {
       "$id": "#/properties/LOG_LEVEL",

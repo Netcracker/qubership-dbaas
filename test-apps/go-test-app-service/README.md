@@ -31,7 +31,7 @@ fixed classifiers used by the app's tenant and administrative datasources.
 | `LOG_LEVEL` | Application and library log level | `info` |
 | `DBAAS_AGENT` | DBaaS REST endpoint used when a mounted Secret does not match | `http://dbaas-aggregator.dbaas:8080` |
 | `API_DBAAS_ADDRESS` | Aggregator endpoint for direct Kubernetes M2M access; the CR templates also read its namespace label as `spec.operatorNamespace` | `http://dbaas-aggregator.dbaas:8080` |
-| `KUBERNETES_M2M_ENABLED` | Enables direct aggregator access with a projected service-account token | `false` |
+| `M2M_AUTH_MODE` | `hybrid` enables direct aggregator access with a projected service-account token | `legacy` |
 | `BASECLIENT_RETRY_MAX_ATTEMPTS` | Configures DBaaS base-client retry attempts | `0` |
 | `BASECLIENT_RETRY_DELAY_MS` | Configures the DBaaS base-client retry delay in milliseconds | `10` |
 

@@ -4,7 +4,7 @@ TAG: {{ requiredEnv "AGGREGATOR_TAG" | quote }}
 
 POSTGRES_HOST: {{ printf "pg-patroni.%s" (env "PG_NAMESPACE" | default "postgres") | quote }}
 
-KUBERNETES_M2M_ENABLED: true
+M2M_AUTH_MODE: hybrid
 
 REPLICAS: {{ env "AGGREGATOR_REPLICAS" | default "1" }}
 
