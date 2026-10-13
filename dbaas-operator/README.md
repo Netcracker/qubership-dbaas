@@ -18,6 +18,7 @@ All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` 
 | `DatabaseSecretClaim` | Materialize a database's credentials into a Kubernetes `Secret` in the workload namespace, kept in sync as credentials rotate. |
 | `DatabaseAccessPolicy` | Declare per-microservice role grants and apply them to dbaas-aggregator. |
 | `MicroserviceBalancingRule` / `NamespaceBalancingRule` / `PermanentBalancingRule` | Configure physical-database balancing rules in dbaas-aggregator. |
+| `PhysicalDatabase` | Register a physical database (a DBMS cluster and its dbaas adapter) in dbaas-aggregator, using what the adapter reports about itself. |
 
 All workload CRs declare the target operator through
 required, immutable `spec.operatorNamespace`. The operator reconciles a CR only when that value

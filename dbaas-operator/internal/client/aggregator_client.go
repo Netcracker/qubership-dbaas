@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"sync/atomic"
@@ -116,18 +117,8 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		// so the warning is pure noise logged on every call (incl. the rotation poll loop).
 		SetDisableWarn(true).
 		OnBeforeRequest(func(_ *resty.Client, r *resty.Request) error {
-			if _, err := requestcontext.RequestID(r.Context()); err != nil {
-				return &RequestContextError{Cause: err}
-			}
-			if err := ctxhelper.AddSerializableContextData(r.Context(), func(name, value string) {
-				r.SetHeader(name, value)
-			}); err != nil {
-				return &RequestContextError{Cause: fmt.Errorf("serialize request context: %w", err)}
-			}
-			if r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME) == "" {
-				return &RequestContextError{Cause: fmt.Errorf(
-					"serialization did not add required header %s; verify that request-ID propagation is not restricted",
-					xrequestid.X_REQUEST_ID_HEADER_NAME)}
+			if err := applyRequestContext(r); err != nil {
+				return err
 			}
 
 			// M2M mode — fetch a fresh dbaas-audience token per request.
@@ -147,6 +138,28 @@ func newClient(baseURL string, getToken func(ctx context.Context) (string, error
 		})
 
 	return c
+}
+
+// applyRequestContext copies the serializable request context (X-Request-Id and
+// the other registered providers) onto an outgoing request. It returns a
+// *RequestContextError when the context carries no request ID or propagation
+// does not produce the X-Request-Id header, so that a broken wiring surfaces as
+// InvalidConfiguration instead of an untraceable call.
+func applyRequestContext(r *resty.Request) error {
+	if _, err := requestcontext.RequestID(r.Context()); err != nil {
+		return &RequestContextError{Cause: err}
+	}
+	if err := ctxhelper.AddSerializableContextData(r.Context(), func(name, value string) {
+		r.SetHeader(name, value)
+	}); err != nil {
+		return &RequestContextError{Cause: fmt.Errorf("serialize request context: %w", err)}
+	}
+	if r.Header.Get(xrequestid.X_REQUEST_ID_HEADER_NAME) == "" {
+		return &RequestContextError{Cause: fmt.Errorf(
+			"serialization did not add required header %s; verify that request-ID propagation is not restricted",
+			xrequestid.X_REQUEST_ID_HEADER_NAME)}
+	}
+	return nil
 }
 
 // doRequest sends method+path to the aggregator through the shared resty client
@@ -281,6 +294,32 @@ func (c *AggregatorClient) CreateDatabase(ctx context.Context, namespace string,
 	return resp.StatusCode() == http.StatusAccepted, nil
 }
 
+// RegisterPhysicalDatabase registers or updates a physical database at
+// PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}?internalMigration=true.
+// dbType and physicalDatabaseID come from the adapter, so they are path-escaped.
+//
+// The aggregator answers 201 for a new registration and 200 for an existing one,
+// whether it had to write anything. It answers 202 Accepted when the
+// reported roles need a role migration of existing logical databases; the
+// request is then parked until the migration completes, and accepted reports
+// that case. internalMigration=true asks the aggregator to run that migration
+// itself, so the 202 body is not decoded.
+//
+// Returns *AggregatorError on any other non-2xx.
+func (c *AggregatorClient) RegisterPhysicalDatabase(
+	ctx context.Context, dbType, physicalDatabaseID string, req *PhysicalDatabaseRegistrationRequest,
+) (accepted bool, err error) {
+	resp, err := c.doRequest(ctx, http.MethodPut,
+		fmt.Sprintf("/api/v3/dbaas/%s/physical_databases/%s", url.PathEscape(dbType), url.PathEscape(physicalDatabaseID)),
+		req,
+		func(r *resty.Request) { r.SetQueryParam("internalMigration", "true") },
+		http.StatusOK, http.StatusCreated, http.StatusAccepted)
+	if err != nil {
+		return false, err
+	}
+	return resp.StatusCode() == http.StatusAccepted, nil
+}
+
 // ApplyMicroserviceBalancingRules sends on-microservice balancing rules to
 // PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices.
 func (c *AggregatorClient) ApplyMicroserviceBalancingRules(ctx context.Context, namespace string, req []OnMicroserviceRuleRequest) error {
@@ -369,18 +408,21 @@ func (c *AggregatorClient) GetChangedSince(ctx context.Context, cursor *ChangeCu
 }
 
 func newAggregatorError(resp *resty.Response) *AggregatorError {
-	aggErr := &AggregatorError{
+	code, message := parseTmf(resp.Body())
+	return &AggregatorError{
 		StatusCode: resp.StatusCode(),
 		Body:       string(resp.Body()),
+		TmfCode:    code,
+		TmfMessage: message,
 	}
+}
 
+// parseTmf extracts the TMF error code and message from an error response body.
+// Both are empty when the body is not a TMF error response.
+func parseTmf(body []byte) (code, message string) {
 	var tmfResp tmf.Response
-	if json.Unmarshal(resp.Body(), &tmfResp) == nil {
-		aggErr.TmfCode = tmfResp.Code
-		if tmfResp.Message != "" {
-			aggErr.TmfMessage = tmfResp.Message
-		}
+	if json.Unmarshal(body, &tmfResp) != nil {
+		return "", ""
 	}
-
-	return aggErr
+	return tmfResp.Code, tmfResp.Message
 }

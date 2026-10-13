@@ -15,6 +15,7 @@
   - [MicroserviceBalancingRule Endpoint](#microservicebalancingrule-endpoint)
   - [NamespaceBalancingRule Endpoints](#namespacebalancingrule-endpoints)
   - [PermanentBalancingRule Endpoints](#permanentbalancingrule-endpoints)
+  - [PhysicalDatabase Registration Endpoint](#physicaldatabase-registration-endpoint)
   - [Rotation Poller Changed-Databases Feed](#rotation-poller-changed-databases-feed)
 - [Authentication: Basic Auth or M2M Token](#authentication-basic-auth-or-m2m-token)
   - [Basic Auth (Default)](#basic-auth-default)
@@ -59,6 +60,11 @@
     - [Rotation Polling](#rotation-polling)
     - [Status Reference](#databasesecretclaim-status-reference)
     - [Usage Examples](#databasesecretclaim-usage-examples)
+  - [PhysicalDatabase](#physicaldatabase)
+    - [Resource Fields](#physicaldatabase-resource-fields)
+    - [How It Works](#how-physicaldatabase-works)
+    - [Status Reference](#physicaldatabase-status-reference)
+    - [Usage Examples](#physicaldatabase-usage-examples)
 - [Kubernetes Events](#kubernetes-events)
 - [Configuration Parameters](#configuration-parameters)
   - [Ports and Probes](#ports-and-probes)
@@ -197,7 +203,12 @@ The operator calls the following dbaas-aggregator endpoints:
 | `DELETE` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}` | `NamespaceBalancingRule` reconciler | Remove one named namespace balancing rule on item removal or CR deletion |
 | `PUT` | `/api/v3/dbaas/balancing/rules/permanent` | `PermanentBalancingRule` reconciler | Apply permanent balancing rules for target namespaces |
 | `DELETE` | `/api/v3/dbaas/balancing/rules/permanent` | `PermanentBalancingRule` reconciler | Remove previously applied permanent balancing rules during update or deletion |
+| `PUT` | `/api/v3/dbaas/{type}/physical_databases/{physicalDatabaseId}?internalMigration=true` | `PhysicalDatabase` reconciler | Register or update a physical database |
 | `GET` | `/api/v3/dbaas/databases/changed` | Rotation poller (leader-only) | Pull databases whose credentials changed (rotation/restore) since a keyset cursor |
+
+The `PhysicalDatabase` reconciler also calls each adapter directly, with the adapter's own credentials:
+`GET {spec.adapterAddress}/api/v2/adapter/physical_database` — see
+[PhysicalDatabase Registration Endpoint](#physicaldatabase-registration-endpoint).
 
 All calls are **outbound**; the operator exposes no inbound API endpoint (its only listeners are `/metrics` and the
 health probes — see [Ports and Probes](#ports-and-probes)). Most are synchronous; the declarative `apply` endpoint may
@@ -374,6 +385,30 @@ deletion — are removed with the `DELETE` variant. The CR itself is assigned th
 | `200 OK` / `201 Created` (`PUT`) | Rules applied | `Succeeded` — `Ready=True`, reason `BalancingRuleApplied` |
 | `200` / `204` (`DELETE`) | Rules removed | Cleanup succeeds; reconcile continues |
 | `400` / `403` / `409` / `410` / `422` | Invalid or rejected rule set | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+
+### PhysicalDatabase Registration Endpoint
+
+**`PUT /api/v3/dbaas/{type}/physical_databases/{physicalDatabaseId}?internalMigration=true`**
+
+Before the registration, the operator asks the adapter which physical database it serves:
+`GET {spec.adapterAddress}/api/v2/adapter/physical_database`, with the adapter's own credentials. `{type}` and
+`{physicalDatabaseId}` come from that answer, and so does most of the body: `labels`, `metadata.supportedRoles`,
+`metadata.features`, `metadata.roHost` (from `readOnlyHost`), and `metadata.apiVersions`. The operator adds
+`adapterAddress`, `httpBasicCredentials` from the Secret, `metadata.apiVersion: "v2"`, and `status: "running"`, so
+the aggregator never calls the operator back for a handshake.
+
+`internalMigration=true` asks the aggregator to run a role migration itself instead of handing batches to the
+adapter. The aggregator does not support it yet and ignores it; either way the operator does not read the `202` body.
+
+**Possible responses and operator behavior:**
+
+| HTTP Code | Situation | Operator outcome |
+|-----------|-----------|-----------------|
+| `200 OK` / `201 Created` | Registered, updated, or already up to date | `Succeeded` — `Ready=True`, reason `PhysicalDatabaseRegistered` |
+| `202 Accepted` | The new supported roles need a role migration of existing logical databases; the registration is parked until it completes | `WaitingForDependency` — `Ready=False`, `Stalled=False`, reason `RoleMigrationStarted`; repeated with the [exponential poll backoff](#exponential-poll-backoff) |
+| `400` | Malformed request or adapter address | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `409` | The identifier is registered with another address, or the address with another identifier | `InvalidConfiguration` — `Ready=False`, `Stalled=True`, reason `AggregatorRejected` |
+| `500` | Aggregator error, including a failed role migration | `BackingOff` — `Ready=False`, `Stalled=False`, reason `AggregatorError` |
 
 ### Rotation Poller Changed-Databases Feed
 
@@ -571,6 +606,8 @@ set is the linked templates above.
 | `dbaas.netcracker.com` | `permanentbalancingrules` | `get`, `list`, `watch`, `patch` | Watch and read singleton permanent balancing rule CRs; `patch` is required to add/remove the cleanup finalizer |
 | `dbaas.netcracker.com` | `permanentbalancingrules/finalizers` | `update` | Kubernetes additionally checks this permission when `metadata.finalizers` changes during a patch |
 | `dbaas.netcracker.com` | `permanentbalancingrules/status` | `get`, `update`, `patch` | Write reconcile outcome and last-applied rule data |
+| `dbaas.netcracker.com` | `physicaldatabases` | `get`, `list`, `watch` | Watch and read CRs across all namespaces; status is written via `/status` subresource |
+| `dbaas.netcracker.com` | `physicaldatabases/status` | `get`, `update`, `patch` | Write reconcile outcome and the adapter answer to the status |
 | `""` (core) | `events` | `create`, `patch` | Emit Kubernetes Events in the namespace of reconciled objects outside the operator namespace (required when `K8S_EVENTS_ENABLED=true`) |
 
 > **Secrets are not in the `ClusterRole`** — Secret access is namespaced (see [Secret access
@@ -598,12 +635,13 @@ Secret access is granted **per namespace** by a `Role` + `RoleBinding`:
 
 | API group | Resource | Verbs | Why it is needed |
 |-----------|----------|-------|-----------------|
-| `""` (core) | `secrets` | `get`, `create`, `update`, `patch` | `get`: read the credential Secret referenced by an `ExternalDatabase`, and read back the Secret managed by a `DatabaseSecretClaim`. `create`/`update`/`patch`: materialize and keep the `DatabaseSecretClaim` Secret in sync. **No `list`/`watch`** — the operator runs no Secret informer. **No `delete`** — owned Secrets are garbage-collected via `ownerReferences`. |
+| `""` (core) | `secrets` | `get`, `create`, `update`, `patch` | `get`: read the credential Secret referenced by an `ExternalDatabase` or a `PhysicalDatabase`, and read back the Secret managed by a `DatabaseSecretClaim`. `create`/`update`/`patch`: materialize and keep the `DatabaseSecretClaim` Secret in sync. **No `list`/`watch`** — the operator runs no Secret informer. **No `delete`** — owned Secrets are garbage-collected via `ownerReferences`. |
 
 - The `Role` and `RoleBinding` live in the **business** namespace; the `RoleBinding` subject is the operator's
   `ServiceAccount` (`dbaas-operator`) in the **operator** namespace.
-- Without them, `ExternalDatabase` (reads a referenced credential Secret) and `DatabaseSecretClaim` (creates the owned
-  Secret) fail with `forbidden`.
+- Without them, `ExternalDatabase` and `PhysicalDatabase` (read a referenced credential Secret) and
+  `DatabaseSecretClaim` (creates the owned Secret) fail with `forbidden`. A namespace that hosts only
+  `PhysicalDatabase` CRs needs `get` alone.
 - The operator's own namespace needs this bundle **only if it also hosts Secret-backed workload CRs**;
   leader-election leases, Events, and balancing-rule CRs do not require Secret access.
 
@@ -628,6 +666,7 @@ name:
 | `MicroserviceBalancingRule` | `dbmbr` | `PHASE`, `READY`, `AGE` |
 | `NamespaceBalancingRule` | `dbnbr` | `PHASE`, `READY`, `AGE` |
 | `PermanentBalancingRule` | `dbpbr` | `PHASE`, `READY`, `AGE` |
+| `PhysicalDatabase` | `dbpdr` | `PHASE`, `READY`, `TYPE`, `PHYSICALDATABASEID`, `AGE` (`ADDRESS` with `-o wide`) |
 
 All managed CR kinds require immutable `spec.operatorNamespace`. The operator reconciles
 a CR only when that value equals its `CLOUD_NAMESPACE`; otherwise it leaves the resource untouched.
@@ -656,7 +695,8 @@ phase summarizes them and carries no information they do not already have.
 | `BackingOff` | Transient error — retried, in most cases with [exponential backoff](#reconcile-backoff) |
 | `InvalidConfiguration` | Permanent error — will not retry until the spec is changed |
 
-`InternalDatabase` adds `WaitingForDependency` while an asynchronous provisioning operation is in flight.
+`InternalDatabase` adds `WaitingForDependency` while an asynchronous provisioning operation is in flight, and
+`PhysicalDatabase` while dbaas-aggregator parks its registration for a role migration.
 
 **`status.conditions`** — canonical machine-readable state. Use these for automation and alerting.
 
@@ -685,8 +725,9 @@ phase summarizes them and carries no information they do not already have.
   [Reconcile Backoff](#reconcile-backoff) for which paths use the workqueue rate limiter and which use the
   exponential poll backoff.
 - **`Ready=True` + `Stalled=False`** — the steady state, not a retry. Nothing is scheduled beyond the
-  kind's own resync or watch events: every kind re-reconciles on a spec change, an `ExternalDatabase`
-  on its periodic resync, and a `DatabaseSecretClaim` on a rotation trigger or its hourly safety net.
+  kind's own resync or watch events: every kind re-reconciles on a spec change, an `ExternalDatabase` and a
+  `PhysicalDatabase` on their periodic resync, and a `DatabaseSecretClaim` on a rotation trigger or its hourly
+  safety net.
 - **`status.lastRequestId`** — correlate operator logs with dbaas-aggregator logs. `DatabaseSecretClaim` is
   the exception: it never writes this field — see its
   [Status Reference](#databasesecretclaim-status-reference).
@@ -2202,6 +2243,123 @@ kubectl get events -n my-namespace --field-selector involvedObject.name=my-app-d
 
 ---
 
+### PhysicalDatabase
+
+`PhysicalDatabase` registers a physical database, that is, a DBMS cluster and its dbaas adapter, with
+dbaas-aggregator. The operator does not install the adapter or the DBMS; both must already be running. The CR
+carries only what the adapter cannot report about itself: its address and its credentials. The operator asks the
+adapter for everything else and forwards it to the aggregator.
+
+> **The registration outlives the CR.** Deleting a `PhysicalDatabase` stops managing the registration but does not
+> remove it, because a physical database carries logical databases.
+
+> **The adapter must serve `GET /api/v2/adapter/physical_database`.** An adapter without this endpoint answers `404`,
+> and the CR stays in `BackingOff` with reason `AdapterError`.
+
+#### PhysicalDatabase Resource Fields
+
+| Field | Required | Mutable | Description |
+|-------|:--------:|:-------:|-------------|
+| `spec.operatorNamespace` | Yes | **No** | Operator instance that owns the CR; must equal that operator's `CLOUD_NAMESPACE`. |
+| `spec.adapterAddress` | Yes | Yes | Adapter base URL, sent as `adapterAddress`. Must have a scheme and a host (`^[^\s:/?#]+://[^\s/?#]+`). The aggregator accepts a change only when the host stays the same and the scheme changes (a switch to TLS); any other change answers `409` and surfaces as `AggregatorRejected`. |
+| `spec.credentialsSecretRef.name` | Yes | Yes | Secret in the CR's namespace with the **adapter's own** Basic Auth pair under the fixed keys `username` and `password`. The operator uses it to probe the adapter and sends it to the aggregator as `httpBasicCredentials`. |
+
+> **Two different credential sets.** `spec.credentialsSecretRef` holds the credentials dbaas-aggregator uses to call
+> the adapter. The operator's own credentials for calling the aggregator come from `users.json` in the mounted
+> `dbaas-security-configuration-secret`, or from an M2M token.
+
+#### How PhysicalDatabase Works
+
+A reconcile runs when the CR is created, its spec or `dbaas.netcracker.com/refresh` annotation changes, another
+`PhysicalDatabase` with the same claim is created, deleted, or changed, and on the periodic resync
+(`DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL`, `10m` by default). The resync is what picks up a rotated adapter password,
+because the operator does not watch Secrets.
+
+1. **Address conflict.** When an older `PhysicalDatabase` of the same operator has the same `spec.adapterAddress`,
+   the CR stalls with `RegistrationConflict`. The older claimant wins, by `creationTimestamp` and then by UID.
+2. **Credentials.** The operator reads `username` and `password` from the referenced Secret. A missing Secret, key,
+   or value, or a denied read, is `SecretError` and is retried.
+3. **Adapter probe.** `GET {adapterAddress}/api/v2/adapter/physical_database` with the Secret's credentials. `200`
+   continues the reconcile. `401` is `Unauthorized`; `404` and `503` are `AdapterError`. Both are retried. A `200`
+   without `physicalDatabaseId`, `type`, `supportedRoles`, or `features.multiusers` and an unreachable adapter are
+   handled like `503`.
+4. **Status and identifier conflict.** The answer is copied into the status. When an older `PhysicalDatabase`
+   reports the same `status.physicalDatabaseId`, the CR stalls with `RegistrationConflict`.
+5. **Registration.** `PUT /api/v3/dbaas/{type}/physical_databases/{physicalDatabaseId}?internalMigration=true`, with
+   the address, the credentials, and the adapter answer. `200` and `201` are `Succeeded`. `202` means the aggregator
+   parked the registration for a role migration of existing logical databases: the CR reports
+   `WaitingForDependency` and repeats the registration with the [exponential poll backoff](#exponential-poll-backoff)
+   until the aggregator answers `200`.
+
+#### PhysicalDatabase Status Reference
+
+Besides the [common status fields](#common-status-model), the status carries the adapter answer of the last
+successful probe. A later failed probe leaves these fields as they are.
+
+| Field | Sent to the aggregator as | Description |
+|-------|---------------------------|-------------|
+| `status.physicalDatabaseId` | `{physicalDatabaseId}` path segment | Adapter-assigned identifier of the cluster. |
+| `status.type` | `{type}` path segment | Database engine type, e.g. `postgresql`. |
+| `status.labels` | `labels` | Physical database labels, matched by `MicroserviceBalancingRule`. |
+| `status.supportedRoles` | `metadata.supportedRoles` | Roles the adapter can create for logical databases. |
+| `status.features` | `metadata.features` | Adapter feature flags. |
+| `status.readOnlyHost` | `metadata.roHost` | Read-only host of the cluster. |
+| `status.apiVersions` | `metadata.apiVersions` | Adapter API contract. |
+
+Kind-specific reasons:
+
+| Reason | Applied to | Meaning |
+|--------|-----------|---------|
+| `PhysicalDatabaseRegistered` | `Ready=True` | The aggregator answered `200` or `201` |
+| `RoleMigrationStarted` | `Ready=False`, `Stalled=False` | The aggregator answered `202`; the operator polls until the migration completes |
+| `RegistrationConflict` | `Ready=False`, `Stalled=True` | An older `PhysicalDatabase` claims the same address or reports the same identifier |
+| `SecretError` | `Ready=False`, `Stalled=False` | The adapter credentials Secret cannot be read or lacks a key |
+| `Unauthorized` | `Ready=False`, `Stalled=False` | The adapter or the aggregator answered `401` |
+| `AdapterError` | `Ready=False`, `Stalled=False` | The adapter answered `404` or `503` |
+
+#### PhysicalDatabase Usage Examples
+
+**Register the PostgreSQL adapter of a cluster:**
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dbaas-adapter-credentials
+  namespace: dbaas-db-adapters
+type: Opaque
+stringData:
+  username: "dbaas-aggregator"
+  password: "<adapter-password>"
+---
+apiVersion: dbaas.netcracker.com/v1
+kind: PhysicalDatabase
+metadata:
+  name: postgres-core
+  namespace: dbaas-db-adapters
+spec:
+  operatorNamespace: dbaas-system
+  adapterAddress: http://pg-dbaas-adapter.postgres:8080
+  credentialsSecretRef:
+    name: dbaas-adapter-credentials
+```
+
+```bash
+kubectl apply -f physicaldatabase.yaml
+
+kubectl get physicaldatabase postgres-core -n dbaas-db-adapters -o wide
+# NAME            PHASE       READY   TYPE         PHYSICALDATABASEID   ADDRESS                                  AGE
+# postgres-core   Succeeded   True    postgresql   core-postgresql      http://pg-dbaas-adapter.postgres:8080   5s
+
+# See what the adapter reported
+kubectl get physicaldatabase postgres-core -n dbaas-db-adapters -o jsonpath='{.status}' | jq .
+
+# Pick up a rotated adapter password without waiting for the resync
+kubectl annotate physicaldatabase postgres-core -n dbaas-db-adapters dbaas.netcracker.com/refresh="$(date +%s)" --overwrite
+```
+
+---
+
 ## Kubernetes Events
 
 The operator emits Kubernetes Events on reconcile outcomes when `K8S_EVENTS_ENABLED=true`, which is the chart
@@ -2220,14 +2378,17 @@ use no-op recorders and omit both Event RBAC rules; none of the events below the
 | `BalancingRuleApplied` | Any of the three balancing-rule kinds applied its rules. |
 | `SecretCreated` | A `DatabaseSecretClaim` created the target Secret, or recreated it after a deletion race. |
 | `SecretRotated` | A `DatabaseSecretClaim` wrote changed credentials (`connectionProperties.json` differs). |
+| `PhysicalDatabaseRegistered` | A `PhysicalDatabase` registration returned `200 OK` or `201 Created`. |
 
 **Warning**
 
 | Reason | Emitted when |
 |--------|--------------|
 | `InvalidSpec` | Any controller-side pre-flight validation failed. |
-| `SecretError` | An `ExternalDatabase` credential Secret could not be read. |
-| `Unauthorized` | The aggregator returned `401`, on submit or on an `InternalDatabase` poll. |
+| `SecretError` | An `ExternalDatabase` or `PhysicalDatabase` credential Secret could not be read. |
+| `Unauthorized` | The aggregator returned `401`, on submit or on an `InternalDatabase` poll, or an adapter returned `401` to a `PhysicalDatabase` probe. |
+| `AdapterError` | An adapter returned `404` or `503` to a `PhysicalDatabase` probe. |
+| `RegistrationConflict` | An older `PhysicalDatabase` claims the same adapter address or reports the same identifier. |
 | `AggregatorRejected` | The aggregator returned `400`, `403`, `409`, `410`, or `422`, or an `InternalDatabase` operation reported `FAILED`. |
 | `AggregatorError` | The aggregator returned `5xx`, the call failed at the network level, an `InternalDatabase` poll returned `404`, or a balancing-rule cleanup call failed. |
 | `OperationTerminated` | An `InternalDatabase` operation reported `TERMINATED`; the operator resubmits. |
@@ -2237,7 +2398,7 @@ use no-op recorders and omit both Event RBAC rules; none of the events below the
 | `DatabaseNotFoundTimeout` | Emitted once, when a `DatabaseNotFound` streak crosses 10 minutes. |
 
 **Condition-only reasons** — these appear in `status.conditions` but are never emitted as events:
-`Succeeded` and `SecretUpToDate`.
+`Succeeded`, `SecretUpToDate`, and `RoleMigrationStarted`.
 
 ---
 
@@ -2257,6 +2418,7 @@ directly by the binary, and **startup flags** passed as container `args`.
 | `KUBERNETES_M2M_ENABLED` | boolean | `false` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `KUBERNETES_M2M_ENABLED`**. `false` (default): HTTP Basic Auth, with credentials read from `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security` (see [Authentication](#authentication-basic-auth-or-m2m-token)). `true`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
 | `DBAAS_ROTATION_POLL_INTERVAL` | string | `""` (→ `30s`) | Poll period (Go duration, e.g. `15s`, `1m`) for the aggregator's changed-databases feed used to propagate `DatabaseSecretClaim` credential rotations. Empty uses the operator's built-in default (`30s`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
 | `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30s`, `1m`) for `ExternalDatabase` CRs. The operator does not watch Secrets, so a referenced credential Secret change is picked up on the next resync rather than instantly. Empty uses the operator's built-in default (`10m`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
+| `DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL` | string | `""` (→ `10m`) | Resync period (Go duration, e.g. `30m`, `1h`) for `PhysicalDatabase` CRs. The resync picks up a rotated adapter password and restores a registration changed outside the CR. Empty uses the operator's built-in default (`10m`); a value that is unparseable or not positive is logged and ignored, and the default applies. |
 | `LOG_LEVEL` | string | `info` | Log verbosity. Allowed values: `debug`, `info`, `warn`, `error`, `fatal`. Per-package overrides (`LOGGING_LEVEL_<PACKAGE>`, `LOG_LEVEL_PACKAGE_<PACKAGE>`) and `LOGGING_LEVEL_ROOT` take precedence over this value. |
 | `restrictedEnvironment` | boolean | `false` | When `true`, the Helm chart does not create `ClusterRole` and `ClusterRoleBinding` (which must be applied manually). The namespace-scoped `Role` and `RoleBinding` are always created. |
 | `MONITORING_ENABLED` | boolean | `true` | When `true`, creates a `PodMonitor` for Prometheus scraping and imports Grafana dashboards. Because it defaults to `true`, enabling the operator also creates both objects — set it to `false` if the `monitoring.coreos.com` and `integreatly.org` CRDs are not installed, otherwise the release fails to apply. |
@@ -2363,20 +2525,21 @@ entirely. Most of them requeue after a fixed interval:
 |----------|------|
 | 1 s | `DatabaseSecretClaim` Secret create/update race reconverge |
 | 10 min | `ExternalDatabase` resync (`DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`) |
+| 10 min | `PhysicalDatabase` resync (`DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL`) |
 | 1 h | `DatabaseSecretClaim` rotation safety net |
 
 Two families of "not ready yet" polling instead use their own exponential poll backoff — see below.
 
 #### Exponential Poll Backoff
 
-`InternalDatabase`'s async poll and pinned-tenant materialization wait, and
-`DatabaseSecretClaim`'s `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` paths all
-requeue with a nil error, so they never touch the workqueue rate limiter described above. Instead, each object's own
-poll backoff advances through a fixed, bounded sequence: **5 s → 10 s → 20 s → 40 s → 60 s**, then stays capped at
-60 s. Jitter is applied upward below the cap and downward at the cap, so the actual delay ranges are **[5 s, 5.5 s)**,
-**[10 s, 11 s)**, **[20 s, 22 s)**, **[40 s, 44 s)**, then **(54 s, 60 s]**. This keeps CRs created in the same rollout
-wave from staying synchronized without exceeding the one-minute cap. A one-minute cap (rather than, say, five minutes)
-keeps a provisioning completion from taking several extra minutes to become visible.
+`InternalDatabase`'s async poll and pinned-tenant materialization wait, `PhysicalDatabase`'s `202` role-migration
+wait, and `DatabaseSecretClaim`'s `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties`
+paths all requeue with a nil error, so they never touch the workqueue rate limiter described above. Instead, each
+object's own poll backoff advances through a fixed, bounded sequence: **5 s → 10 s → 20 s → 40 s → 60 s**, then
+stays capped at 60 s. Jitter is applied upward below the cap and downward at the cap, so the actual delay ranges
+are **[5 s, 5.5 s)**, **[10 s, 11 s)**, **[20 s, 22 s)**, **[40 s, 44 s)**, then **(54 s, 60 s]**. This keeps CRs
+created in the same rollout wave from staying synchronized without exceeding the one-minute cap. A one-minute cap
+(rather than, say, five minutes) keeps a provisioning completion from taking several extra minutes to become visible.
 
 The step is private, in-memory controller state keyed by object namespace/name, UID, and generation; it does not add
 fields to the CRD or write implementation details into CR status. It resets to the initial 5 s interval whenever:
@@ -2386,8 +2549,8 @@ fields to the CRD or write implementation details into CR status. It resets to t
   the declarative apply completes);
 - a newer `metadata.generation` is observed (a spec edit always restarts polling at 5 s);
 - the operation reaches a terminal outcome (`COMPLETED`, `FAILED`, `TERMINATED`, a lost `trackingId`) or the CR
-  otherwise resolves (a `DatabaseSecretClaim` receives non-empty `connectionProperties`, or either kind reaches a
-  permanent validation/conflict state).
+  otherwise resolves (a `DatabaseSecretClaim` receives non-empty `connectionProperties`, a `PhysicalDatabase`
+  registration answers `200` or `201`, or any of these kinds reaches a permanent validation/conflict state).
 
 A transient error (`401`, `5xx`, network failure) leaves the poll backoff untouched: those paths return a non-nil
 error and are retried by the workqueue rate limiter instead, so a temporary outage does not reset healthy polling

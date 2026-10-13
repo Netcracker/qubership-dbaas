@@ -172,6 +172,7 @@ func main() {
 			&dbaasv1.MicroserviceBalancingRule{}: assignedToThisOperator,
 			&dbaasv1.NamespaceBalancingRule{}:    assignedToThisOperator,
 			&dbaasv1.PermanentBalancingRule{}:    assignedToThisOperator,
+			&dbaasv1.PhysicalDatabase{}:          assignedToThisOperator,
 		},
 	}
 
@@ -270,6 +271,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	physicalDatabaseReconciler := &controller.PhysicalDatabaseReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Aggregator:  aggregator,
+		Adapter:     aggregatorclient.NewAdapterClient(),
+		Recorder:    recorderFor(mgr, "physicaldatabase", eventsEnabled),
+		MyNamespace: cloudNamespace,
+	}
+	// PhysicalDatabase picks up a rotated adapter password through a
+	// periodic resync. Override the default interval for faster rotation pickup.
+	if v := os.Getenv("DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL"); v != "" {
+		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
+			physicalDatabaseReconciler.ResyncInterval = d
+		} else {
+			setupLog.Infof("Ignoring invalid DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL=%q, using default", v)
+		}
+	}
+	if err := physicalDatabaseReconciler.SetupWithManager(mgr, rateLimiterConfig); err != nil {
+		setupLog.Errorf("Failed to create controller controller=PhysicalDatabase: %v", err)
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

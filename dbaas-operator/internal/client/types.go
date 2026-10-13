@@ -152,6 +152,51 @@ type PermanentBalancingRuleDeleteRequest struct {
 	Namespaces []string `json:"namespaces"`
 }
 
+// ─── PhysicalDatabase wire types ─────────────────────────────────
+
+// PhysicalDatabaseRegistrationRequest is the request body for
+// PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}.
+// Field names mirror com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3.
+type PhysicalDatabaseRegistrationRequest struct {
+	AdapterAddress       string                   `json:"adapterAddress"`
+	HTTPBasicCredentials HTTPBasicCredentials     `json:"httpBasicCredentials"`
+	Labels               map[string]string        `json:"labels,omitempty"`
+	Metadata             PhysicalDatabaseMetadata `json:"metadata"`
+	// Status is "running" for the first registration after adapter startup and
+	// "run" afterwards. The operator always sends "running": "run" makes the
+	// aggregator call the sender back for a handshake, and the operator cannot
+	// answer it.
+	Status string `json:"status"`
+}
+
+// HTTPBasicCredentials is the Basic Auth pair dbaas-aggregator uses to call the adapter.
+type HTTPBasicCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// PhysicalDatabaseMetadata is the metadata section of PhysicalDatabaseRegistrationRequest.
+type PhysicalDatabaseMetadata struct {
+	APIVersion     string          `json:"apiVersion"`
+	APIVersions    *APIVersions    `json:"apiVersions,omitempty"`
+	SupportedRoles []string        `json:"supportedRoles"`
+	Features       map[string]bool `json:"features"`
+	ROHost         string          `json:"roHost,omitempty"`
+}
+
+// APIVersions mirrors com.netcracker.cloud.dbaas.dto.v3.ApiVersion.
+type APIVersions struct {
+	Specs []APIVersionSpec `json:"specs"`
+}
+
+// APIVersionSpec mirrors com.netcracker.cloud.dbaas.dto.v3.ApiVersion.Spec.
+type APIVersionSpec struct {
+	SpecRootURL     string  `json:"specRootUrl"`
+	Major           int32   `json:"major"`
+	Minor           int32   `json:"minor"`
+	SupportedMajors []int32 `json:"supportedMajors"`
+}
+
 // ─── InternalDatabase wire types ──────────────────────────────────────────
 
 // DatabaseDeclarationSpecWire is the wire representation of the spec field
@@ -274,7 +319,7 @@ type RequestContextError struct {
 }
 
 func (e *RequestContextError) Error() string {
-	return fmt.Sprintf("invalid aggregator request context: %v", e.Cause)
+	return fmt.Sprintf("invalid outgoing request context: %v", e.Cause)
 }
 
 func (e *RequestContextError) Unwrap() error {
@@ -324,7 +369,14 @@ func (e *AggregatorError) IsAuthError() bool {
 // They are transient and the controller should back-off and retry.
 // 401 is handled separately by IsAuthError.
 func (e *AggregatorError) IsSpecRejection() bool {
-	switch e.StatusCode {
+	return isSpecRejectionStatus(e.StatusCode)
+}
+
+// isSpecRejectionStatus is the single list of status codes that mean "the
+// request content was rejected", shared by AggregatorError and AdapterError so
+// that both remote services are classified the same way.
+func isSpecRejectionStatus(code int) bool {
+	switch code {
 	case http.StatusBadRequest, http.StatusForbidden, http.StatusConflict, http.StatusGone, http.StatusUnprocessableEntity:
 		return true
 	}
@@ -337,4 +389,40 @@ func (e *AggregatorError) IsSpecRejection() bool {
 // treated as a generic transient AggregatorError.
 func (e *AggregatorError) IsDatabaseNotFound() bool {
 	return e.StatusCode == http.StatusNotFound && e.TmfCode == "CORE-DBAAS-4006"
+}
+
+// AdapterError represents a non-2xx HTTP response from a dbaas adapter. It is
+// classified exactly like AggregatorError, so a given status code leads to the
+// same phase, Stalled condition, and retry behavior whichever service answered.
+type AdapterError struct {
+	StatusCode int
+	Body       string // raw response body (fallback when TMF parse fails)
+	TmfCode    string // parsed from TmfErrorResponse.code
+	TmfMessage string // parsed from TmfErrorResponse.message, if available
+}
+
+func (e *AdapterError) Error() string {
+	return fmt.Sprintf("dbaas adapter returned HTTP %d: %s", e.StatusCode, e.Body)
+}
+
+// UserMessage returns the TMF error message when the adapter sent one, and the
+// raw response body otherwise.
+func (e *AdapterError) UserMessage() string {
+	if e.TmfMessage != "" {
+		return e.TmfMessage
+	}
+	return e.Body
+}
+
+// IsAuthError returns true for HTTP 401: the adapter rejected the credentials
+// from the referenced Secret. The controller retries, so a fixed Secret is
+// picked up without a spec change.
+func (e *AdapterError) IsAuthError() bool {
+	return e.StatusCode == http.StatusUnauthorized
+}
+
+// IsSpecRejection returns true for the same status codes as
+// AggregatorError.IsSpecRejection.
+func (e *AdapterError) IsSpecRejection() bool {
+	return isSpecRejectionStatus(e.StatusCode)
 }

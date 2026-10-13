@@ -461,7 +461,7 @@ docs/monitoring/                      Metrics & Grafana dashboard reference docs
 ### Custom Resources (all `dbaas.netcracker.com/v1`)
 
 `ExternalDatabase`, `InternalDatabase`, `DatabaseSecretClaim`, `DatabaseAccessPolicy`,
-`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`.
+`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`, `PhysicalDatabase`.
 
 ---
 

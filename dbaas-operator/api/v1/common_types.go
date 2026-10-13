@@ -103,9 +103,10 @@ type Classifier struct {
 //	                     ↘ InvalidConfiguration (permanent error, no retry)
 //
 // InternalDatabase additionally uses WaitingForDependency while polling
-// an asynchronous provisioning operation in dbaas-aggregator.
-// ExternalDatabase and DatabaseAccessPolicy never transition into WaitingForDependency —
-// their reconcile flows are fully synchronous.
+// an asynchronous provisioning operation in dbaas-aggregator, and
+// PhysicalDatabase while dbaas-aggregator parks the registration for a role
+// migration. ExternalDatabase and DatabaseAccessPolicy never transition into
+// WaitingForDependency — their reconcile flows are fully synchronous.
 //
 // Phase is an observational summary for humans, not an API contract: it exists so
 // that `kubectl get` can show a single readable column, which conditions cannot
@@ -127,10 +128,11 @@ const (
 	// resource with dbaas-aggregator.
 	PhaseProcessing Phase = "Processing"
 
-	// PhaseWaitingForDependency indicates the controller is polling an
-	// asynchronous provisioning operation in dbaas-aggregator (HTTP 202 +
-	// trackingId flow). Used only by InternalDatabase — ExternalDatabase
-	// and DatabaseAccessPolicy have synchronous reconcile flows and never use this phase.
+	// PhaseWaitingForDependency indicates the controller is polling dbaas-aggregator
+	// after an HTTP 202: an asynchronous provisioning operation (InternalDatabase,
+	// trackingId flow) or a role migration that parks the registration
+	// (PhysicalDatabase). ExternalDatabase and DatabaseAccessPolicy have synchronous
+	// reconcile flows and never use this phase.
 	PhaseWaitingForDependency Phase = "WaitingForDependency"
 
 	// PhaseSucceeded indicates the resource was successfully processed by dbaas-aggregator.

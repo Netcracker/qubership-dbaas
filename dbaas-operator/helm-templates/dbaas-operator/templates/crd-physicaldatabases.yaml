@@ -1,0 +1,297 @@
+{{- if .Values.DBAAS_OPERATOR_ENABLED }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: physicaldatabases.dbaas.netcracker.com
+spec:
+  group: dbaas.netcracker.com
+  names:
+    categories:
+    - dbaas
+    kind: PhysicalDatabase
+    listKind: PhysicalDatabaseList
+    plural: physicaldatabases
+    shortNames:
+    - dbpdr
+    singular: physicaldatabase
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.type
+      name: Type
+      type: string
+    - jsonPath: .status.physicalDatabaseId
+      name: PhysicalDatabaseId
+      type: string
+    - jsonPath: .spec.adapterAddress
+      name: Address
+      priority: 1
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PhysicalDatabase registers a physical database (a DBMS cluster and its dbaas
+          adapter) with dbaas-aggregator. The operator does not install the adapter or
+          the DBMS; both must already be running. Deleting the resource stops managing
+          the registration but does not remove it, because a physical database carries
+          logical databases.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of PhysicalDatabase.
+            properties:
+              adapterAddress:
+                description: |-
+                  adapterAddress is the adapter base URL. The operator probes the adapter at
+                  it and sends it to dbaas-aggregator as adapterAddress. The Pattern asks for
+                  a scheme, "://", and a non-empty host, which is what the aggregator checks;
+                  everything else about the URL is left to the aggregator.
+                  The aggregator accepts an address change only when the host stays the same
+                  and the scheme changes (a switch to TLS); any other change answers 409.
+                pattern: ^[^\s:/?#]+://[^\s/?#]+
+                type: string
+              credentialsSecretRef:
+                description: |-
+                  credentialsSecretRef references the Secret with the adapter's own Basic Auth
+                  credentials: the operator uses them to probe the adapter, and dbaas-aggregator
+                  uses them to call it.
+                properties:
+                  name:
+                    description: |-
+                      name is the Secret name. The Secret must be in the same namespace as the
+                      PhysicalDatabase resource.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              operatorNamespace:
+                description: |-
+                  operatorNamespace is the namespace where the dbaas-operator instance
+                  responsible for this resource is deployed. It must match that operator's
+                  CLOUD_NAMESPACE and is immutable after creation.
+                  The Pattern requires an RFC-1123 label, so a value that cannot name a
+                  namespace (whitespace, uppercase, a slash, a leading or trailing hyphen)
+                  is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+                x-kubernetes-validations:
+                - message: spec.operatorNamespace is immutable after creation
+                  rule: self == oldSelf
+            required:
+            - adapterAddress
+            - credentialsSecretRef
+            - operatorNamespace
+            type: object
+          status:
+            description: status defines the observed state of PhysicalDatabase.
+            properties:
+              apiVersions:
+                description: |-
+                  apiVersions is the adapter's declared API contract, sent as
+                  metadata.apiVersions.
+                properties:
+                  specs:
+                    description: specs lists the API specs the adapter serves.
+                    items:
+                      description: |-
+                        AdapterAPIVersionSpec describes one API spec the adapter serves.
+
+                        It is part of the status, so it carries no validation markers: the API server
+                        validates status writes, and a rejected write would drop the conditions too.
+                      properties:
+                        major:
+                          description: major is the latest major version the adapter
+                            supports for this spec.
+                          format: int32
+                          type: integer
+                        minor:
+                          description: minor is the latest minor version the adapter
+                            supports for this spec.
+                          format: int32
+                          type: integer
+                        specRootUrl:
+                          description: specRootUrl is the root URL prefix of this
+                            API spec, e.g. "/api".
+                          type: string
+                        supportedMajors:
+                          description: supportedMajors lists every major version the
+                            adapter accepts for this spec.
+                          items:
+                            format: int32
+                            type: integer
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the resource.
+                  Ready is True when the current generation was successfully processed;
+                  False on any error, with Reason carrying the error category. Success
+                  reasons: DatabaseRegistered (ExternalDatabase), PolicyApplied
+                  (DatabaseAccessPolicy), DatabaseProvisioned (InternalDatabase;
+                  ProvisioningStarted while the async operation runs).
+                  Stalled=True marks a permanent error; the controller does not retry
+                  until the spec changes. Stalled=False covers successful, ongoing, and
+                  retriable states.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              features:
+                additionalProperties:
+                  type: boolean
+                description: features holds the adapter feature flags, sent as metadata.features.
+                type: object
+              labels:
+                additionalProperties:
+                  type: string
+                description: labels are the physical database labels, sent as labels.
+                type: object
+              lastRequestId:
+                description: |-
+                  lastRequestId is the X-Request-Id of the most recent reconcile attempt
+                  that wrote this status; a reconcile that leaves the status untouched keeps
+                  the previous value. Use it to correlate operator logs with
+                  dbaas-aggregator logs when investigating issues for a specific resource.
+                type: string
+              observedGeneration:
+                description: |-
+                  observedGeneration reflects the .metadata.generation that was last processed
+                  by the controller. When the current generation differs from this value, the
+                  controller clears all conditions and starts a fresh reconciliation cycle.
+                  Zero (or less than metadata.generation) means the current generation has not
+                  yet been fully reconciled — for example, the controller is in BackingOff
+                  waiting for a transient error to clear.
+                format: int64
+                type: integer
+              phase:
+                description: |-
+                  phase is a human-readable summary of the conditions below, provided so that
+                  `kubectl get` can show one column. Do not automate against it — read
+                  conditions instead. Not defaulted by the API server: status is owned by the
+                  controller, which always sets phase alongside the conditions.
+                type: string
+              physicalDatabaseId:
+                description: |-
+                  physicalDatabaseId is the adapter-assigned identifier of the database
+                  cluster, sent as the {phydbid} path segment. Two resources that report the
+                  same identifier conflict, and the older one wins.
+                type: string
+              readOnlyHost:
+                description: |-
+                  readOnlyHost is the read-only host of the database cluster, sent as
+                  metadata.roHost.
+                type: string
+              supportedRoles:
+                description: |-
+                  supportedRoles lists the roles the adapter can create for logical
+                  databases, sent as metadata.supportedRoles.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: atomic
+              type:
+                description: |-
+                  type is the database engine type, e.g. "postgresql", sent as the {type}
+                  path segment.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    selectableFields:
+    - jsonPath: .spec.operatorNamespace
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}
