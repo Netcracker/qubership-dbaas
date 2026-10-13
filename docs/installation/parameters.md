@@ -17,6 +17,7 @@
         + [DR_MANAGEABLE](#dr_manageable)
         + [PRODUCTION_MODE](#production_mode)
         + [INTERNAL_TLS_ENABLED](#internal_tls_enabled)
+        + [AMBIENT_MESH_ENABLED](#ambient_mesh_enabled)
         + [READONLY_CONTAINER_FILE_SYSTEM_ENABLED](#readonly_container_file_system_enabled)
         + [DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT](#dbaas_backup_restore_check_lock_timeout)
         + [DBAAS_BACKUP_RESTORE_CHECK_INTERVAL](#dbaas_backup_restore_check_interval)
@@ -257,14 +258,31 @@ If PRODUCTION_MODE is set to true, dropping databases in DBaaS is not allowed.
 
 #### INTERNAL_TLS_ENABLED
 
-If INTERNAL_TLS_ENABLED is set to true, DBaaS Aggregator will work in TLS mode:
+`INTERNAL_TLS_ENABLED` controls application-level TLS for the connection from DBaaS Aggregator to its PostgreSQL
+storage. When enabled, the Aggregator validates the PostgreSQL server certificate against `ca.crt` in the directory set
+by `CERTIFICATE_FILE_PATH`.
 
-* two ports will be available: 8080(http) and 8443(https)
-* all connections via https proto will be secured
+This parameter is independent of `AMBIENT_MESH_ENABLED`, which controls mesh-level mTLS between enrolled DBaaS
+workloads. If PostgreSQL is not enrolled in the mesh, Ambient Mesh does not encrypt the connection from the Aggregator
+to PostgreSQL. Set `INTERNAL_TLS_ENABLED` to `true` when that connection must use TLS.
 
-| Default | Recommended                                |
-|---------|--------------------------------------------|
-| false   | Set to true if need to enable TLS in DBaaS |
+`INTERNAL_TLS_ENABLED` does not enable HTTPS on DBaaS Aggregator. The Aggregator serves HTTP on port `8080`. When the
+Operator and Aggregator are enrolled in Ambient Mesh, Istio encrypts the HTTP traffic between them; see
+[Transport Security: Istio Ambient Mesh](../../dbaas-operator/docs/DBaaS%20Operator.md#transport-security-istio-ambient-mesh).
+
+| Default | Recommended                                                   |
+|---------|---------------------------------------------------------------|
+| false   | Set to true if PostgreSQL requires TLS connections from DBaaS |
+
+#### AMBIENT_MESH_ENABLED
+
+If `AMBIENT_MESH_ENABLED` is set to `true`, the DBaaS Aggregator and Operator charts enroll their Pods in Istio Ambient
+Mesh. Set the same value for both charts. Setting the parameter to `false` removes the Ambient label, so traffic from
+the Operator to the Aggregator uses plain HTTP on port `8080`.
+
+| Default | Recommended                                                              |
+|---------|--------------------------------------------------------------------------|
+| true    | Keep enabled when Istio Ambient Mesh, Istio CNI, and ztunnel are present |
 
 #### READONLY_CONTAINER_FILE_SYSTEM_ENABLED
 

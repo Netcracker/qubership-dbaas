@@ -229,6 +229,17 @@
         true
       ]
     },
+    "AMBIENT_MESH_ENABLED": {
+      "$id": "#/properties/AMBIENT_MESH_ENABLED",
+      "type": "boolean",
+      "title": "The AMBIENT_MESH_ENABLED schema",
+      "description": "Enrolls the DBaaS Operator Pod in Istio Ambient Mesh",
+      "default": true,
+      "examples": [
+        true,
+        false
+      ]
+    },
     "M2M_AUTH_MODE": {
       "$id": "#/properties/M2M_AUTH_MODE",
       "type": "string",
