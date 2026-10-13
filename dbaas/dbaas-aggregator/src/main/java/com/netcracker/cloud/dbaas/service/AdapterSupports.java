@@ -1,7 +1,7 @@
 package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.v3.ApiVersion;
-import jakarta.ws.rs.WebApplicationException;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import jakarta.ws.rs.core.Response;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -97,8 +97,8 @@ public class AdapterSupports {
                                 return finalMap;
                             }
                     ).orElse(defaults);
-        } catch (WebApplicationException e) {
-            if (e.getResponse().getStatus() == Response.Status.NOT_FOUND.getStatusCode()) {
+        } catch (AdapterException e) {
+            if (e.getHttpCode() == Response.Status.NOT_FOUND.getStatusCode()) {
                 log.debug("Request to {}/api/{}/dbaas/adapter/{}/supports returned 404, assume defaults: {}", client.adapterAddress(), supportedVersion, client.type(), defaults);
                 return defaults;
             } else {

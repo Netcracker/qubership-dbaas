@@ -70,8 +70,8 @@ spec:
               value: '{{ .Values.LOG_LEVEL }}'
             - name: API_DBAAS_ADDRESS
               value: '{{ .Values.API_DBAAS_ADDRESS }}'
-            - name: KUBERNETES_M2M_ENABLED
-              value: '{{ .Values.M2M_ENABLED | default false }}'
+            - name: M2M_AUTH_MODE
+              value: '{{ if .Values.M2M_ENABLED }}hybrid{{ else }}legacy{{ end }}'
             # In the M2M phase, clear the aggregator basic-auth creds so DbaasClientProducer picks the
             # M2M client (m2mDbaaSClient) over BasicDbaaSClient. Empty env overrides the username /
             # password baked into application.properties (SmallRye maps empty -> Optional.empty()).

@@ -16,3 +16,18 @@ jobs:
       upload-artifact: true
       java-version: 25
       maven-command: 'verify'
+
+  maven-build-gate:
+    name: Maven Build Gate
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [mvn]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require Maven build
+        if: needs.mvn.result != 'success'
+        run: |
+          echo "::error::Maven build did not succeed"
+          exit 1

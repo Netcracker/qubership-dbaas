@@ -27,11 +27,17 @@ and Secret consumption; the CR identity rules below remain common.
 Read [contracts.md](references/contracts.md) before building a plan, and
 [testing.md](references/testing.md) when validating generated output or running a cluster test.
 
-`scripts/apply_migration.py` is the only process allowed to create, modify, or delete files in the
-consumer repository. Once discovery produces a plan, run it with `--check` to validate, then call
-it with `--apply` exactly once to write -- never hand-edit a generated resource, a patched workload
-manifest, `values.yaml`/`values.schema.json`, or a superseded declaration afterward. If the writer
-blocks, fix the plan (or the source it points at) and rerun both steps.
+`scripts/apply_migration.py` is the only process that creates, modifies, or deletes a file named in
+its plan -- a generated resource, a patched workload manifest, or a superseded declaration. Once
+discovery produces a plan, run it with `--check` to validate, then call it with `--apply` exactly
+once to write; never hand-edit any of those files afterward. If the writer blocks, fix the plan (or
+the source it points at) and rerun both steps.
+
+This rule is scoped to the writer's own plan-named files, not to the whole consumer repository. A
+normal code-editing workflow may still modify application source and tests outside the plan -- for
+example, when [go.md](references/frameworks/go.md)'s custom-provider guidance requires a source
+change before an identity can be marked `SUPPORTED`. After such a source change, rebuild the
+inventory and the plan from the new state; do not reuse a plan built against the old source.
 
 ## 1. Verify generated-secret compatibility
 
@@ -106,15 +112,25 @@ Canonicalize classifier maps by keys and values for comparison.
 - Different classifier keys or values require different `InternalDatabase` resources.
 - Different requested roles share the database but require separate claims and mounted Secrets.
 
-The operator assignment is a deploy-time value, not a namespace baked into the repository. Expose it
-as `DBAAS_OPERATOR_NAMESPACE` -- a Helm value the service populates when it deploys (for example
-through Argo CD) -- and record it as the placeholder `{{ .Values.DBAAS_OPERATOR_NAMESPACE }}` in
-the plan's `operatorNamespace`; the writer registers that value, with an empty default, in
-`values.yaml`/`values.schema.json` for you. The operator reads its own namespace from
-`CLOUD_NAMESPACE`, so nothing needs to be hardcoded here. Only for plain manifests, which cannot
-template a value, resolve a concrete namespace instead: prefer an explicit deployment value, verify
-it against the intended `dbaas-operator` Deployment or Pod when a cluster is available, and stop and
-ask if it cannot be proven -- never assume `dbaas-system` or reuse the workload namespace.
+The operator assignment is a deploy-time value, not a namespace baked into the repository. The
+writer never registers any default for it in `values.yaml`/`values.schema.json` -- the plan's
+`operatorNamespace` must already be a concrete, verified value or Helm expression. For a Helm
+chart, when `API_DBAAS_ADDRESS` is a namespaced in-cluster Kubernetes service address (e.g.
+`http://dbaas-aggregator.dbaas-operator:8080`), derive it with the documented expression (see
+references/contracts.md's "Operator namespace" section) instead:
+
+```gotemplate
+{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}
+```
+
+If a chart already pins `DBAAS_OPERATOR_NAMESPACE` (or whatever value key that expression resolves
+through) to a real value, that value wins -- but an explicitly chosen empty value must fail
+validation, not be masked. When `API_DBAAS_ADDRESS` is external, single-label, empty, or otherwise
+cannot identify the operator namespace, require an explicit, verified literal in the plan instead.
+For plain manifests, which cannot template a value, always resolve a concrete namespace: prefer an
+explicit deployment value, verify it against the intended `dbaas-operator` Deployment or Pod when a
+cluster is available, and stop and ask if it cannot be proven -- never assume `dbaas-system` or
+reuse the workload namespace.
 
 Report all dynamic, blocked, and ambiguous entries; never generate placeholders that could create
 the wrong database.
@@ -157,7 +173,7 @@ those namespaces differ.
       "root": "chart",
       "kind": "helm",
       "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-      "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
+      "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) }}",
       "workloadNamespace": "{{ .Values.NAMESPACE }}",
       "originService": "orders",
       "datasources": [
@@ -177,16 +193,22 @@ those namespaces differ.
         }
       ],
       "supersededDeclarations": [{"path": "templates/dbaas-declaration.yaml"}],
-      "sourceHashes": {"templates/deployment.yaml": "<sha256>", "templates/dbaas-declaration.yaml": "<sha256>"}
+      "sourceHashes": {"templates/deployment.yaml": "<sha256>", "templates/dbaas-declaration.yaml": "<sha256>"},
+      "capabilityGuard": "dbaas.netcracker.com/v1",
+      "operatorModeEnvironment": {"name": "DBAAS_OPERATOR_ENABLED", "value": "true"}
     }
   ]
 }
 ```
 
+`capabilityGuard` and `operatorModeEnvironment` (both omitted above) are optional -- see
+references/contracts.md's "Capability guard" section for a mixed cluster where the dbaas-operator
+CRDs may not be installed. Omitting `capabilityGuard` keeps every prior behavior unchanged.
+
 `sourceHashes` keys are root-relative and must record the SHA-256 of every file this root reads
-(every workload file, every superseded-declaration file, `values.yaml`, `values.schema.json`) at the
-moment of discovery; the writer refuses to act on a hash that no longer matches (something changed
-underneath the plan -- rebuild it).
+(every workload file, every superseded-declaration file) at the moment of discovery; the writer
+refuses to act on a hash that no longer matches (something changed underneath the plan -- rebuild
+it). The writer never reads or writes `values.yaml` / `values.schema.json`.
 
 Each `supersededDeclarations` entry addresses one YAML file's contents through its optional
 `documentIndex`: omit it to address the whole file (every top-level `---`-separated document must
@@ -213,6 +235,12 @@ Helm guarantees unique per release -- the writer rejects both a plan that omits 
 identity and one that slugifies the template text into a fixed literal instead (every release of
 the chart would then generate the same name).
 
+Before running the writer for a Helm root, make every dependency from `Chart.yaml` available with
+the repository's existing dependency command. Use `helm dependency build <chart-root>` when the
+chart has a current `Chart.lock`; use `helm dependency update <chart-root>` when the lock file must
+be created or refreshed. The writer renders a temporary chart copy and does not download missing
+dependencies.
+
 Run, from the directory containing this `SKILL.md`:
 
 ```bash
@@ -227,13 +255,17 @@ blocking entry names the file and the reason.
 
 ## 5. Cases the writer refuses rather than guesses at
 
-An empty or missing pod-spec mapping; a standalone Helm block action or assignment inside a
-workload manifest; a volume/mount name that already exists pointing at a different secret; a
+An empty or missing pod-spec mapping; a volume/mount name that already exists pointing at a
+different secret; a target container/list that only Helm can produce (a `range` that generates the
+whole target container list, or a conditional wrapping the entire target key/sequence with no
+static insertion point -- see references/contracts.md's "Helm-templated workloads" section); a
 templated classifier identity with no `resourceName`, or one with no live `.Release.Name`
 expression; a superseded declaration carrying `physicalDatabaseId`, `versioningConfig`,
 `initialInstantiation`, or a non-default `lazy` (see step 3); a migration source path that is also
 the generated output path; a plain-manifest output that still contains a Helm expression after
-generation; a missing `helm` binary for a helm root.
+generation; a missing `helm` binary for a helm root. A standalone Helm action (`if`/`else`/`range`/
+`with`/`end`/an assignment) elsewhere in the manifest, or wrapping only unrelated content, no longer
+blocks the run by itself -- masking, not a blanket rejection, is what makes editing around it safe.
 
 A warning is never permission to drop data: an unresolved ambiguity blocks the run instead of
 guessing.

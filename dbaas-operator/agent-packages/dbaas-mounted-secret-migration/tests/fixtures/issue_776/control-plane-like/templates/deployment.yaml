@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: '{{ .Values.NAMESPACE }}'
+spec:
+  template:
+    spec:
+      containers:
+        - name: control-plane
+          image: control-plane:latest
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+            {{- if .Values.legacyMode }}
+            - name: legacy-credentials
+              mountPath: /etc/legacy-credentials
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: control-plane-config
+        {{- if .Values.legacyMode }}
+        - name: legacy-credentials
+          secret:
+            secretName: control-plane-legacy-credentials
+        {{- end }}

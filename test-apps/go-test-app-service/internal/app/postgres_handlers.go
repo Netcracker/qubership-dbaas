@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	pgdbaas "github.com/netcracker/qubership-core-lib-go-dbaas-postgres-client/v4"
 	"github.com/netcracker/qubership-core-lib-go/v3/context-propagation/baseproviders/tenant"
 
@@ -48,24 +47,23 @@ func handlePostgresPing(db pgdbaas.Database, pinTenant bool) http.HandlerFunc {
 			return
 		}
 
-		props, err := db.FindConnectionProperties(withTenant(r.Context(), pinTenant))
+		ctx, cancel := context.WithTimeout(withTenant(r.Context(), pinTenant), dbPingTimeout)
+		defer cancel()
+
+		props, err := db.FindConnectionProperties(ctx)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), dbPingTimeout)
-		defer cancel()
-
-		conn, err := pgx.Connect(ctx, props.Url)
+		sqlDB, err := postgresSQLDB(ctx, db)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("connect to postgres: %w", err))
+			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		defer conn.Close(context.Background())
 
 		var result int
-		if err := conn.QueryRow(ctx, "SELECT 1").Scan(&result); err != nil {
+		if err := sqlDB.QueryRowContext(ctx, "SELECT 1").Scan(&result); err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("execute SELECT 1: %w", err))
 			return
 		}

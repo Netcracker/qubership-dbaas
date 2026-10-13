@@ -15,21 +15,19 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseRegistryRepository;
 import com.netcracker.cloud.dbaas.service.dbsettings.LogicalDbSettingsService;
+import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import io.quarkus.narayana.jta.QuarkusTransactionException;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.beanutils.PropertyUtils;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.exception.ConstraintViolationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 
 import java.lang.reflect.InvocationTargetException;
 import java.sql.SQLException;
@@ -40,8 +38,8 @@ import java.util.concurrent.Executors;
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.service.AbstractDbaasAdapterRESTClient.MICROSERVICE_NAME;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
-import static org.postgresql.util.PSQLState.UNIQUE_VIOLATION;
 import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
+import static org.postgresql.util.PSQLState.UNIQUE_VIOLATION;
 
 @Slf4j
 @ApplicationScoped
@@ -230,9 +228,9 @@ public class AggregatedDatabaseAdministrationService {
                     }
                 }
                 updateDatabase(databaseRegistry, createRequest);
-            } catch (WebApplicationException e) {
+            } catch (AdapterException e) {
                 log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
-                return Response.status(e.getResponse().getStatusInfo()).entity(String.format("Updating database failed with error: %s %s, message: %s", e.getResponse().getStatus(), e.getResponse().getStatusInfo().getReasonPhrase(), e.getResponse().getEntity())).build();
+                return Response.status(e.getHttpCode()).entity(String.format("Updating database failed with error: %s, message: %s", e.getHttpCode(), e.getErrorMessage())).build();
             } catch (Exception e) {
                 log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Updating database failed with error: " + e.getMessage()).build();
@@ -421,10 +419,9 @@ public class AggregatedDatabaseAdministrationService {
                 if (isStorageAvailable) {
                     updateDatabase(databaseRegistry, createRequest);
                 }
-            } catch (WebApplicationException e) {
+            } catch (AdapterException e) {
                 log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
-                Response.StatusType statusInfo = e.getResponse().getStatusInfo();
-                return Response.status(statusInfo).entity(String.format("Updating database failed with error: %s %s, message: %s", statusInfo.getStatusCode(), statusInfo.getReasonPhrase(), e.getResponse().getEntity())).build();
+                return Response.status(e.getHttpCode()).entity(String.format("Updating database failed with error: %s, message: %s", e.getHttpCode(), e.getErrorMessage())).build();
             } catch (Exception e) {
                 log.error(MESSAGE_ERROR_DURING_UPDATE_DATABASE, classifier, createRequest.getType());
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Updating database failed with error: " + e.getMessage()).build();

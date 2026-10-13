@@ -365,6 +365,16 @@ def validate(
                 volume_secrets[volume_name] = secret["secretName"]
         for container_field, container_label in (("containers", "container"), ("initContainers", "initContainer")):
             for container in pod_spec.get(container_field) or []:
+                location = (
+                    f"{object_identity(obj, default_namespace=default_namespace)} "
+                    f"{container_label} {container.get('name', '<missing>')}"
+                )
+                for env in container.get("env") or []:
+                    if "value" in env and env["value"] is not None and not isinstance(env["value"], str):
+                        errors.append(
+                            f"{location}: env {env.get('name', '<missing>')!r} value must be a string, "
+                            f"got {type(env['value']).__name__}"
+                        )
                 for mount in container.get("volumeMounts") or []:
                     secret_name = volume_secrets.get(mount.get("name"))
                     if not secret_name:
@@ -372,8 +382,7 @@ def validate(
                     secret_key = (namespace, secret_name)
                     mount_occurrences.setdefault(secret_key, []).append(
                         (
-                            f"{object_identity(obj, default_namespace=default_namespace)} "
-                            f"{container_label} {container.get('name', '<missing>')}",
+                            location,
                             mount.get("mountPath"),
                             mount.get("readOnly"),
                         )

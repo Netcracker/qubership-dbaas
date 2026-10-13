@@ -13,13 +13,13 @@ import com.netcracker.cloud.dbaas.entity.pg.backup.DatabasesBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
 import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
+import com.netcracker.cloud.dbaas.exceptions.AdapterException;
 import com.netcracker.cloud.dbaas.exceptions.NamespaceBackupDeletionFailedException;
 import com.netcracker.cloud.dbaas.exceptions.NamespaceRestorationFailedException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.rest.DbaasAdapterRestClientV2;
 import jakarta.persistence.EntityManager;
-import jakarta.ws.rs.NotFoundException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -480,7 +481,7 @@ public class DBBackupsServiceTest {
         if (isApiExist) {
             when(restClient.supports(any())).thenReturn(responseBody);
         } else {
-            when(restClient.supports(any())).thenThrow(new NotFoundException());
+            when(restClient.supports(any())).thenThrow(new AdapterException(NOT_FOUND.getStatusCode(), NOT_FOUND.getReasonPhrase()));
         }
         return restClient;
     }

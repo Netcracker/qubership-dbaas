@@ -1,0 +1,8 @@
+TAG: {{ requiredEnv "OPERATOR_TAG" | quote }}
+
+NAMESPACE: {{ env "DBAAS_NAMESPACE" | default "dbaas" | quote }}
+
+MONITORING_ENABLED: false
+DBAAS_OPERATOR_ENABLED: true
+
+M2M_AUTH_MODE: hybrid

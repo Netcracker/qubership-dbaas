@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.config.security;
 
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesTokenVerificationException;
 import com.netcracker.cloud.security.core.utils.k8s.KubernetesTokenVerifier;
+import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.jwt.auth.principal.*;
 import jakarta.annotation.Priority;
@@ -22,11 +23,11 @@ public class KubernetesJWTCallerPrincipalFactory extends JWTCallerPrincipalFacto
 
     @Inject
     public KubernetesJWTCallerPrincipalFactory(
-            @ConfigProperty(name = "dbaas.security.k8s.m2m.enabled") boolean m2mEnabled,
+            M2MAuthMode m2mAuthMode,
             @ConfigProperty(name = "dbaas.security.k8s.m2m.audience") String m2mAudience
     ) {
-        if (!m2mEnabled) {
-            log.info("M2M support is not enabled, skipping verifier initialization");
+        if (!M2MAuthModeProducer.isKubernetesTokenEnabled(m2mAuthMode)) {
+            log.info("M2M auth mode is {}, skipping verifier initialization", m2mAuthMode);
             this.verifier = null;
             return;
         }

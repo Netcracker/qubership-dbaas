@@ -207,3 +207,10 @@ Removes artifacts
 - patroni CRDs (if `SKIP_CRDS = false`)
 - DbaaS node label (if `ADD_DBAAS_NODE_LABEL = true`)
 - namespaces (if `CREATE_NAMESPACE = true`)
+
+## Helmfile
+
+`helmfile/helmfile.yaml.gotmpl` provides the reusable DBaaS environment layout for CI pipelines. It deploys PostgreSQL,
+the DBaaS aggregator, the dbaas-operator, the PostgreSQL adapter, and the shared M2M prerequisites. Callers provide
+DBaaS chart paths, image tags, and namespaces through environment variables. The layout uses fixed credentials for its
+ephemeral test environment. `PGSKIPPER_REF` selects the pgskipper revision and defaults to `main`.

@@ -25,13 +25,13 @@
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
         <quarkus.platform.version>3.33.3.3</quarkus.platform.version>
-        <qs.quarkus.core.version>10.3.0</qs.quarkus.core.version>
+        <qs.quarkus.core.version>10.3.2</qs.quarkus.core.version>
 
         <compiler-plugin.version>3.16.0</compiler-plugin.version>
         <surefire-plugin.version>3.6.0</surefire-plugin.version>
         <jacoco.plugin.version>0.8.15</jacoco.plugin.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
-        <jackson-bom.version>2.21.4</jackson-bom.version>
+        <jackson-bom.version>2.21.5</jackson-bom.version>
         <lombok.version>1.18.46</lombok.version>
         <junit.version>6.0.3</junit.version>
         <jaxb.version>4.0.9</jaxb.version>
