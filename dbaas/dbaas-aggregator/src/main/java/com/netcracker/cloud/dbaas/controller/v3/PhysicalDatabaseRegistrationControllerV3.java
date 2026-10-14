@@ -3,12 +3,14 @@ package com.netcracker.cloud.dbaas.controller.v3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
-import com.netcracker.cloud.dbaas.dto.Source;
-import com.netcracker.cloud.dbaas.dto.v3.*;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
+import com.netcracker.cloud.dbaas.dto.v3.AdditionalRoles;
+import com.netcracker.cloud.dbaas.dto.v3.Instruction;
+import com.netcracker.cloud.dbaas.dto.v3.InstructionRequestV3;
+import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
-import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabaseInstruction;
-import com.netcracker.cloud.dbaas.exceptions.*;
+import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.service.InstructionService;
 import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import jakarta.annotation.security.RolesAllowed;
@@ -26,12 +28,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
-import java.net.URI;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.List;
 
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
 import static jakarta.ws.rs.core.Response.Status.*;
 
 @Slf4j
@@ -70,65 +69,15 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                              @PathParam("type") String type,
                              @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                              @PathParam("phydbid") String phydbid,
+                             @Parameter(description = "Enable logical database role migration. Uses only for declarative physical database registration")
+                             @QueryParam("internalMigration") boolean internalMigration,
                              @Parameter(description = "Parameters for registering physical database.", required = true)
                              PhysicalDatabaseRegistryRequestV3 parameters)
             throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException, JsonProcessingException {
         log.debug("Starting registration of new adapter: {}, {}, {}", type, phydbid, parameters);
-        validateRequest(parameters);
-        Optional<PhysicalDatabase> foundDatabase = physicalDatabasesService.foundPhysicalDatabase(phydbid, type, parameters);
-        if (foundDatabase.isPresent()) {
-            PhysicalDatabase physicalDatabase = foundDatabase.get();
-            Boolean rolesDifferent = instructionService.isRolesDifferent(parameters.getMetadata().getSupportedRoles(), physicalDatabase.getRoles());
-            if (rolesDifferent && parameters.getMetadata().getFeatures().get("multiusers")) {
-                List<Database> logicalDatabases = instructionService.getLogicalDatabasesForMigration(phydbid,
-                        type,
-                        parameters.getMetadata().getSupportedRoles());
-                if (!logicalDatabases.isEmpty()) {
-                    if (parameters.getStatus().equals("running") && parameters.getMetadata().getApiVersion().equals("v2")) {
-                        PhysicalDatabaseInstruction existingInstruction = instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier());
-                        if (existingInstruction == null) {
-                            log.info("Database with set instruction does not exist, new one should be created");
-                            Instruction instruction = instructionService.buildInstructionForAdditionalRoles(logicalDatabases);
-                            log.info("Sending instruction for create users for roles = {}", parameters.getMetadata().getSupportedRoles());
-                            return Response.accepted(instructionService.saveInstruction(physicalDatabase, instruction, parameters)).build();
-                        } else {
-                            Instruction instruction = instructionService.findPortion(String.valueOf(existingInstruction.getId()));
-                            if (instruction == null) {
-                                log.warn("Instruction is null, Creating new instruction");
-                                Instruction instructionCreated = recreateInstruction(existingInstruction, logicalDatabases);
-                                log.info("Sending new instruction for create users for roles = {}", parameters.getMetadata().getSupportedRoles());
-                                return Response.accepted().entity(instructionService.saveInstruction(physicalDatabase, instructionCreated, parameters)).build();
-                            }
-                            log.info("Got instruction with portion = {}", instruction);
-                            return Response.accepted(Map.of("instruction", instruction)).build();
-                        }
-                    }
-                    log.warn("Adapter status run or adapter version is not equals v2");
-                    return Response.status(BAD_REQUEST).entity("Adapter status run or adapter version is not equals v2").build();
-                }
-            }
-            if (physicalDatabasesService.isDbActual(parameters, physicalDatabase)) {
-                log.info("Adapter '{}' update is not required", physicalDatabase.getPhysicalDatabaseIdentifier());
-            } else {
-                physicalDatabasesService.writeChanges(phydbid, parameters, physicalDatabase);
-            }
-            return Response.ok().build();
-
-        }
-        physicalDatabasesService.physicalDatabaseRegistration(phydbid, type, parameters);
-        return Response.created(URI.create(DBAAS_PATH_V3 + "/" + type + "/physical_databases/" + phydbid)).build();
+        return physicalDatabasesService.registerPhysicalDatabase(parameters, type, phydbid, internalMigration);
     }
 
-    private void validateRequest(PhysicalDatabaseRegistryRequestV3 parameters) {
-        URI uri = URI.create(parameters.getAdapterAddress());
-        String host = uri.getHost();
-        String protocol = uri.getScheme();
-
-        if (host == null || protocol == null) {
-            throw new RequestValidationException(ErrorCodes.CORE_DBAAS_4045,
-                    ErrorCodes.CORE_DBAAS_4045.getDetail(parameters.getAdapterAddress()), Source.builder().pointer("/adapterAddress").build());
-        }
-    }
 
     @Operation(summary = "V3. Change default physical database",
             description = "Moves the 'global' flag to the specified existing physical database")
@@ -181,13 +130,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         if (parameters.getSuccess() != null) {
             try {
                 instructionService.saveConnectionPropertiesAfterRolesRegistration(parameters.getSuccess());
-                List<UUID> dbIdList = new ArrayList<>();
-                for (SuccessRegistrationV3 successRegistration : parameters.getSuccess()) {
-                    dbIdList.add(successRegistration.getId());
-                }
-                List<AdditionalRoles> finalrolesToset = currentInstruction.getAdditionalRoles().stream()
-                        .filter(role -> !dbIdList.contains(role.getId()))
-                        .collect(Collectors.toList());
+                List<AdditionalRoles> finalrolesToset = instructionService.getFinalInstructionToSet(parameters.getSuccess(), currentInstruction);
                 instructionService.updateInstructionWithContext(currentInstruction, finalrolesToset);
             } catch (Exception e) {
                 instructionService.deleteInstruction(instructionid);
@@ -201,7 +144,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         List<AdditionalRoles> response = instructionService.findNextAdditionalRoles(instructionid);
         if (response == null) {
             log.info("All logical databases processed in instruction with id = {}", instructionid);
-            instructionService.completeMigrationProcedure(phydbid, instructionid, currentInstruction);
+            instructionService.completeMigrationProcedure(phydbid, instructionid);
             return Response.ok().build();
         }
         return Response.accepted(response).build();
@@ -274,9 +217,5 @@ public class PhysicalDatabaseRegistrationControllerV3 {
         return Response.ok().build();
     }
 
-    private Instruction recreateInstruction(PhysicalDatabaseInstruction existingInstruction, List<Database> logicalDatabases) {
-        instructionService.deleteInstruction(String.valueOf(existingInstruction.getId()));
-        Instruction instructionCreated = instructionService.buildInstructionForAdditionalRoles(logicalDatabases);
-        return instructionCreated;
-    }
+
 }

@@ -18,14 +18,13 @@ import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @ApplicationScoped
 @Slf4j
 public class InstructionService {
 
+    public static final int PORTION_SIZE = 100;
     private static final ObjectMapper objectMapper = new ObjectMapper();
-    private static final int PORTION_SIZE = 100;
 
     @Inject
     PhysicalDatabasesService physicalDatabasesService;
@@ -33,6 +32,10 @@ public class InstructionService {
     DBaaService dBaaService;
     @Inject
     PhysicalDatabaseInstructionRepository physicalDatabaseInstructionRepository;
+    @Inject
+    AsyncOperations asyncOperations;
+    @Inject
+    LockService lockService;
 
     public Boolean isRolesDifferent(List<String> recievedRoles, List<String> currentSupportedRoles) {
         recievedRoles.replaceAll(String::toLowerCase);
@@ -42,25 +45,6 @@ public class InstructionService {
         return !currentSupportedRoles.equals(recievedRoles);
     }
 
-    public List<Database> getLogicalDatabasesForMigration(String phydbid, String type, List<String> roles) {
-        List<Database> databases = physicalDatabasesService.getDatabasesByPhysDbAndType(phydbid, type);
-        List<Database> databasesForMigration = new ArrayList<>();
-        for (Database database : databases) {
-            if (database.isMarkedForDrop()) continue;
-            Set<String> supportedRoles = database.getConnectionProperties()
-                    .stream()
-                    .map(stringObjectMap -> (String) stringObjectMap.get("role"))
-                    .collect(Collectors.toSet());
-
-            for (String role : roles) {
-                if (!supportedRoles.contains(role)) {
-                    databasesForMigration.add(database);
-                    break;
-                }
-            }
-        }
-        return databasesForMigration;
-    }
 
     public Instruction buildInstructionForAdditionalRoles(List<Database> logicalDatabases) {
         Instruction instruction = new Instruction();
@@ -101,26 +85,41 @@ public class InstructionService {
                 .findByIdOptional(UUID.fromString(instructionId));
         log.info("Got instruction with all roles by id with id = {}", physicalDatabaseInstruction);
         if (physicalDatabaseInstruction.isPresent()) {
-            List<AdditionalRoles> additionalRolesList = convertStringToList(physicalDatabaseInstruction.get().getContext());
-            if (!additionalRolesList.isEmpty()) {
-                List<AdditionalRoles> listWithPortion = new ArrayList<>();
-                for (int i = 0; i < additionalRolesList.size() && i < PORTION_SIZE; i++) {
-                    listWithPortion.add(additionalRolesList.get(i));
-                }
-                log.info("Find next connectionProperties portion in instruction with id = {}", physicalDatabaseInstruction.get().getId());
-                return new Instruction(physicalDatabaseInstruction.get().getId().toString(), listWithPortion);
+            PhysicalDatabaseInstruction physicalDatabaseInstruction1 = physicalDatabaseInstruction.get();
+            Instruction instruction = getNextPortion(physicalDatabaseInstruction1.getId().toString(), physicalDatabaseInstruction1.getContext());
+
+            if (instruction == null) {
+                log.info("No more connectionProperties portions in instruction with id = {}", physicalDatabaseInstruction.get().getId());
+                return null;
             }
-            log.info("No more connectionProperties portions in instruction with id = {}", physicalDatabaseInstruction.get().getId());
-            return null;
+            return instruction;
         }
         log.info("No instruction found with id = {}", instructionId);
         return null;
     }
 
-    private List<AdditionalRoles> convertStringToList(String context) throws JsonProcessingException {
+    public static List<AdditionalRoles> convertStringToList(String context) throws JsonProcessingException {
         TypeReference<List<AdditionalRoles>> mapType = new TypeReference<List<AdditionalRoles>>() {
         };
         return objectMapper.readValue(context, mapType);
+    }
+
+    public static List<AdditionalRoles> getPortion(List<AdditionalRoles> additionalRoles) {
+        List<AdditionalRoles> listWithPortion = new ArrayList<>();
+        for (int i = 0; i < additionalRoles.size() && i < PORTION_SIZE; i++) {
+            listWithPortion.add(additionalRoles.get(i));
+        }
+        return listWithPortion;
+    }
+
+    public static Instruction getNextPortion(String instructionId, String context) throws JsonProcessingException {
+        List<AdditionalRoles> additionalRolesList = convertStringToList(context);
+        if (!additionalRolesList.isEmpty()) {
+            List<AdditionalRoles> listWithPortion = getPortion(additionalRolesList);
+            log.info("Find next connectionProperties portion in instruction with id = {}", instructionId);
+            return new Instruction(instructionId, listWithPortion);
+        }
+        return null;
     }
 
     public Instruction findInstructionById(String id) throws JsonProcessingException {
@@ -141,21 +140,25 @@ public class InstructionService {
         return null;
     }
 
-    public void completeMigrationProcedure(String phydbid, String instructionId, Instruction currentInstruction) {
+    public void completeMigrationProcedure(String phydbid, String instructionId) {
         log.info("Saving supported roles in physical database with id = {}", phydbid);
         Optional<PhysicalDatabaseInstruction> physicalDatabaseInstruction = physicalDatabaseInstructionRepository.findByIdOptional(UUID.fromString(instructionId));
         if (physicalDatabaseInstruction.isPresent()) {
             physicalDatabasesService.savePhysicalDatabaseWithRoles(phydbid, physicalDatabaseInstruction.get().getPhysicalDbRegRequest());
-            log.info("Removing instruction after saving roles by id = {}", currentInstruction.getId());
-            deleteInstruction(currentInstruction.getId());
+            log.info("Removing instruction after saving roles by id = {}", instructionId);
+            deleteInstruction(instructionId);
         }
     }
 
     public PhysicalDatabaseInstruction saveInstructionIntoDB(Instruction instruction, PhysicalDatabase database, PhysicalDatabaseRegistryRequestV3 parameters) throws JsonProcessingException {
+        return saveInstructionIntoDB(UUID.fromString(instruction.getId()), instruction.getAdditionalRoles(), database.getPhysicalDatabaseIdentifier(), parameters);
+    }
+
+    private PhysicalDatabaseInstruction saveInstructionIntoDB(UUID instructionId, List<AdditionalRoles> additionalRoles, String physicalDatabaseId, PhysicalDatabaseRegistryRequestV3 parameters) throws JsonProcessingException {
         PhysicalDatabaseInstruction physicalDatabaseInstruction = new PhysicalDatabaseInstruction();
-        physicalDatabaseInstruction.setId(UUID.fromString(instruction.getId()));
-        physicalDatabaseInstruction.setPhysicalDatabaseId(database.getPhysicalDatabaseIdentifier());
-        physicalDatabaseInstruction.setContext(listToString(instruction.getAdditionalRoles()));
+        physicalDatabaseInstruction.setId(instructionId);
+        physicalDatabaseInstruction.setPhysicalDatabaseId(physicalDatabaseId);
+        physicalDatabaseInstruction.setContext(listToString(additionalRoles));
         physicalDatabaseInstruction.setPhysicalDbRegRequest(parameters);
         physicalDatabaseInstruction.setInstructionType(InstructionType.MULTIUSERS_MIGRATION);
         Date timeDbInstructionCreation = new Date();
@@ -197,9 +200,31 @@ public class InstructionService {
     public void updateInstructionWithContext(Instruction currentInstruction, List<AdditionalRoles> finalrolesToset) throws JsonProcessingException {
         Optional<PhysicalDatabaseInstruction> existingDatabaseInstruction = physicalDatabaseInstructionRepository.findByIdOptional(UUID.fromString(currentInstruction.getId()));
         if (existingDatabaseInstruction.isPresent()) {
-            existingDatabaseInstruction.get().setContext(listToString(finalrolesToset));
-            physicalDatabaseInstructionRepository.persist(existingDatabaseInstruction.get());
-            log.info("PhysicalDatabaseInstruction updated with context");
+            updateInstructionWithContext(existingDatabaseInstruction.get(), finalrolesToset);
         }
     }
+
+    public void updateInstructionWithContext(PhysicalDatabaseInstruction physicalDatabaseInstruction, List<AdditionalRoles> finalRolesToSet) throws JsonProcessingException {
+        physicalDatabaseInstruction.setContext(listToString(finalRolesToSet));
+        physicalDatabaseInstructionRepository.save(physicalDatabaseInstruction);
+        log.info("PhysicalDatabaseInstruction updated with context");
+    }
+
+    public List<AdditionalRoles> getFinalInstructionToSet(List<SuccessRegistrationV3> successRegistrationV3s, Instruction instruction) {
+        return getFinalInstructionToSet(successRegistrationV3s, instruction.getAdditionalRoles());
+    }
+
+    public List<AdditionalRoles> getFinalInstructionToSet(List<SuccessRegistrationV3> successRegistrationV3s, List<AdditionalRoles> additionalRoles) {
+        List<UUID> dbIdList = new ArrayList<>();
+
+        for (SuccessRegistrationV3 successRegistration : successRegistrationV3s) {
+            dbIdList.add(successRegistration.getId());
+        }
+
+        return additionalRoles.stream()
+                .filter(role -> !dbIdList.contains(role.getId()))
+                .toList();
+    }
+
+
 }
