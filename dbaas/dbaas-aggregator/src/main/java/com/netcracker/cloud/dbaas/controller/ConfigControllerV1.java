@@ -98,7 +98,7 @@ public class ConfigControllerV1 {
         } else {
             response = Response.ok(declarativeResponse).build();
         }
-        log.info("Response {}", response);
+        log.info("Response status={}, body={}", response.getStatus(), declarativeResponse);
         return response;
     }
 
@@ -144,6 +144,7 @@ public class ConfigControllerV1 {
     @Path("/operation/{trackingId}/status")
     public Response getOperationStatus(@Parameter(description = "Id to track operation", required = true)
                                        @PathParam("trackingId") String trackingId) {
+        log.info("Request operation status, trackingId={}", trackingId);
         ProcessInstanceImpl process = processService.getProcess(trackingId);
         if (process == null) {
             throw new TrackingIdNotFoundException(trackingId);
@@ -154,7 +155,9 @@ public class ConfigControllerV1 {
         declarativeResponse.setStatus(processState);
         declarativeResponse.getConditions().add(new Condition(VALIDATED, TaskState.COMPLETED));
         declarativeResponse.getConditions().add(createDbCreationCondition(process));
-        return Response.ok(declarativeResponse).build();
+        Response response = Response.ok(declarativeResponse).build();
+        log.info("Response status={}, body={}", response.getStatus(), declarativeResponse);
+        return response;
     }
 
     @Operation(summary = "Operation status",
@@ -168,6 +171,7 @@ public class ConfigControllerV1 {
     @Path("/operation/{trackingId}/extendedTroubleshootingInfo")
     public Response getExtendedTroubleshootingInfo(@Parameter(description = "Id to track operation", required = true)
                                                    @PathParam("trackingId") String trackingId) {
+        log.info("Request extended troubleshooting info, trackingId={}", trackingId);
         ProcessInstanceImpl process = processService.getProcess(trackingId);
         if (process == null) {
             throw new TrackingIdNotFoundException(trackingId);
@@ -200,7 +204,9 @@ public class ConfigControllerV1 {
         }
 
         processService.terminateProcess(trackingId);
-        return Response.noContent().build();
+        Response response = Response.noContent().build();
+        log.info("Response status={}", response.getStatus());
+        return response;
     }
 
     private void processDbCreation(DatabaseDeclaration databaseDeclaration, String namespace, String serviceName, DeclarativeResponse declarativeResponse) {

@@ -3,6 +3,17 @@ name: DBaaS Integration Tests
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      aggregator-m2m-auth-mode:
+        description: M2M_AUTH_MODE of the aggregator
+        type: choice
+        options: [hybrid, legacy, k8s]
+        default: hybrid
+      operator-m2m-auth-mode:
+        description: M2M_AUTH_MODE of dbaas-operator
+        type: choice
+        options: [legacy, hybrid, k8s]
+        default: legacy
   pull_request:
     types: [opened, synchronize]
 
@@ -62,10 +73,10 @@ jobs:
           config: kind-config.yaml
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
+        uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5
 
       - name: Set up JDK 25
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           java-version: '26.0.2+101'
           distribution: 'temurin'
@@ -229,7 +240,7 @@ jobs:
 
       - name: Deploy DBaaS
         working-directory: bootstrap
-        run: make install CONFIG_FILE=local.mk KUBERNETES_M2M_ENABLED=true OPERATOR_M2M_ENABLED=false PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
+        run: make install CONFIG_FILE=local.mk M2M_AUTH_MODE=${{ inputs.aggregator-m2m-auth-mode || 'hybrid' }} OPERATOR_M2M_AUTH_MODE=${{ inputs.operator-m2m-auth-mode || 'legacy' }} PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
 
       - name: Wait for postgres-backup-daemon
         run: |
@@ -289,7 +300,7 @@ jobs:
       - name: Upload Surefire reports
         id: upload_surefire
         if: always() && steps.collect_reports.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: surefire-reports
           path: artifacts/*
@@ -303,7 +314,7 @@ jobs:
 
       - name: Upload pod stdout (Fluent Bit)
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dbaas-pod-stdout
           path: fluentbit-logs/**
@@ -318,7 +329,7 @@ jobs:
 
       - name: Upload MinIO diagnostics
         if: always() && steps.collect_minio_logs.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: minio-k8s-diagnostics
           path: minio-logs/*
@@ -333,7 +344,7 @@ jobs:
 
       - name: Upload DBaaS diagnostics
         if: always() && steps.collect_logs.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dbaas-k8s-diagnostics
           path: logs/*
