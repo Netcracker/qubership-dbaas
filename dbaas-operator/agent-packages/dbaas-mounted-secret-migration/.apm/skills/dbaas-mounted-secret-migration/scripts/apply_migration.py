@@ -2152,9 +2152,8 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
     overrides: dict[str, str] = {}
     for key in value_keys:
         existing = _value_at(chart_values, key)
-        # The writer never registers a default for any value key (including
-        # DBAAS_OPERATOR_NAMESPACE -- it no longer gets special treatment): when
-        # the chart's own values.yaml already pins a value, rendering with it is
+        # The writer never registers a default for any value key. When the
+        # chart's own values.yaml already pins a value, rendering with it is
         # the whole point of this check, including a real-but-empty value, since
         # a chart that explicitly chose an empty operator namespace must fail
         # spec.operatorNamespace's required-non-empty check here, not be

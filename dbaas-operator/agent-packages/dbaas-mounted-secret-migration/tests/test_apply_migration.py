@@ -124,7 +124,7 @@ def source_hashes(repo: Path, root: str, *relatives: str) -> dict:
 def root_plan(repo: Path, *, root="chart", kind="helm", datasources=None, claims=None, **overrides) -> dict:
     default_workload_file = "templates/deployment.yaml" if kind == "helm" else "deployment.yaml"
     operator_namespace = overrides.get(
-        "operatorNamespace", "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}" if kind == "helm" else "dbaas-system"
+        "operatorNamespace", "{{ .Values.TEST_OPERATOR_NAMESPACE }}" if kind == "helm" else "dbaas-system"
     )
     base = {
         "root": root,
@@ -143,7 +143,7 @@ def root_plan(repo: Path, *, root="chart", kind="helm", datasources=None, claims
     # path need not exist there at all.
     if "sourceHashes" not in overrides:
         hash_targets = [default_workload_file]
-        if operator_namespace == "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}":
+        if operator_namespace == "{{ .Values.TEST_OPERATOR_NAMESPACE }}":
             # load_plan now requires a hash for values.yaml/values.schema.json
             # whenever update_values() would read them -- the same condition
             # it checks itself.
@@ -475,7 +475,7 @@ class HelmApplyTest(unittest.TestCase):
             kinds = sorted(d["kind"] for d in docs)
             self.assertEqual(kinds, ["DatabaseSecretClaim", "InternalDatabase"])
             for doc in docs:
-                self.assertEqual(doc["spec"]["operatorNamespace"], "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}")
+                self.assertEqual(doc["spec"]["operatorNamespace"], "{{ .Values.TEST_OPERATOR_NAMESPACE }}")
                 self.assertNotIn("namespace", doc["spec"]["classifier"])
 
             deployment_text = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
@@ -796,7 +796,7 @@ class HelmApplyTest(unittest.TestCase):
 
     def test_writer_never_touches_values_files_regardless_of_operator_namespace(self) -> None:
         # Issue #776 phase 5: the writer no longer registers any default for
-        # DBAAS_OPERATOR_NAMESPACE (or any other value key) in values.yaml /
+        # TEST_OPERATOR_NAMESPACE (or any other value key) in values.yaml /
         # values.schema.json -- operatorNamespace must already be a concrete,
         # verified value or Helm expression when the plan is built.
         with tempfile.TemporaryDirectory() as directory:
@@ -811,7 +811,7 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual((repo / "chart" / "values.yaml").read_bytes(), values_before)
 
     def test_chart_pinned_empty_operator_namespace_value_fails_validation(self) -> None:
-        # A chart that explicitly chose DBAAS_OPERATOR_NAMESPACE (or any other
+        # A chart that explicitly chose TEST_OPERATOR_NAMESPACE (or any other
         # values.yaml key the plan's operatorNamespace resolves through) with an
         # empty value must fail spec.operatorNamespace's required-non-empty
         # check -- the writer must never synthesize a clean pilot value that
@@ -821,10 +821,10 @@ class HelmApplyTest(unittest.TestCase):
             repo = scaffold(tmp)
             values_path = repo / "chart" / "values.yaml"
             values_path.write_text(
-                values_path.read_text(encoding="utf-8") + 'DBAAS_OPERATOR_NAMESPACE: ""\n',
+                values_path.read_text(encoding="utf-8") + 'TEST_OPERATOR_NAMESPACE: ""\n',
                 encoding="utf-8",
             )
-            the_plan = plan(repo, operatorNamespace="{{ .Values.DBAAS_OPERATOR_NAMESPACE }}")
+            the_plan = plan(repo, operatorNamespace="{{ .Values.TEST_OPERATOR_NAMESPACE }}")
             code, report = run_migration(repo, the_plan, "check", tmp)
             self.assertEqual(code, 5, report.get("__stderr"))
             names = {entry["name"]: entry for entry in report["validation"]}
@@ -841,7 +841,7 @@ class HelmApplyTest(unittest.TestCase):
             repo = scaffold(tmp)
             values_path = repo / "chart" / "values.yaml"
             values_path.write_text(
-                values_path.read_text(encoding="utf-8") + 'DBAAS_OPERATOR_NAMESPACE: "Not_A_Valid_NS!"\n',
+                values_path.read_text(encoding="utf-8") + 'TEST_OPERATOR_NAMESPACE: "Not_A_Valid_NS!"\n',
                 encoding="utf-8",
             )
             code, report = run_migration(repo, plan(repo), "check", tmp)

@@ -42,8 +42,8 @@ a count.
 Add render tests for the `operatorNamespace` expression derived from `API_DBAAS_ADDRESS` (see
 references/contracts.md): a short in-cluster service address and a longer cluster-DNS name each
 render to the correct second DNS label; an empty or single-label address fails to render rather than
-silently resolving to a wrong or empty namespace; and the writer never creates a
-`DBAAS_OPERATOR_NAMESPACE` entry in `values.yaml`/`values.schema.json`.
+silently resolving to a wrong or empty namespace; and the writer never creates an operator namespace
+entry in `values.yaml`/`values.schema.json`.
 
 Install PyYAML in the execution environment, then run the bundled validator:
 
