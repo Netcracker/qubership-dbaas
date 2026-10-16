@@ -4,6 +4,7 @@ import com.github.kagkarlsson.scheduler.task.Task;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BalancingRulesDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
+import com.netcracker.cloud.dbaas.service.AsyncOperations;
 import com.netcracker.cloud.dbaas.service.BalancingRulesService;
 import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import com.netcracker.cloud.dbaas.service.dbsettings.DefaultDbSettingsHandler;
@@ -15,16 +16,17 @@ import io.quarkus.arc.properties.UnlessBuildProperty;
 import io.quarkus.runtime.Startup;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
+import jakarta.enterprise.inject.Typed;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.core.ExtensibleLockProvider;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
+import net.javacrumbs.shedlock.support.KeepAliveLockProvider;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
-import java.sql.SQLException;
 import java.util.List;
 
 import static com.netcracker.cloud.dbaas.JdbcUtils.PROCESS_ORCHESTRATOR_DATASOURCE;
@@ -64,12 +66,19 @@ public class ServicesConfig {
 
     @Produces
     @Singleton
-    public LockProvider lockProvider(@Named(PROCESS_ORCHESTRATOR_DATASOURCE) DataSource dataSource) throws SQLException {
+    public ExtensibleLockProvider lockProvider(@Named(PROCESS_ORCHESTRATOR_DATASOURCE) DataSource dataSource) {
         return new JdbcTemplateLockProvider(
                 JdbcTemplateLockProvider.Configuration.builder()
                         .withJdbcTemplate(new JdbcTemplate(dataSource))
                         .usingDbTime()
                         .build()
         );
+    }
+
+    @Produces
+    @Singleton
+    @Typed(KeepAliveLockProvider.class)
+    public KeepAliveLockProvider keepAliveLockProvider(ExtensibleLockProvider provider, AsyncOperations asyncOperations) {
+        return new KeepAliveLockProvider(provider, asyncOperations.getHeartbeatExecutor());
     }
 }

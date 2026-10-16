@@ -56,6 +56,14 @@ rules:
   - apiGroups: [ dbaas.netcracker.com ]
     resources: [ externaldatabases/status ]
     verbs: [ get, update, patch ]
+  # physicaldatabases: operator only reads and watches; status is updated via the
+  # /status subresource. No finalizer: the registration outlives the CR.
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ physicaldatabases ]
+    verbs: [ get, list, watch ]
+  - apiGroups: [ dbaas.netcracker.com ]
+    resources: [ physicaldatabases/status ]
+    verbs: [ get, update, patch ]
   # No Secret rule here: the operator holds NO cluster-wide Secret RBAC. Secret access is granted
   # per namespace by a dbaas-operator-secrets Role + RoleBinding
   # (see config/samples/namespaced-secret-rbac.yaml). The operator

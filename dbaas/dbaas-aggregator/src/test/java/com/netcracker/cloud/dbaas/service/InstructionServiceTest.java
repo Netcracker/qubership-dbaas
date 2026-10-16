@@ -11,7 +11,6 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseHistoryDbaasReposit
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabaseInstructionRepository;
-
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,10 +23,7 @@ import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -104,7 +100,7 @@ public class InstructionServiceTest {
         PhysicalDatabase physicalDatabase = new PhysicalDatabase();
         PhysicalDatabaseInstruction physicalDatabaseInstruction = getPhysicalDatabaseInstructionSample(testInstruction);
         when(physicalDatabaseInstructionRepository.findByIdOptional(physicalDatabaseInstruction.getId())).thenReturn(Optional.of(physicalDatabaseInstruction));
-        instructionService.completeMigrationProcedure(physicalDatabase.getId(), String.valueOf(physicalDatabaseInstruction.getId()), testInstruction);
+        instructionService.completeMigrationProcedure(physicalDatabase.getId(), String.valueOf(physicalDatabaseInstruction.getId()));
         verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(any(), any());
         instructionService.deleteInstruction(String.valueOf(physicalDatabaseInstruction.getId()));
         verify(physicalDatabaseInstructionRepository, times(2)).deleteById(physicalDatabaseInstruction.getId());
@@ -199,12 +195,12 @@ public class InstructionServiceTest {
     void checkLogicalDatabaseByAdapterForMigrationTest() {
         List<Database> testDatabases = generateListOfLogicalDatabase(2);
         when(physicalDatabasesService.getDatabasesByPhysDbAndType(TEST_PHYDBID, TEST_TYPE)).thenReturn(testDatabases);
-        List<Database> databaseForMigration = instructionService.getLogicalDatabasesForMigration(
+        List<Database> databaseForMigration = physicalDatabasesService.getLogicalDatabasesForMigration(
                 TEST_PHYDBID,
                 TEST_TYPE,
                 Arrays.asList("admin", "rw", "ro"));
         assertEquals(2, databaseForMigration.size());
-        databaseForMigration = instructionService.getLogicalDatabasesForMigration(
+        databaseForMigration = physicalDatabasesService.getLogicalDatabasesForMigration(
                 TEST_PHYDBID,
                 TEST_TYPE,
                 Arrays.asList("admin"));
@@ -269,7 +265,7 @@ public class InstructionServiceTest {
 
     private Instruction generateInstruction(int portionCount) {
         Instruction instruction = new Instruction();
-        DbResource dbResource = new DbResource("resourceKind","resourceName");
+        DbResource dbResource = new DbResource("resourceKind", "resourceName");
         dbResource.setId(UUID.fromString("bcde070d-8c4c-4f0d-9d8a-162843c10333"));
         List<DbResource> dbResourceList = new ArrayList<>();
         dbResourceList.add(dbResource);

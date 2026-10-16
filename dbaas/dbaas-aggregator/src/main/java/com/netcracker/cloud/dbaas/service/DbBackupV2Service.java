@@ -15,11 +15,11 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.utils.RestClientExceptionUtil;
+import com.netcracker.cloud.dbaas.utils.RetryPolicyUtil;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
@@ -76,10 +76,13 @@ public class DbBackupV2Service {
     private final BgNamespaceRepository bgNamespaceRepository;
     private final LockProvider lockProvider;
     private final DeletionService deletionService;
+    private final LockService lockService;
 
     private final Duration retryDelay;
     private final int retryAttempts;
     private final int retryCount;
+
+    //TODO uses both lockService, lockProvider move to lockService
 
     @Inject
     public DbBackupV2Service(BackupRepository backupRepository,
@@ -93,6 +96,7 @@ public class DbBackupV2Service {
                              BgNamespaceRepository bgNamespaceRepository,
                              LockProvider lockProvider,
                              DeletionService deletionService,
+                             LockService lockService,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.attempts") int retryAttempts,
                              @ConfigProperty(name = "dbaas.backup-restore.check.attempts") int retryCount
@@ -108,6 +112,7 @@ public class DbBackupV2Service {
         this.bgNamespaceRepository = bgNamespaceRepository;
         this.lockProvider = lockProvider;
         this.deletionService = deletionService;
+        this.lockService = lockService;
         this.retryDelay = retryDelay;
         this.retryAttempts = retryAttempts;
         this.retryCount = retryCount;
@@ -1799,11 +1804,7 @@ public class DbBackupV2Service {
 
             return action.get();
         } finally {
-            try {
-                lock.unlock();
-            } catch (IllegalStateException ex) {
-                log.debug("Lock is already unlocked", ex);
-            }
+            lockService.unlock(lock);
         }
     }
 
@@ -1815,11 +1816,7 @@ public class DbBackupV2Service {
 
     private RetryPolicy<Object> buildRetryPolicy(String operation, String entityType, String entityId, String adapterId) {
         String context = String.format("%s operation [%s=%s, adapter=%s]", operation, entityType, entityId, adapterId);
-        return new RetryPolicy<>()
-                .handle(AdapterException.class)
-                .abortIf((_, e) -> e != null && is4xxError(e))
-                .withMaxRetries(retryAttempts)
-                .withDelay(retryDelay)
+        return RetryPolicyUtil.buildRetryPolicy(retryAttempts, retryDelay)
                 .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",
                         context, extractErrorMessage(e.getLastFailure())))
                 .onRetry(e -> log.info("Retrying {}...", context))

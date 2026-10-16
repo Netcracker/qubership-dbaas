@@ -10,6 +10,7 @@ rules:
   - databaseaccesspolicies
   - externaldatabases
   - internaldatabases
+  - physicaldatabases
   verbs:
   - get
   - list
@@ -24,6 +25,7 @@ rules:
   - microservicebalancingrules/status
   - namespacebalancingrules/status
   - permanentbalancingrules/status
+  - physicaldatabases/status
   verbs:
   - get
   - patch

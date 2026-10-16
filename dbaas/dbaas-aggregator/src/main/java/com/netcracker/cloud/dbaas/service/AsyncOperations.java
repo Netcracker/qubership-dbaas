@@ -25,6 +25,12 @@ public class AsyncOperations {
     private final ExecutorService debugExecutor;
     @Getter
     private final ExecutorService cleanupExecutor;
+    @Getter
+    private final ExecutorService coordinatorExecutor;
+    @Getter
+    private final ExecutorService migrationExecutor;
+    @Getter
+    private final ScheduledExecutorService heartbeatExecutor;
 
     @Inject
     public AsyncOperations(
@@ -35,8 +41,17 @@ public class AsyncOperations {
                 new LinkedBlockingQueue<>(),
                 new NamedThreadFactory("backups-")
         );
+        coordinatorExecutor = Executors.newSingleThreadExecutor(
+                new NamedThreadFactory("migrationCoordinator-")
+        );
+        migrationExecutor = new ThreadPoolExecutor(
+                2, 2, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(),
+                new NamedThreadFactory("logicalDatabaseMigration-")
+        );
         debugExecutor = Executors.newVirtualThreadPerTaskExecutor();
         cleanupExecutor = Executors.newSingleThreadExecutor(new NamedThreadFactory("cleanup-"));
+        heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("lockHeartbeat-"));
     }
 
     private static class NamedThreadFactory implements ThreadFactory {
@@ -83,6 +98,8 @@ public class AsyncOperations {
         shutdown("backupExecutor", backupExecutor);
         shutdown("debugExecutor", debugExecutor);
         shutdown("cleanupExecutor", cleanupExecutor);
+        shutdown("migrationExecutor", migrationExecutor);
+        shutdown("heartbeatExecutor", heartbeatExecutor);
     }
 
     private void shutdown(String serviceName, ExecutorService executorService) {

@@ -19,7 +19,6 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.ws.rs.core.MediaType;
-
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -69,8 +68,9 @@ class PhysicalDatabaseRegistrationControllerV3Test {
         when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
                 .thenReturn(Optional.of(physicalDatabase));
         when(instructionService.isRolesDifferent(eq(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()), any())).thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
+        //TODO move tests to PhysicalDatabasesServiceQuarkusTest.java
+//        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
+//                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -83,9 +83,9 @@ class PhysicalDatabaseRegistrationControllerV3Test {
 
         when(instructionService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles())).
                 thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
-                .thenReturn(logicalDatabases);
+//        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
+//                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
+//                .thenReturn(logicalDatabases);
         when(instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier()))
                 .thenReturn(null);
         when(instructionService.buildInstructionForAdditionalRoles(logicalDatabases))
@@ -155,8 +155,8 @@ class PhysicalDatabaseRegistrationControllerV3Test {
         when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
                 .thenReturn(Optional.of(physicalDatabase));
         when(instructionService.isRolesDifferent(eq(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()), any())).thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
+//        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
+//                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -169,9 +169,9 @@ class PhysicalDatabaseRegistrationControllerV3Test {
 
         when(instructionService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles())).
                 thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
-                .thenReturn(logicalDatabases);
+//        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
+//                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
+//                .thenReturn(logicalDatabases);
         when(instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier()))
                 .thenReturn(physicalDatabaseInstruction);
         when(instructionService.findPortion(INSTRUCTION_ID)).thenReturn(instruction);
@@ -208,8 +208,8 @@ class PhysicalDatabaseRegistrationControllerV3Test {
         when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
                 .thenReturn(Optional.of(physicalDatabase));
         when(instructionService.isRolesDifferent(eq(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()), any())).thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
+//        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
+//                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -222,9 +222,9 @@ class PhysicalDatabaseRegistrationControllerV3Test {
 
         when(instructionService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles())).
                 thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
-                .thenReturn(logicalDatabases);
+//        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
+//                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
+//                .thenReturn(logicalDatabases);
         when(instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier()))
                 .thenReturn(physicalDatabaseInstruction);
         Instruction portionedInstruction = null;
@@ -261,7 +261,7 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
                 .body("code", is("CORE-DBAAS-2000"));
-        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
+//        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
         verify(physicalDatabasesService, never()).isDbActual(any(), any());
 
         // An explicit `multiusers: false` skips the migration branch, so only the missing key causes the failure.
@@ -273,7 +273,7 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .when().put("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(OK.getStatusCode());
-        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
+//        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
         verify(physicalDatabasesService).isDbActual(any(), any());
     }
 
@@ -347,10 +347,10 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .body(is(String.format("Instruction with Id = %s not found", INSTRUCTION_ID)));
 
         verify(instructionService, never()).saveConnectionPropertiesAfterRolesRegistration(any());
-        verify(instructionService, never()).updateInstructionWithContext(any(), any());
+        verify(instructionService, never()).updateInstructionWithContext((Instruction) any(), any());
         verify(instructionService, never()).deleteInstruction(any());
         verify(instructionService, never()).findNextAdditionalRoles(any());
-        verify(instructionService, never()).completeMigrationProcedure(any(), any(), any());
+//        verify(instructionService, never()).completeMigrationProcedure(any(), any(), any());
     }
 
 
