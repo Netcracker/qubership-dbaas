@@ -444,17 +444,6 @@
         false
       ]
     },
-    "AMBIENT_MESH_ENABLED": {
-      "$id": "#/properties/AMBIENT_MESH_ENABLED",
-      "type": "boolean",
-      "title": "The AMBIENT_MESH_ENABLED schema",
-      "description": "Enrolls the pod in Istio Ambient Mesh",
-      "default": true,
-      "examples": [
-        true,
-        false
-      ]
-    },
     "CLOUD_TOPOLOGY_KEY": {
       "$id": "#/properties/CLOUD_TOPOLOGY_KEY",
       "type": "string",
