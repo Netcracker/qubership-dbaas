@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.service;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.core.ExtensibleLockProvider;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.core.SimpleLock;
@@ -19,15 +20,30 @@ import java.util.concurrent.TimeUnit;
 public class LockService {
     private static final Duration DEFAULT_LOCK_AT_MOST = Duration.of(10, TimeUnit.MINUTES.toChronoUnit());
     private final LockProvider keepAliveLockProvider;
+    private final LockProvider storageBasedLockProvider;
 
     @Inject
-    public LockService(KeepAliveLockProvider keepAliveLockProvider) {
+    public LockService(KeepAliveLockProvider keepAliveLockProvider, ExtensibleLockProvider extensibleLockProvider) {
         this.keepAliveLockProvider = keepAliveLockProvider;
+        this.storageBasedLockProvider = extensibleLockProvider;
     }
-    // TODO consider about implementing isLocked method to check lock.
+
+    public boolean isLocked(String lockName) {
+        Optional<SimpleLock> simpleLock = keepAliveLockProvider.lock(getLockConfiguration(lockName));
+
+        if (simpleLock.isEmpty())
+            return true;
+
+        unlock(simpleLock.get());
+        return false;
+    }
 
     public Optional<SimpleLock> getKeepAliveLock(LockConfiguration configuration) {
         return keepAliveLockProvider.lock(configuration);
+    }
+
+    public Optional<SimpleLock> getStorageBasedLock(LockConfiguration configuration) {
+        return storageBasedLockProvider.lock(configuration);
     }
 
     public void unlock(SimpleLock simpleLock) {

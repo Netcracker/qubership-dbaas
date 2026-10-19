@@ -2,12 +2,14 @@ package com.netcracker.cloud.dbaas.integration.config;
 
 import com.netcracker.cloud.dbaas.JdbcUtils;
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import java.util.Map;
 
+@Slf4j
 public class PostgresqlContainerResource implements QuarkusTestResourceLifecycleManager {
 
     public static final String IMAGE_ENV_KEY = "POSTGRESQL_IMAGE";
@@ -28,6 +30,7 @@ public class PostgresqlContainerResource implements QuarkusTestResourceLifecycle
                 postgresql.getFirstMappedPort().toString(),
                 JdbcUtils.DEFAULT_DATABASE_NAME,
                 false);
+        log.info("URL + {}", url);
         return Map.of("quarkus.datasource.jdbc.url", url);
     }
 

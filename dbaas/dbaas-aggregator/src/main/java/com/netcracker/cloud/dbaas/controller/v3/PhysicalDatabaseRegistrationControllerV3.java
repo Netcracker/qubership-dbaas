@@ -3,15 +3,12 @@ package com.netcracker.cloud.dbaas.controller.v3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
-import com.netcracker.cloud.dbaas.dto.v3.AdditionalRoles;
-import com.netcracker.cloud.dbaas.dto.v3.Instruction;
 import com.netcracker.cloud.dbaas.dto.v3.InstructionRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
 import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
-import com.netcracker.cloud.dbaas.service.InstructionService;
 import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -29,6 +26,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.util.List;
+import java.util.UUID;
 
 import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
 import static jakarta.ws.rs.core.Response.Status.*;
@@ -43,9 +41,6 @@ public class PhysicalDatabaseRegistrationControllerV3 {
 
     @Inject
     private PhysicalDatabasesService physicalDatabasesService;
-
-    @Inject
-    private InstructionService instructionService;
 
     @Operation(summary = "V3. Register new physical database",
             description = "Creates new physical database and returns path to it with physical database identifier.")
@@ -117,37 +112,11 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                                 @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
                                 @PathParam("phydbid") String phydbid,
                                 @Parameter(description = "Instruction Id")
-                                @PathParam("instructionid") String instructionid,
+                                @PathParam("instructionid") UUID instructionid,
                                 @Parameter(description = "Parameters for registering physical database.", required = true)
                                 InstructionRequestV3 parameters)
-            throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException, JsonProcessingException {
-        Instruction currentInstruction = instructionService.findInstructionById(instructionid);
-        log.info("current instruction = {}", currentInstruction);
-        if (currentInstruction == null) {
-            log.error("Instruction with Id = {} not found", instructionid);
-            return Response.status(NOT_FOUND).entity(String.format("Instruction with Id = %s not found", instructionid)).build();
-        }
-        if (parameters.getSuccess() != null) {
-            try {
-                instructionService.saveConnectionPropertiesAfterRolesRegistration(parameters.getSuccess());
-                List<AdditionalRoles> finalrolesToset = instructionService.getFinalInstructionToSet(parameters.getSuccess(), currentInstruction);
-                instructionService.updateInstructionWithContext(currentInstruction, finalrolesToset);
-            } catch (Exception e) {
-                instructionService.deleteInstruction(instructionid);
-                return Response.status(INTERNAL_SERVER_ERROR).entity("An error occurred during the migration procedure: " + e.getMessage()).build();
-            }
-        }
-        if (parameters.getFailure() != null) {
-            instructionService.deleteInstruction(instructionid);
-            return Response.status(INTERNAL_SERVER_ERROR).entity("An error has occurred:" + parameters.getFailure().getMessage()).build();
-        }
-        List<AdditionalRoles> response = instructionService.findNextAdditionalRoles(instructionid);
-        if (response == null) {
-            log.info("All logical databases processed in instruction with id = {}", instructionid);
-            instructionService.completeMigrationProcedure(phydbid, instructionid);
-            return Response.ok().build();
-        }
-        return Response.accepted(response).build();
+            throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException {
+        return physicalDatabasesService.handleInstruction(instructionid, parameters);
     }
 
 

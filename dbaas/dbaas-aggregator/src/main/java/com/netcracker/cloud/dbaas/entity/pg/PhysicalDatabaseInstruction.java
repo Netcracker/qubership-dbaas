@@ -1,6 +1,5 @@
 package com.netcracker.cloud.dbaas.entity.pg;
 
-import com.netcracker.cloud.dbaas.converter.FailureRegistrationConverter;
 import com.netcracker.cloud.dbaas.converter.PhysicalDatabaseRegistryRequestConverter;
 import com.netcracker.cloud.dbaas.dto.InstructionType;
 import com.netcracker.cloud.dbaas.dto.v3.FailureRegistrationV3;
@@ -8,8 +7,12 @@ import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -40,9 +43,9 @@ public class PhysicalDatabaseInstruction {
     @Column(name = "physical_db_reg_request")
     @Convert(converter = PhysicalDatabaseRegistryRequestConverter.class)
     private PhysicalDatabaseRegistryRequestV3 physicalDbRegRequest;
-    //TODO consider about different field to entity
-    @Column(name = "failure")
-    @Convert(converter = FailureRegistrationConverter.class)
-    private FailureRegistrationV3 failure;
+
+    @Column(name = "failure", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<FailureRegistrationV3> failure = new ArrayList<>();
 }
 

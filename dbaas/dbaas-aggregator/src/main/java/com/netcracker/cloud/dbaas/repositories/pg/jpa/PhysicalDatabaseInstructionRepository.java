@@ -15,12 +15,6 @@ public class PhysicalDatabaseInstructionRepository implements PanacheRepositoryB
     public PhysicalDatabaseInstruction findByPhysicalDatabaseId(String physicalDatabaseId) {
         return find("physicalDatabaseId", physicalDatabaseId).firstResult();
     }
-    // TODO cover with test
-    public PhysicalDatabaseInstruction findAndLockInstruction(String physicalDatabaseId) {
-       return find("physicalDatabaseId", physicalDatabaseId)
-               .withLock(LockModeType.PESSIMISTIC_WRITE)
-               .firstResult();
-    }
 
     public PhysicalDatabaseInstruction save(PhysicalDatabaseInstruction instruction) {
         EntityManager entityManager = getEntityManager();

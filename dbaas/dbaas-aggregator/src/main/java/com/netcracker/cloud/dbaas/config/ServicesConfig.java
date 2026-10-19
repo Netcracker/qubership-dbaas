@@ -79,6 +79,6 @@ public class ServicesConfig {
     @Singleton
     @Typed(KeepAliveLockProvider.class)
     public KeepAliveLockProvider keepAliveLockProvider(ExtensibleLockProvider provider, AsyncOperations asyncOperations) {
-        return new KeepAliveLockProvider(provider, asyncOperations.getHeartbeatExecutor());
+        return new KeepAliveLockProvider(provider, asyncOperations.getLockHeartBeatExecutor());
     }
 }

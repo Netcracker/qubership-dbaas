@@ -74,7 +74,6 @@ public class DbBackupV2Service {
     private final AsyncOperations asyncOperations;
     private final PasswordEncryption encryption;
     private final BgNamespaceRepository bgNamespaceRepository;
-    private final LockProvider lockProvider;
     private final DeletionService deletionService;
     private final LockService lockService;
 
@@ -82,7 +81,6 @@ public class DbBackupV2Service {
     private final int retryAttempts;
     private final int retryCount;
 
-    //TODO uses both lockService, lockProvider move to lockService
 
     @Inject
     public DbBackupV2Service(BackupRepository backupRepository,
@@ -94,7 +92,6 @@ public class DbBackupV2Service {
                              AsyncOperations asyncOperations,
                              PasswordEncryption encryption,
                              BgNamespaceRepository bgNamespaceRepository,
-                             LockProvider lockProvider,
                              DeletionService deletionService,
                              LockService lockService,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
@@ -110,7 +107,6 @@ public class DbBackupV2Service {
         this.asyncOperations = asyncOperations;
         this.encryption = encryption;
         this.bgNamespaceRepository = bgNamespaceRepository;
-        this.lockProvider = lockProvider;
         this.deletionService = deletionService;
         this.lockService = lockService;
         this.retryDelay = retryDelay;
@@ -1786,7 +1782,7 @@ public class DbBackupV2Service {
                 Duration.ofMinutes(LOCK_AT_MOST),
                 Duration.ofMinutes(LOCK_AT_LEAST));
 
-        Optional<SimpleLock> optLock = lockProvider.lock(config);
+        Optional<SimpleLock> optLock = lockService.getStorageBasedLock(config);
 
         if (optLock.isEmpty()) {
             throw new OperationAlreadyRunningException("restore", "");
@@ -1816,7 +1812,7 @@ public class DbBackupV2Service {
 
     private RetryPolicy<Object> buildRetryPolicy(String operation, String entityType, String entityId, String adapterId) {
         String context = String.format("%s operation [%s=%s, adapter=%s]", operation, entityType, entityId, adapterId);
-        return RetryPolicyUtil.buildRetryPolicy(retryAttempts, retryDelay)
+        return RetryPolicyUtil.buildAdapterRetryPolicy(retryAttempts, retryDelay)
                 .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",
                         context, extractErrorMessage(e.getLastFailure())))
                 .onRetry(e -> log.info("Retrying {}...", context))

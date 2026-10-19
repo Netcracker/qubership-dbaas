@@ -10,7 +10,7 @@ import static com.netcracker.cloud.dbaas.utils.RestClientExceptionUtil.is4xxErro
 
 @Slf4j
 public class RetryPolicyUtil {
-    public static RetryPolicy<Object> buildRetryPolicy(int retryAttempts, Duration retryDelay) {
+    public static RetryPolicy<Object> buildAdapterRetryPolicy(int retryAttempts, Duration retryDelay) {
         return new RetryPolicy<>()
                 .handle(AdapterException.class)
                 .abortIf((_, e) -> e != null && is4xxError(e))
