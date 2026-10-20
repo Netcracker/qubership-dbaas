@@ -24,17 +24,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "dbaas-mounted-secret-migration" / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "issue_776"
-CORETPL_HELPERS = r'''{{- define "coretpl.dbaasNamespace" -}}
-{{- $address := toString (default "" .Values.API_DBAAS_ADDRESS) -}}
-{{- $host := first (splitList ":" (last (splitList "://" $address))) -}}
-{{- $parts := splitList "." $host -}}
-{{- $namespace := "" -}}
-{{- if ge (len $parts) 2 -}}{{- $namespace = index $parts 1 -}}{{- end -}}
-{{- if or (eq $namespace "") (regexMatch "^[0-9]+$" $namespace) -}}
-{{- fail (printf "API_DBAAS_ADDRESS %q names no namespace. Set it to http://<aggregator>.<namespace>:<port>." $address) -}}
-{{- end -}}
-{{- $namespace -}}
-{{- end -}}
+CORETPL_HELPER_STUBS = r'''{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}
 {{- define "coretpl.dbaasOperatorEnabled" -}}
 {{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
 {{- end -}}
@@ -51,7 +41,7 @@ def copy_fixture(name: str, tmp: Path) -> Path:
     repo = tmp / "repo"
     dest = repo / "chart"
     shutil.copytree(FIXTURES / name, dest)
-    (dest / "templates" / "_coretpl.tpl").write_text(CORETPL_HELPERS, encoding="utf-8")
+    (dest / "templates" / "_coretpl.tpl").write_text(CORETPL_HELPER_STUBS, encoding="utf-8")
     return repo
 
 

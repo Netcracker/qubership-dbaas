@@ -121,17 +121,15 @@ Canonicalize classifier maps by keys and values for comparison.
 The operator assignment is a deploy-time value, not a namespace baked into the repository. The
 writer never registers any default for it in `values.yaml`/`values.schema.json` -- the plan's
 `operatorNamespace` must already be a concrete, verified value or Helm expression. For a Helm
-chart, when `API_DBAAS_ADDRESS` is a namespaced in-cluster Kubernetes service address (e.g.
-`http://dbaas-aggregator.dbaas-operator:8080`), derive it with the CoreTPL helper (see
-references/contracts.md's "Operator namespace" section) instead:
+chart, resolve it with the CoreTPL helper (see references/contracts.md's "Operator namespace"
+section):
 
 ```gotemplate
 {{ include "coretpl.dbaasNamespace" $ }}
 ```
 
-An explicitly chosen empty value must fail validation, not be masked. When `API_DBAAS_ADDRESS` is
-external, single-label, empty, or otherwise
-cannot identify the operator namespace, require an explicit, verified literal in the plan instead.
+An explicitly chosen empty value must fail validation, not be masked. When the CoreTPL helper
+cannot resolve the operator namespace, require an explicit, verified literal in the plan instead.
 For plain manifests, which cannot template a value, always resolve a concrete namespace: prefer an
 explicit deployment value, verify it against the intended `dbaas-operator` Deployment or Pod when a
 cluster is available, and stop and ask if it cannot be proven -- never assume `dbaas-system` or

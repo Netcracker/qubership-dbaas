@@ -1,3 +1,2 @@
 NAMESPACE: config-server-ns
 SERVICE_NAME: config-server
-API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas-operator:8080

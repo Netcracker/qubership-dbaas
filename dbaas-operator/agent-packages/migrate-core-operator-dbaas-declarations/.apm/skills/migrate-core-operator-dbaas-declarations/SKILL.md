@@ -101,11 +101,9 @@ Always blocking, before anything is written:
   the source context is unambiguous; otherwise ask the user.
 - Set `operatorNamespace` to the namespace of the operator instance that will manage the generated
   resources -- ask when that is not known; it is not necessarily the workload namespace, and never
-  assume `dbaas-system`. For a Helm root, when the chart exposes a namespaced Kubernetes service
-  address as `API_DBAAS_ADDRESS` (e.g. `http://dbaas-aggregator.dbaas-operator:8080`), derive it
-  with `{{ include "coretpl.dbaasNamespace" $ }}` instead of a literal. Require an explicit,
-  verified value when the address is external, single-label, empty, or otherwise cannot identify
-  the namespace.
+  assume `dbaas-system`. For a Helm root, resolve it with
+  `{{ include "coretpl.dbaasNamespace" $ }}` instead of a literal. Require an explicit, verified
+  value when the helper cannot resolve the namespace.
 - Preserve `physicalDatabaseId` verbatim; it pins only new-creation databases and is ignored for
   `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`.
 - Choose stable, DNS-compatible resource names (or explicit `nameOverrides`) and check for

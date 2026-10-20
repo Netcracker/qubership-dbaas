@@ -27,13 +27,11 @@ reuse the same generated name when their workload namespaces differ)::
           "root": "chart",                 // repo-relative; "" or "." is the repo root
           "kind": "helm",                  // "helm" | "plain"
           "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-          // CoreTPL derives this from a namespaced Kubernetes service address in
-          // API_DBAAS_ADDRESS. See references/contracts.md for when a plain literal
-          // or an explicit override is required instead.
+          // CoreTPL resolves the operator namespace. See references/contracts.md
+          // for when a plain literal is required instead.
           "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
           "workloadNamespace": "{{ .Values.NAMESPACE }}",
           "originService": "orders",
-          "helmValues": {"API_DBAAS_ADDRESS": "http://dbaas-aggregator.dbaas-operator:8080"},
           "datasources": [
             {
               "id": "orders-postgresql-service", "type": "postgresql",
@@ -903,9 +901,9 @@ def build_resources(root_plan: dict[str, Any]) -> tuple[list[dict[str, Any]], di
     for claim in root_plan["claims"]:
         ds = by_id[claim["datasourceId"]]
         classifier = ds["classifier"]
-        role = str(claim.get("role", ""))
+        role = str(claim.get("role", "")).strip()
         db_key = f"{canonical(wire_classifier(classifier))}|{ds['type'].lower()}"
-        claim_key = f"{db_key}|{role.strip()}"
+        claim_key = f"{db_key}|{role}"
         stem, templated = names[db_key]
         token = role_token(role)
         secret_name = with_tail(stem, token, keep_tail="credentials", templated=templated)
@@ -925,9 +923,8 @@ def build_resources(root_plan: dict[str, Any]) -> tuple[list[dict[str, Any]], di
             "type": ds["type"].lower(),
             "secretName": bundle["secret"],
         }
-        normalized_role = role.strip()
-        if normalized_role:
-            claim_spec["userRole"] = normalized_role
+        if role:
+            claim_spec["userRole"] = role
         claim_bodies[claim_key] = {
             "apiVersion": "dbaas.netcracker.com/v1",
             "kind": "DatabaseSecretClaim",

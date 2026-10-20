@@ -28,18 +28,14 @@ writer never registers a default for it (no `values.yaml`/`values.schema.json` e
 plan's `operatorNamespace` must already be a concrete, verified value or Helm expression.
 
 For a Helm chart, use the latest available CoreTPL release that provides the DBaaS helpers and call
-its namespace helper. The helper derives the operator namespace from a namespaced Kubernetes
-in-cluster `API_DBAAS_ADDRESS`, such as `http://dbaas-aggregator.dbaas-operator:8080`:
+its namespace helper:
 
 ```gotemplate
 {{ include "coretpl.dbaasNamespace" $ }}
 ```
 
-`http://dbaas-aggregator.dbaas-operator:8080` -> host `dbaas-aggregator.dbaas-operator` -> second
-label `dbaas-operator`. `http://dbaas-aggregator.dbaas:8080` -> `dbaas`. This only identifies the
-namespace for an address of the in-cluster `<service>.<namespace>[.svc[.cluster.local]]` shape.
-CoreTPL fails the render when it cannot derive a non-empty, non-numeric namespace; never fall back
-to a guessed or hardcoded namespace.
+If the helper cannot resolve a verified namespace during rendering, require an explicit, verified
+literal in the plan. Never fall back to a guessed or hardcoded namespace.
 
 Rules:
 
@@ -47,8 +43,8 @@ Rules:
   instead: prefer an explicit deployment value, verify it against the intended `dbaas-operator`
   Deployment/Pod when a cluster is available, and stop and ask if it cannot be proven -- never
   assume `dbaas-system` or reuse the workload namespace;
-- when `API_DBAAS_ADDRESS` is external, single-label, empty, or otherwise cannot identify the
-  operator namespace, require an explicit, verified literal in the plan instead of the expression.
+- when the CoreTPL helper cannot resolve the operator namespace, require an explicit, verified
+  literal in the plan instead of the helper call.
 
 ## Capability guard (issue #776)
 
@@ -146,8 +142,7 @@ Optional mappings supported by the current CR contract are:
 - explicitly configured versioning and initial-instantiation behavior to their corresponding
   structures.
 
-Omit `spec.lazy` when it is `false`; the API uses `false` by default. Block a migration that uses a
-non-default value until its behavior is mapped explicitly.
+Omit `spec.lazy` when it is `false`; the API uses `false` by default.
 
 Do not copy client connection-pool, migration, retry, or datasource settings into `spec.settings`.
 The CR type is `map[string]apiextensionsv1.JSON`; values may be strings, numbers, booleans, null,

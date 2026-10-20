@@ -26,7 +26,6 @@ Plan shape::
           "namespace": "{{ .Values.NAMESPACE }}",
           "namePrefix": "",
           "helmValues": {
-            "API_DBAAS_ADDRESS": "http://dbaas-aggregator.dbaas-operator:8080",
             "SERVICE_NAME": "orders",
             "NAMESPACE": "orders-ns"
           },

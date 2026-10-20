@@ -23,24 +23,8 @@ RUNNER = SCRIPTS / "apply_migration.py"
 VALIDATOR = SCRIPTS / "validate_generated.py"
 
 CHART_YAML = "apiVersion: v2\nname: orders\nversion: 0.1.0\n"
-VALUES = (
-    "NAMESPACE: orders-ns\n"
-    "SERVICE_NAME: orders\n"
-    "API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas-operator:8080\n"
-)
-CORETPL_HELPERS = r'''{{- define "coretpl.dbaasNamespace" -}}
-{{- $address := toString (default "" .Values.API_DBAAS_ADDRESS) -}}
-{{- $host := first (splitList ":" (last (splitList "://" $address))) -}}
-{{- $parts := splitList "." $host -}}
-{{- $namespace := "" -}}
-{{- if ge (len $parts) 2 -}}
-{{- $namespace = index $parts 1 -}}
-{{- end -}}
-{{- if or (eq $namespace "") (regexMatch "^[0-9]+$" $namespace) -}}
-{{- fail (printf "API_DBAAS_ADDRESS %q names no namespace. Set it to http://<aggregator>.<namespace>:<port>." $address) -}}
-{{- end -}}
-{{- $namespace -}}
-{{- end -}}
+VALUES = "NAMESPACE: orders-ns\nSERVICE_NAME: orders\n"
+CORETPL_HELPER_STUBS = r'''{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}
 
 {{- define "coretpl.dbaasOperatorEnabled" -}}
 {{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
@@ -99,7 +83,7 @@ def scaffold(tmp: Path, *, deployment: str = DEPLOYMENT) -> Path:
     (repo / "chart" / "Chart.yaml").write_text(CHART_YAML, encoding="utf-8")
     (repo / "chart" / "values.yaml").write_text(VALUES, encoding="utf-8")
     (repo / "chart" / "values.schema.json").write_text(SCHEMA, encoding="utf-8")
-    (repo / "chart" / "templates" / "_coretpl.tpl").write_text(CORETPL_HELPERS, encoding="utf-8")
+    (repo / "chart" / "templates" / "_coretpl.tpl").write_text(CORETPL_HELPER_STUBS, encoding="utf-8")
     (repo / "chart" / "templates" / "deployment.yaml").write_text(deployment, encoding="utf-8")
     return repo
 
@@ -1690,63 +1674,6 @@ class HelmApplyTest(unittest.TestCase):
             docs = [d for d in yaml.safe_load_all((repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")) if d]
             claim_doc = next(d for d in docs if d["kind"] == "DatabaseSecretClaim")
             self.assertEqual(claim_doc["metadata"]["labels"]["app.kubernetes.io/name"], "Orders.API_v1")
-
-
-OPERATOR_NAMESPACE_FROM_API_DBAAS_ADDRESS = '{{ include "coretpl.dbaasNamespace" $ }}'
-
-
-@unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
-class OperatorNamespaceFromApiDbaasAddressTest(unittest.TestCase):
-    """Render the CoreTPL namespace helper with representative DBaaS addresses."""
-
-    def render(self, tmp: Path, api_dbaas_address: str) -> subprocess.CompletedProcess[str]:
-        chart = tmp / "probe-chart"
-        (chart / "templates").mkdir(parents=True)
-        (chart / "Chart.yaml").write_text("apiVersion: v2\nname: probe\nversion: 0.1.0\n", encoding="utf-8")
-        (chart / "templates" / "_coretpl.tpl").write_text(CORETPL_HELPERS, encoding="utf-8")
-        (chart / "templates" / "resource.yaml").write_text(
-            "apiVersion: dbaas.netcracker.com/v1\n"
-            "kind: InternalDatabase\n"
-            "metadata:\n"
-            "  name: probe\n"
-            "spec:\n"
-            f"  operatorNamespace: {OPERATOR_NAMESPACE_FROM_API_DBAAS_ADDRESS}\n",
-            encoding="utf-8",
-        )
-        values_file = tmp / "values.yaml"
-        values_file.write_text(
-            yaml.safe_dump({"API_DBAAS_ADDRESS": api_dbaas_address}), encoding="utf-8"
-        )
-        return subprocess.run(
-            ["helm", "template", "probe-release", str(chart), "--values", str(values_file)],
-            capture_output=True, text=True, check=False,
-        )
-
-    def test_short_cluster_service_address_produces_second_dns_label(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            proc = self.render(Path(directory), "http://dbaas-aggregator.dbaas:8080")
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            resource = yaml.safe_load(proc.stdout)
-            self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas")
-
-    def test_longer_cluster_dns_name_produces_second_dns_label(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            proc = self.render(
-                Path(directory), "http://dbaas-aggregator.dbaas-operator.svc.cluster.local:8080"
-            )
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            resource = yaml.safe_load(proc.stdout)
-            self.assertEqual(resource["spec"]["operatorNamespace"], "dbaas-operator")
-
-    def test_empty_address_fails_to_render(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            proc = self.render(Path(directory), "")
-            self.assertNotEqual(proc.returncode, 0)
-
-    def test_single_label_address_fails_to_render(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            proc = self.render(Path(directory), "http://dbaas-aggregator:8080")
-            self.assertNotEqual(proc.returncode, 0)
 
 
 class PlainApplyTest(unittest.TestCase):

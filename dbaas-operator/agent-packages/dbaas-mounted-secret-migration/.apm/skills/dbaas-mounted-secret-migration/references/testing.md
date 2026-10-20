@@ -39,12 +39,11 @@ multi-item legacy declaration whose wrapper has one `metadata.name`; verify that
 names remain unique. Error messages must identify the resource and the mismatched identity, not only
 a count.
 
-Add render tests for `coretpl.dbaasNamespace` (see references/contracts.md): a short in-cluster
-service address and a longer cluster-DNS name each render to the correct namespace; an empty or
-single-label address fails to render rather than silently resolving to a wrong or empty namespace;
-and the writer never creates an operator namespace entry in `values.yaml`/`values.schema.json`.
-When a capability guard is used, also render with and without the target API version and verify that
-`coretpl.dbaasOperatorEnabled` selects the native and fallback branches respectively.
+Add render tests that verify `coretpl.dbaasNamespace` is available and the writer never creates an
+operator namespace entry in `values.yaml`/`values.schema.json`. CoreTPL owns tests for the helper's
+internal resolution logic. When a capability guard is used, also render with and without the target
+API version and verify that `coretpl.dbaasOperatorEnabled` selects the native and fallback branches
+respectively.
 
 Install PyYAML in the execution environment, then run the bundled validator:
 

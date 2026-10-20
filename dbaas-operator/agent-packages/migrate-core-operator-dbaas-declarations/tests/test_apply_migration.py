@@ -27,17 +27,7 @@ except ImportError:  # pragma: no cover - optional test dependency
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "migrate-core-operator-dbaas-declarations" / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
-CORETPL_HELPERS = r'''{{- define "coretpl.dbaasNamespace" -}}
-{{- $address := toString (default "" .Values.API_DBAAS_ADDRESS) -}}
-{{- $host := first (splitList ":" (last (splitList "://" $address))) -}}
-{{- $parts := splitList "." $host -}}
-{{- $namespace := "" -}}
-{{- if ge (len $parts) 2 -}}{{- $namespace = index $parts 1 -}}{{- end -}}
-{{- if or (eq $namespace "") (regexMatch "^[0-9]+$" $namespace) -}}
-{{- fail (printf "API_DBAAS_ADDRESS %q names no namespace. Set it to http://<aggregator>.<namespace>:<port>." $address) -}}
-{{- end -}}
-{{- $namespace -}}
-{{- end -}}
+CORETPL_HELPER_STUBS = r'''{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}
 {{- define "coretpl.dbaasOperatorEnabled" -}}
 {{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
 {{- end -}}
@@ -1140,12 +1130,11 @@ class DgpOnlyPolicyWriterTest(unittest.TestCase):
 def helm_root_plan(repo: Path, source_rel: str, output_rel: str, **overrides: Any) -> dict[str, Any]:
     (repo / "chart/templates").mkdir(parents=True, exist_ok=True)
     (repo / "chart/Chart.yaml").write_text("apiVersion: v2\nname: svc\nversion: 0.1.0\n", encoding="utf-8")
-    (repo / "chart/templates/_coretpl.tpl").write_text(CORETPL_HELPERS, encoding="utf-8")
+    (repo / "chart/templates/_coretpl.tpl").write_text(CORETPL_HELPER_STUBS, encoding="utf-8")
     overrides.setdefault("operatorNamespace", '{{ include "coretpl.dbaasNamespace" $ }}')
     overrides.setdefault(
         "helmValues",
         {
-            "API_DBAAS_ADDRESS": "http://dbaas-aggregator.dbaas-operator:8080",
             "NAMESPACE": "deploy-ns",
         },
     )
