@@ -23,7 +23,31 @@ RUNNER = SCRIPTS / "apply_migration.py"
 VALIDATOR = SCRIPTS / "validate_generated.py"
 
 CHART_YAML = "apiVersion: v2\nname: orders\nversion: 0.1.0\n"
-VALUES = "NAMESPACE: orders-ns\nSERVICE_NAME: orders\n"
+VALUES = (
+    "NAMESPACE: orders-ns\n"
+    "SERVICE_NAME: orders\n"
+    "API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas-operator:8080\n"
+)
+CORETPL_HELPERS = r'''{{- define "coretpl.dbaasNamespace" -}}
+{{- $address := toString (default "" .Values.API_DBAAS_ADDRESS) -}}
+{{- $host := first (splitList ":" (last (splitList "://" $address))) -}}
+{{- $parts := splitList "." $host -}}
+{{- $namespace := "" -}}
+{{- if ge (len $parts) 2 -}}
+{{- $namespace = index $parts 1 -}}
+{{- end -}}
+{{- if or (eq $namespace "") (regexMatch "^[0-9]+$" $namespace) -}}
+{{- fail (printf "API_DBAAS_ADDRESS %q names no namespace. Set it to http://<aggregator>.<namespace>:<port>." $address) -}}
+{{- end -}}
+{{- $namespace -}}
+{{- end -}}
+
+{{- define "coretpl.dbaasOperatorEnabled" -}}
+{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
+{{- end -}}
+'''
+CORETPL_OPERATOR_GUARD = '{{- if include "coretpl.dbaasOperatorEnabled" $ }}'
+CORETPL_OPERATOR_FALLBACK_GUARD = '{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}'
 SCHEMA = json.dumps(
     {
         "$schema": "https://json-schema.org/draft-07/schema#",
@@ -75,6 +99,7 @@ def scaffold(tmp: Path, *, deployment: str = DEPLOYMENT) -> Path:
     (repo / "chart" / "Chart.yaml").write_text(CHART_YAML, encoding="utf-8")
     (repo / "chart" / "values.yaml").write_text(VALUES, encoding="utf-8")
     (repo / "chart" / "values.schema.json").write_text(SCHEMA, encoding="utf-8")
+    (repo / "chart" / "templates" / "_coretpl.tpl").write_text(CORETPL_HELPERS, encoding="utf-8")
     (repo / "chart" / "templates" / "deployment.yaml").write_text(deployment, encoding="utf-8")
     return repo
 
@@ -124,7 +149,7 @@ def source_hashes(repo: Path, root: str, *relatives: str) -> dict:
 def root_plan(repo: Path, *, root="chart", kind="helm", datasources=None, claims=None, **overrides) -> dict:
     default_workload_file = "templates/deployment.yaml" if kind == "helm" else "deployment.yaml"
     operator_namespace = overrides.get(
-        "operatorNamespace", "{{ .Values.TEST_OPERATOR_NAMESPACE }}" if kind == "helm" else "dbaas-system"
+        "operatorNamespace", '{{ include "coretpl.dbaasNamespace" $ }}' if kind == "helm" else "dbaas-system"
     )
     base = {
         "root": root,
@@ -180,7 +205,7 @@ def run_migration(repo: Path, the_plan: dict, mode: str, tmp: Path) -> tuple[int
 class CapabilityGuardTest(unittest.TestCase):
     """Issue #776 phase 4: the optional capabilityGuard/operatorModeEnvironment
     plan fields wrap every generated resource, inserted volume/mount, and
-    operator-mode env var in a ".Capabilities.APIVersions.Has" guard, and
+    operator-mode env var in the CoreTPL DBaaS-operator guard, and
     preserve a superseded legacy declaration under the negated (operator-
     absent) branch instead of deleting it. Omitting capabilityGuard preserves
     the existing operator-only behavior exactly."""
@@ -196,6 +221,21 @@ class CapabilityGuardTest(unittest.TestCase):
         ],
     }
 
+    def test_capability_guard_rejects_an_unrelated_api_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+
+            code, report = run_migration(
+                repo,
+                plan(repo, capabilityGuard="example.com/v1"),
+                "check",
+                tmp,
+            )
+
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertTrue(any("dbaas.netcracker.com/v1" in item for item in report.get("blocking", [])))
+
     def test_omitting_capability_guard_preserves_existing_behavior(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -203,7 +243,7 @@ class CapabilityGuardTest(unittest.TestCase):
             code, report = run_migration(repo, plan(repo), "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
             output = (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")
-            self.assertNotIn(".Capabilities.APIVersions.Has", output)
+            self.assertNotIn("coretpl.dbaasOperatorEnabled", output)
             names = {entry["name"] for entry in report["validation"]}
             self.assertNotIn("validate-operator-absent-fallback", names)
 
@@ -228,13 +268,13 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(names["validate-operator-absent-fallback"]["status"], "passed")
 
             output = (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")
-            self.assertTrue(output.startswith(f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}\n'))
+            self.assertTrue(output.startswith(f"{CORETPL_OPERATOR_GUARD}\n"))
             self.assertIn("kind: InternalDatabase", output)
             self.assertIn("kind: DatabaseSecretClaim", output)
             self.assertTrue(output.rstrip("\n").endswith("{{- end }}"))
 
             deployment = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
-            self.assertIn(f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}', deployment)
+            self.assertIn(CORETPL_OPERATOR_GUARD, deployment)
             self.assertIn("name: orders-postgresql-service-default-secret", deployment)
             self.assertIn("name: DBAAS_OPERATOR_ENABLED", deployment)
             self.assertIn("value: 'true'", deployment)
@@ -244,7 +284,7 @@ class CapabilityGuardTest(unittest.TestCase):
             # since it is the original bytes verbatim.
             self.assertTrue(declaration_path.exists())
             preserved = declaration_path.read_text(encoding="utf-8")
-            self.assertIn(f'{{{{- if not (.Capabilities.APIVersions.Has "{self.GUARD}") }}}}', preserved)
+            self.assertIn(CORETPL_OPERATOR_FALLBACK_GUARD, preserved)
             self.assertIn(json.dumps(self.LEGACY_DECLARATION), preserved)
             self.assertIn("{{- end }}", preserved)
 
@@ -275,7 +315,7 @@ class CapabilityGuardTest(unittest.TestCase):
             code, report = run_migration(repo, first_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
             deployment_before = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
-            self.assertNotIn(".Capabilities.APIVersions.Has", deployment_before)
+            self.assertNotIn("coretpl.dbaasOperatorEnabled", deployment_before)
 
             second_plan = plan(
                 repo,
@@ -292,7 +332,7 @@ class CapabilityGuardTest(unittest.TestCase):
             # The pre-existing mount, volume, and (newly added) env are each
             # individually wrapped -- not merely present somewhere in a file
             # that also happens to contain the guard string elsewhere.
-            guard_open = f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}'
+            guard_open = CORETPL_OPERATOR_GUARD
             self.assertIn(
                 f"{guard_open}\n            - name: orders-postgresql-service-default-secret\n"
                 "              mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials\n"
@@ -348,7 +388,7 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(names["validate-operator-absent-fallback"]["status"], "passed")
 
             deployment_after = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
-            guard_open = f'{{{{- if .Capabilities.APIVersions.Has "{self.GUARD}" }}}}'
+            guard_open = CORETPL_OPERATOR_GUARD
             # One guard wraps both adjacent mounts, one wraps both adjacent
             # volumes, and one wraps the operator-mode environment entry.
             self.assertEqual(deployment_after.count(guard_open), 3)
@@ -420,6 +460,18 @@ class GeneratedManifestValidationTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
 class HelmApplyTest(unittest.TestCase):
+    def test_missing_coretpl_helpers_fails_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            (repo / "chart/templates/_coretpl.tpl").unlink()
+
+            code, report = run_migration(repo, plan(repo), "check", tmp)
+
+            self.assertEqual(code, 5, report.get("__stderr"))
+            details = " ".join(entry.get("details", "") for entry in report.get("validation", []))
+            self.assertIn("coretpl.dbaasNamespace", details)
+
     def test_quoted_templated_workload_and_resource_names_are_idempotent(self) -> None:
         deployment = DEPLOYMENT.replace(
             "  name: orders\n", "  name: '{{ .Values.SERVICE_NAME }}'\n"
@@ -475,8 +527,12 @@ class HelmApplyTest(unittest.TestCase):
             kinds = sorted(d["kind"] for d in docs)
             self.assertEqual(kinds, ["DatabaseSecretClaim", "InternalDatabase"])
             for doc in docs:
-                self.assertEqual(doc["spec"]["operatorNamespace"], "{{ .Values.TEST_OPERATOR_NAMESPACE }}")
+                self.assertEqual(doc["spec"]["operatorNamespace"], '{{ include "coretpl.dbaasNamespace" $ }}')
                 self.assertNotIn("namespace", doc["spec"]["classifier"])
+            internal_database = next(d for d in docs if d["kind"] == "InternalDatabase")
+            secret_claim = next(d for d in docs if d["kind"] == "DatabaseSecretClaim")
+            self.assertNotIn("lazy", internal_database["spec"])
+            self.assertNotIn("userRole", secret_claim["spec"])
 
             deployment_text = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
             self.assertIn("replicas: {{ .Values.replicaCount }}", deployment_text)
@@ -844,7 +900,8 @@ class HelmApplyTest(unittest.TestCase):
                 values_path.read_text(encoding="utf-8") + 'TEST_OPERATOR_NAMESPACE: "Not_A_Valid_NS!"\n',
                 encoding="utf-8",
             )
-            code, report = run_migration(repo, plan(repo), "check", tmp)
+            the_plan = plan(repo, operatorNamespace="{{ .Values.TEST_OPERATOR_NAMESPACE }}")
+            code, report = run_migration(repo, the_plan, "check", tmp)
             self.assertEqual(code, 5, report.get("__stderr"))
             names = {entry["name"]: entry for entry in report["validation"]}
             self.assertEqual(names["validate-rendered"]["status"], "failed")
@@ -1635,22 +1692,18 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(claim_doc["metadata"]["labels"]["app.kubernetes.io/name"], "Orders.API_v1")
 
 
-OPERATOR_NAMESPACE_FROM_API_DBAAS_ADDRESS = (
-    '{{ (index (splitList "." (first (splitList ":" '
-    '(last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}'
-)
+OPERATOR_NAMESPACE_FROM_API_DBAAS_ADDRESS = '{{ include "coretpl.dbaasNamespace" $ }}'
 
 
 @unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
 class OperatorNamespaceFromApiDbaasAddressTest(unittest.TestCase):
-    """Issue #776 phase 5: render tests for the documented Helm expression that
-    derives operatorNamespace from a namespaced Kubernetes service address in
-    API_DBAAS_ADDRESS (see references/contracts.md)."""
+    """Render the CoreTPL namespace helper with representative DBaaS addresses."""
 
     def render(self, tmp: Path, api_dbaas_address: str) -> subprocess.CompletedProcess[str]:
         chart = tmp / "probe-chart"
         (chart / "templates").mkdir(parents=True)
         (chart / "Chart.yaml").write_text("apiVersion: v2\nname: probe\nversion: 0.1.0\n", encoding="utf-8")
+        (chart / "templates" / "_coretpl.tpl").write_text(CORETPL_HELPERS, encoding="utf-8")
         (chart / "templates" / "resource.yaml").write_text(
             "apiVersion: dbaas.netcracker.com/v1\n"
             "kind: InternalDatabase\n"

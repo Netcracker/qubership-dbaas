@@ -1,4 +1,5 @@
 NAMESPACE: site-management-ns
 SERVICE_NAME: site-management
+API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas-operator:8080
 extraEnv: false
 topologyVolumes: []

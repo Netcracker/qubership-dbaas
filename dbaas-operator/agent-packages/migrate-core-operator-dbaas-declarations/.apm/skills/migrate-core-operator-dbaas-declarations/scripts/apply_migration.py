@@ -21,11 +21,15 @@ Plan shape::
         {
           "root": "chart",
           "kind": "helm",
-          "operatorNamespace": "dbaas-system",
+          "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
           "serviceName": "{{ .Values.SERVICE_NAME }}",
           "namespace": "{{ .Values.NAMESPACE }}",
           "namePrefix": "",
-          "helmValues": {"SERVICE_NAME": "orders", "NAMESPACE": "orders-ns"},
+          "helmValues": {
+            "API_DBAAS_ADDRESS": "http://dbaas-aggregator.dbaas-operator:8080",
+            "SERVICE_NAME": "orders",
+            "NAMESPACE": "orders-ns"
+          },
           "outputFile": "templates/dbaas-operator-resources.yaml",
           "sources": [{"path": "chart/templates/dbaas-configuration.json", "sha256": "<hash>"}],
           "nameOverrides": {"chart/templates/dbaas-configuration.json#1#1#1": "orders-db"},
@@ -96,14 +100,19 @@ _ROOT_KEYS = {
     "namePrefix", "helmValues", "outputFile", "outputSha256", "sources", "nameOverrides",
     "capabilityGuard",
 }
+_DBAAS_CAPABILITY = "dbaas.netcracker.com/v1"
 
 
 def _capability_guard_open(capability_guard: str) -> str:
-    return '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
+    # The plan value still drives Helm's --api-versions validation render.
+    # CoreTPL owns the actual capability lookup in generated templates.
+    return '{{- if include "coretpl.dbaasOperatorEnabled" $ }}\n'
 
 
 def _negated_guard_open(capability_guard: str) -> str:
-    return '{{- if not (.Capabilities.APIVersions.Has "' + capability_guard + '") }}\n'
+    # The plan value still drives Helm's --api-versions validation render.
+    # CoreTPL owns the actual capability lookup in generated templates.
+    return '{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}\n'
 
 
 _CAPABILITY_GUARD_CLOSE = "{{- end }}\n"
@@ -237,13 +246,11 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
             raise PlanError(f"{where}.namePrefix must be a string")
         # capabilityGuard is optional (issue #776): omitting it preserves the
         # existing operator-only behavior exactly. When present, the
-        # generated resource is wrapped in a ".Capabilities.APIVersions.Has"
-        # guard and the superseded source document is preserved -- guarded to
+        # generated resource is wrapped in the CoreTPL DBaaS-operator guard,
+        # and the superseded source document is preserved -- guarded to
         # the operator-absent branch -- instead of deleted (see build_root).
-        if "capabilityGuard" in root and (
-            not isinstance(root["capabilityGuard"], str) or not root["capabilityGuard"].strip()
-        ):
-            raise PlanError(f"{where}.capabilityGuard must be a non-empty string")
+        if "capabilityGuard" in root and root["capabilityGuard"] != _DBAAS_CAPABILITY:
+            raise PlanError(f"{where}.capabilityGuard must be {_DBAAS_CAPABILITY!r}")
         for field in ("helmValues", "nameOverrides"):
             value = root.get(field)
             if value is None:

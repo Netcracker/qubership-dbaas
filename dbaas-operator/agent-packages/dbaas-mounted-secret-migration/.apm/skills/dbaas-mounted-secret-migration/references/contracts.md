@@ -27,19 +27,19 @@ that must manage it -- never the workload namespace, and never assumed to be `db
 writer never registers a default for it (no `values.yaml`/`values.schema.json` edits, ever); the
 plan's `operatorNamespace` must already be a concrete, verified value or Helm expression.
 
-For a Helm chart, when `API_DBAAS_ADDRESS` (e.g. `http://dbaas-aggregator.dbaas-operator:8080`) is
-a namespaced Kubernetes in-cluster service address, use the second DNS label of its host as the
-operator namespace:
+For a Helm chart, use the latest available CoreTPL release that provides the DBaaS helpers and call
+its namespace helper. The helper derives the operator namespace from a namespaced Kubernetes
+in-cluster `API_DBAAS_ADDRESS`, such as `http://dbaas-aggregator.dbaas-operator:8080`:
 
 ```gotemplate
-{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}
+{{ include "coretpl.dbaasNamespace" $ }}
 ```
 
 `http://dbaas-aggregator.dbaas-operator:8080` -> host `dbaas-aggregator.dbaas-operator` -> second
 label `dbaas-operator`. `http://dbaas-aggregator.dbaas:8080` -> `dbaas`. This only identifies the
-namespace for an address of the in-cluster `<service>.<namespace>[.svc[.cluster.local]]` shape --
-`index` on the split label list fails to render (out of range) for an external, single-label, or
-empty address, which is the correct outcome: never fall back to a guessed or hardcoded namespace.
+namespace for an address of the in-cluster `<service>.<namespace>[.svc[.cluster.local]]` shape.
+CoreTPL fails the render when it cannot derive a non-empty, non-numeric namespace; never fall back
+to a guessed or hardcoded namespace.
 
 Rules:
 
@@ -53,12 +53,12 @@ Rules:
 ## Capability guard (issue #776)
 
 Mixed clusters may not have the dbaas-operator CRDs installed at all. The plan's root-level
-`capabilityGuard` field (optional; a capability string such as `"dbaas.netcracker.com/v1"`) makes
+`capabilityGuard` field (optional; set it to `"dbaas.netcracker.com/v1"`) makes
 every generated resource and inserted volume/mount conditional on that capability being present,
 instead of assuming the operator is always installed:
 
 ```gotemplate
-{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" }}
+{{- if include "coretpl.dbaasOperatorEnabled" $ }}
 ... InternalDatabase / DatabaseSecretClaim / DatabaseAccessPolicy ...
 {{- end }}
 ```
@@ -75,7 +75,7 @@ is set:
 - a superseded legacy declaration is preserved -- its original bytes, comments and labels included
   -- guarded to the operator-absent (negated) branch, instead of being deleted:
   ```gotemplate
-  {{- if not (.Capabilities.APIVersions.Has "dbaas.netcracker.com/v1") }}
+  {{- if not (include "coretpl.dbaasOperatorEnabled" $) }}
   ... original legacy declaration bytes, verbatim ...
   {{- end }}
   ```
@@ -137,7 +137,6 @@ spec:
     namespace: orders-ns
     scope: service
   type: postgresql
-  lazy: false
 ```
 
 Optional mappings supported by the current CR contract are:
@@ -146,6 +145,9 @@ Optional mappings supported by the current CR contract are:
 - JSON-valued database creation settings to `spec.settings` without changing their types;
 - explicitly configured versioning and initial-instantiation behavior to their corresponding
   structures.
+
+Omit `spec.lazy` when it is `false`; the API uses `false` by default. Block a migration that uses a
+non-default value until its behavior is mapped explicitly.
 
 Do not copy client connection-pool, migration, retry, or datasource settings into `spec.settings`.
 The CR type is `map[string]apiextensionsv1.JSON`; values may be strings, numbers, booleans, null,
@@ -170,16 +172,16 @@ spec:
     namespace: orders-ns
     scope: service
   type: postgresql
-  userRole: ""
   secretName: orders-postgresql-service-default-credentials
 ```
 
 The label is mandatory in the current operator controller and is sent as `originService` in the
 aggregator get-by-classifier request.
 
-Set `userRole` to the exact role passed by the client. Empty and explicit `admin` are different
-mounted lookup keys even if the aggregator eventually resolves both to administrator credentials.
-Create separate claims and mounts when one database is requested with multiple roles.
+Set `userRole` to the normalized role passed by the client. Omit it when the requested role is
+empty. Empty and explicit `admin` are different mounted lookup keys even if the aggregator
+eventually resolves both to administrator credentials. Create separate claims and mounts when one
+database is requested with multiple roles.
 
 ## Helm-templated workloads (issue #776)
 

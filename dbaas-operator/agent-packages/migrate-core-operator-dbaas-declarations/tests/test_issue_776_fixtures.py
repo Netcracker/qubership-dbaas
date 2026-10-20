@@ -24,6 +24,21 @@ PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "migrate-core-operator-dbaas-declarations" / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "issue_776"
+CORETPL_HELPERS = r'''{{- define "coretpl.dbaasNamespace" -}}
+{{- $address := toString (default "" .Values.API_DBAAS_ADDRESS) -}}
+{{- $host := first (splitList ":" (last (splitList "://" $address))) -}}
+{{- $parts := splitList "." $host -}}
+{{- $namespace := "" -}}
+{{- if ge (len $parts) 2 -}}{{- $namespace = index $parts 1 -}}{{- end -}}
+{{- if or (eq $namespace "") (regexMatch "^[0-9]+$" $namespace) -}}
+{{- fail (printf "API_DBAAS_ADDRESS %q names no namespace. Set it to http://<aggregator>.<namespace>:<port>." $address) -}}
+{{- end -}}
+{{- $namespace -}}
+{{- end -}}
+{{- define "coretpl.dbaasOperatorEnabled" -}}
+{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
+{{- end -}}
+'''
 
 
 def sha256(path: Path) -> str:
@@ -34,6 +49,8 @@ def copy_fixture(name: str, tmp: Path) -> Path:
     repo = tmp / "repo"
     dest = repo / "chart"
     shutil.copytree(FIXTURES / name, dest)
+    (dest / "templates").mkdir(exist_ok=True)
+    (dest / "templates/_coretpl.tpl").write_text(CORETPL_HELPERS, encoding="utf-8")
     return repo
 
 
@@ -66,7 +83,7 @@ class Issue776FixturesTest(unittest.TestCase):
                     {
                         "root": "chart",
                         "kind": "helm",
-                        "operatorNamespace": "dbaas-system",
+                        "operatorNamespace": '{{ include "coretpl.dbaasNamespace" $ }}',
                         "serviceName": "{{ .Values.SERVICE_NAME }}",
                         "namespace": "{{ .Values.NAMESPACE }}",
                         "outputFile": "dbaas-operator-resources.yaml",
@@ -89,7 +106,7 @@ class Issue776FixturesTest(unittest.TestCase):
                     {
                         "root": "chart",
                         "kind": "helm",
-                        "operatorNamespace": "dbaas-system",
+                        "operatorNamespace": '{{ include "coretpl.dbaasNamespace" $ }}',
                         "serviceName": "site-management",
                         "namespace": "{{ .Values.NAMESPACE }}",
                         "outputFile": "dbaas-operator-resources.yaml",

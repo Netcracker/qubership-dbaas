@@ -10,6 +10,12 @@ Convert legacy DBaaS declarations into dedicated Kubernetes resources:
 - `DatabaseDeclaration` to `apiVersion: dbaas.netcracker.com/v1`, `kind: InternalDatabase`
 - `DbPolicy` or `dbPolicy` to `apiVersion: dbaas.netcracker.com/v1`, `kind: DatabaseAccessPolicy`
 
+For a Helm chart, inspect `Chart.yaml` and `Chart.lock` before inventory. Upgrade the chart to the
+latest available CoreTPL release that includes the DBaaS helpers, refresh its lock file and vendored
+dependencies, and verify that it provides `coretpl.dbaasNamespace` and
+`coretpl.dbaasOperatorEnabled`. Stop if those helpers are unavailable. Plain manifests do not use
+CoreTPL and require a verified literal operator namespace.
+
 `scripts/apply_migration.py` is the only process allowed to create, modify, or delete files in the
 consumer repository. It is deterministic: given the same plan and repository state it produces the
 same result every time. Never hand-edit a migrated file afterward -- if the output needs a change,
@@ -33,7 +39,7 @@ change the plan (or the source) and re-run the writer.
    file with the SHA-256 of the exact bytes you inspected. Read [mapping.md](references/mapping.md)
    for the field-by-field conversion this plan feeds into; do not restate it here.
    For a mixed cluster where the dbaas-operator CRDs may not be installed, set the optional
-   `capabilityGuard` field (e.g. `"dbaas.netcracker.com/v1"`) so the generated resource only renders
+   `capabilityGuard` field (`"dbaas.netcracker.com/v1"`) so the generated resource only renders
    when that capability is present and the legacy source is preserved -- not deleted -- guarded to
    the operator-absent branch instead (see mapping.md's "Capability guard" section). Omitting it
    keeps every prior behavior unchanged.
@@ -97,9 +103,9 @@ Always blocking, before anything is written:
   resources -- ask when that is not known; it is not necessarily the workload namespace, and never
   assume `dbaas-system`. For a Helm root, when the chart exposes a namespaced Kubernetes service
   address as `API_DBAAS_ADDRESS` (e.g. `http://dbaas-aggregator.dbaas-operator:8080`), derive it
-  with `{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}`
-  (the second DNS label of the host) instead of a literal; require an explicit, verified value when
-  the address is external, single-label, empty, or otherwise cannot identify the namespace.
+  with `{{ include "coretpl.dbaasNamespace" $ }}` instead of a literal. Require an explicit,
+  verified value when the address is external, single-label, empty, or otherwise cannot identify
+  the namespace.
 - Preserve `physicalDatabaseId` verbatim; it pins only new-creation databases and is ignored for
   `initialInstantiation.approach: clone` and blue-green `versioningConfig.approach: clone`.
 - Choose stable, DNS-compatible resource names (or explicit `nameOverrides`) and check for

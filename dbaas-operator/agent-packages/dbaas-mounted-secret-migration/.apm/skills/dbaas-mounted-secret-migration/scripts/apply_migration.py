@@ -27,10 +27,10 @@ reuse the same generated name when their workload namespaces differ)::
           "root": "chart",                 // repo-relative; "" or "." is the repo root
           "kind": "helm",                  // "helm" | "plain"
           "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-          // Derived from a namespaced Kubernetes service address in API_DBAAS_ADDRESS --
-          // the second DNS label is the operator's namespace. See references/contracts.md
-          // for when a plain literal or an explicit override is required instead.
-          "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) }}",
+          // CoreTPL derives this from a namespaced Kubernetes service address in
+          // API_DBAAS_ADDRESS. See references/contracts.md for when a plain literal
+          // or an explicit override is required instead.
+          "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
           "workloadNamespace": "{{ .Values.NAMESPACE }}",
           "originService": "orders",
           "helmValues": {"API_DBAAS_ADDRESS": "http://dbaas-aggregator.dbaas-operator:8080"},
@@ -343,6 +343,7 @@ _ROOT_KEYS = {
     "sourceHashes", "capabilityGuard", "operatorModeEnvironment",
 }
 _OPERATOR_MODE_ENV_KEYS = {"name", "value"}
+_DBAAS_CAPABILITY = "dbaas.netcracker.com/v1"
 _DATASOURCE_KEYS = {
     "id", "type", "classifier", "requestedRoles", "parameters", "migrationFeasibility",
     "resourceName", "codeLocations",
@@ -405,15 +406,13 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             raise bad_input(f"{where}.workloadNamespace must be a valid RFC-1123 namespace label")
         # capabilityGuard is optional (issue #776): omitting it preserves the
         # existing operator-only behavior exactly. When present, every
-        # generated resource and inserted volume/mount is wrapped in a
-        # ".Capabilities.APIVersions.Has" guard, and a superseded declaration
+        # generated resource and inserted volume/mount is wrapped in the
+        # CoreTPL DBaaS-operator guard, and a superseded declaration
         # is preserved (guarded to the operator-absent branch) instead of
         # deleted -- see build_resources/apply_workload_patches/verify_superseded.
         capability_guard = entry.get("capabilityGuard")
-        if capability_guard is not None and (
-            not isinstance(capability_guard, str) or not capability_guard.strip()
-        ):
-            raise bad_input(f"{where}.capabilityGuard must be a non-empty string")
+        if capability_guard is not None and capability_guard != _DBAAS_CAPABILITY:
+            raise bad_input(f"{where}.capabilityGuard must be {_DBAAS_CAPABILITY!r}")
         operator_mode_environment = entry.get("operatorModeEnvironment")
         if operator_mode_environment is not None:
             if capability_guard is None:
@@ -886,7 +885,6 @@ def build_resources(root_plan: dict[str, Any]) -> tuple[list[dict[str, Any]], di
             "operatorNamespace": root_plan["operatorNamespace"],
             "classifier": cr_classifier(classifier),
             "type": ds["type"].lower(),
-            "lazy": False,
         }
         params = ds["parameters"]
         if params.get("namePrefix"):
@@ -921,6 +919,15 @@ def build_resources(root_plan: dict[str, Any]) -> tuple[list[dict[str, Any]], di
         name_bundle[f"{claim_key}|{claim['_workloadPath']}"] = bundle
         if claim_key in claim_bodies:
             continue
+        claim_spec: dict[str, Any] = {
+            "operatorNamespace": root_plan["operatorNamespace"],
+            "classifier": cr_classifier(classifier),
+            "type": ds["type"].lower(),
+            "secretName": bundle["secret"],
+        }
+        normalized_role = role.strip()
+        if normalized_role:
+            claim_spec["userRole"] = normalized_role
         claim_bodies[claim_key] = {
             "apiVersion": "dbaas.netcracker.com/v1",
             "kind": "DatabaseSecretClaim",
@@ -929,13 +936,7 @@ def build_resources(root_plan: dict[str, Any]) -> tuple[list[dict[str, Any]], di
                 "namespace": root_plan["workloadNamespace"],
                 "labels": {"app.kubernetes.io/name": root_plan["originService"]},
             },
-            "spec": {
-                "operatorNamespace": root_plan["operatorNamespace"],
-                "classifier": cr_classifier(classifier),
-                "type": ds["type"].lower(),
-                "userRole": role.strip(),
-                "secretName": bundle["secret"],
-            },
+            "spec": claim_spec,
         }
 
     check_collisions(databases, claim_bodies)
@@ -963,7 +964,9 @@ def check_collisions(databases: dict[str, Any], claims: dict[str, Any]) -> None:
 
 
 def _capability_guard_open(capability_guard: str) -> str:
-    return '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
+    # The plan value still drives Helm's --api-versions validation render.
+    # CoreTPL owns the actual capability lookup in generated templates.
+    return '{{- if include "coretpl.dbaasOperatorEnabled" $ }}\n'
 
 
 _CAPABILITY_GUARD_CLOSE = "{{- end }}\n"
@@ -1286,7 +1289,7 @@ def _guard_wrapped(capability_guard: str | None, indent: int, block: str) -> str
     if not capability_guard:
         return block
     pad = " " * indent
-    open_line = pad + '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
+    open_line = pad + _capability_guard_open(capability_guard)
     close_line = pad + "{{- end }}\n"
     return open_line + block + close_line
 
@@ -1899,7 +1902,9 @@ def _identity_overlaps_known(items: list[Any], known: dict[tuple[str, str], dict
 
 
 def _negated_guard_open(capability_guard: str) -> str:
-    return '{{- if not (.Capabilities.APIVersions.Has "' + capability_guard + '") }}\n'
+    # The plan value still drives Helm's --api-versions validation render.
+    # CoreTPL owns the actual capability lookup in generated templates.
+    return '{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}\n'
 
 
 def _wrap_in_negated_guard(capability_guard: str, span: str) -> str:
