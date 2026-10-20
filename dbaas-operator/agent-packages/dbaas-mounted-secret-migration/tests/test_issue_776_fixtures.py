@@ -68,7 +68,7 @@ class Issue776FixturesTest(unittest.TestCase):
                         "root": "chart",
                         "kind": "helm",
                         "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-                        "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
+                        "operatorNamespace": "{{ .Values.TEST_OPERATOR_NAMESPACE }}",
                         "workloadNamespace": "{{ .Values.NAMESPACE }}",
                         "originService": "config-server",
                         "datasources": [
@@ -107,7 +107,7 @@ class Issue776FixturesTest(unittest.TestCase):
                         "root": "chart",
                         "kind": "helm",
                         "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-                        "operatorNamespace": "{{ .Values.DBAAS_OPERATOR_NAMESPACE }}",
+                        "operatorNamespace": "{{ .Values.TEST_OPERATOR_NAMESPACE }}",
                         "workloadNamespace": "{{ .Values.NAMESPACE }}",
                         "originService": "site-management",
                         "datasources": [

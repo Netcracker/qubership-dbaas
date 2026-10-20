@@ -123,9 +123,8 @@ references/contracts.md's "Operator namespace" section) instead:
 {{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}
 ```
 
-If a chart already pins `DBAAS_OPERATOR_NAMESPACE` (or whatever value key that expression resolves
-through) to a real value, that value wins -- but an explicitly chosen empty value must fail
-validation, not be masked. When `API_DBAAS_ADDRESS` is external, single-label, empty, or otherwise
+An explicitly chosen empty value must fail validation, not be masked. When `API_DBAAS_ADDRESS` is
+external, single-label, empty, or otherwise
 cannot identify the operator namespace, require an explicit, verified literal in the plan instead.
 For plain manifests, which cannot template a value, always resolve a concrete namespace: prefer an
 explicit deployment value, verify it against the intended `dbaas-operator` Deployment or Pod when a

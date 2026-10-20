@@ -43,9 +43,6 @@ empty address, which is the correct outcome: never fall back to a guessed or har
 
 Rules:
 
-- if a chart already pins `DBAAS_OPERATOR_NAMESPACE` (or any other value key the operator
-  namespace expression resolves through) to a real value, use it as-is; an explicitly chosen empty
-  value must fail validation, never be masked with a synthesized non-empty one;
 - for a plain manifest (no Helm templating available), resolve a concrete literal namespace
   instead: prefer an explicit deployment value, verify it against the intended `dbaas-operator`
   Deployment/Pod when a cluster is available, and stop and ask if it cannot be proven -- never

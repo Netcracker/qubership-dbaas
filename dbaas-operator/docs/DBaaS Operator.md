@@ -20,7 +20,6 @@
 - [Authentication: Basic Auth or M2M Token](#authentication-basic-auth-or-m2m-token)
   - [Basic Auth (Default)](#basic-auth-default)
   - [M2M Token](#m2m-token-m2m_auth_modehybrid-or-k8s)
-- [Transport Security: Istio Ambient Mesh](#transport-security-istio-ambient-mesh)
 - [RBAC and Required Permissions](#rbac-and-required-permissions)
   - [Default Installation](#default-installation)
   - [Restricted Environment](#restricted-environment)
@@ -492,26 +491,6 @@ containers:
 > and the health probes (see [Ports and Probes](#ports-and-probes)). All dbaas-aggregator traffic is **outbound** (see
 > [API Endpoints](#api-endpoints)). Credential rotations are picked up by **polling** the aggregator, not pushed to the
 > operator — see [Rotation Polling](#rotation-polling).
-
----
-
-## Transport Security: Istio Ambient Mesh
-
-Traffic from the operator to dbaas-aggregator is encrypted by Istio Ambient Mesh, not by the applications. When
-`AMBIENT_MESH_ENABLED` is `true`, both Deployments label their Pod templates with `istio.io/dataplane-mode: ambient`.
-ztunnel on each node then intercepts the connection and carries it over mutual TLS (HBONE). The value defaults to
-`true` in both charts.
-
-- The operator still calls `http://dbaas-aggregator:8080`, and Basic Auth or M2M authentication works unchanged inside
-  the encrypted tunnel.
-- Istio issues, distributes, rotates, and trusts the workload certificates. DBaaS manages no certificate, CA bundle,
-  private key, HTTPS endpoint, or reload period.
-- Istio Ambient, Istio CNI, and ztunnel are platform prerequisites. If Ambient Mesh is not installed, the label has
-  no effect and the traffic stays plain HTTP.
-- Set `AMBIENT_MESH_ENABLED=false` in both charts to omit the label as an intentional compatibility or recovery
-  measure. The Operator then sends plain HTTP traffic to the Aggregator on port `8080`.
-- Clients outside the mesh keep using the aggregator's HTTP endpoint on port `8080`.
-- Encryption does not change the dependency: the operator still needs a reachable dbaas-aggregator.
 
 ---
 
@@ -2434,7 +2413,6 @@ directly by the binary, and **startup flags** passed as container `args`.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `DBAAS_OPERATOR_ENABLED` | boolean | `false` | When `false`, no operator resources are created by the Helm chart (Deployment, RBAC, CRDs, and monitoring objects are all skipped); only a placeholder `<SERVICE_NAME>-stub` ConfigMap is rendered. Must be set to `true` to deploy the operator. **The CRDs ship as chart templates**, so setting this back to `false` on an existing release deletes them along with every CR they define. |
-| `AMBIENT_MESH_ENABLED` | boolean | `true` | When `true`, adds `istio.io/dataplane-mode: ambient` to the Operator Pod template. Set the same value in the Aggregator chart. Setting both values to `false` sends plain HTTP traffic on port `8080`. |
 | `LEADER_ELECT` | boolean | `true` | Enables leader election; a truthy value makes the chart append the `--leader-elect` flag. Required when running more than one replica to ensure only one active instance processes resources at a time. The binary's own default is `false` — see [Startup flags](#startup-flags). |
 | `K8S_EVENTS_ENABLED` | boolean | `true` | When `true`, the operator emits Kubernetes Events in each involved object's namespace (visible in `kubectl describe`). The chart conditionally grants `create` and `patch` on `core/events` through the operator-namespace `Role` and cluster-wide `ClusterRole`. |
 | `M2M_AUTH_MODE` | string | `legacy` | Selects how the operator authenticates to dbaas-aggregator; **must match the aggregator's own `M2M_AUTH_MODE`**. `legacy` (default): HTTP Basic Auth, with credentials read from `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security` (see [Authentication](#authentication-basic-auth-or-m2m-token)). `hybrid` or `k8s`: Kubernetes projected service-account token (Bearer / M2M). The aggregator rejects Bearer tokens outright when its M2M is disabled, so a mismatch fails every call. |
