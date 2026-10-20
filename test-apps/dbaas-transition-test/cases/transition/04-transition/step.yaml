@@ -3,9 +3,71 @@ kind: TestStep
 commands:
   - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-transition-start.txt
     timeout: 10
-  - script: >
-      AGGREGATOR_CHART_DIR="$TARGET_DIR" AGGREGATOR_TAG="$TARGET_TAG"
-      helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" -l component=aggregator sync
+  - script: |
+      set -eu
+
+      deployment=dbaas-aggregator
+      policy=dbaas-transition-operator-check
+      initial_deployment_generation=$(kubectl -n "$DBAAS_NAMESPACE" get deployment "$deployment" -o jsonpath='{.metadata.generation}')
+
+      AGGREGATOR_CHART_DIR="$TARGET_DIR" AGGREGATOR_TAG="$TARGET_TAG" \
+        helmfile -f "$HARNESS_DIR/bootstrap/helmfile/helmfile.yaml.gotmpl" -l component=aggregator sync &
+      transition_pid=$!
+
+      cleanup() {
+        if kill -0 "$transition_pid" 2>/dev/null; then
+          kill "$transition_pid" 2>/dev/null || true
+        fi
+        wait "$transition_pid" 2>/dev/null || true
+      }
+      trap cleanup EXIT INT TERM
+
+      rollout_deadline=$(( $(date +%s) + 120 ))
+      while true; do
+        if ! kill -0 "$transition_pid" 2>/dev/null; then
+          wait "$transition_pid" || true
+          echo "Aggregator transition completed before its Deployment generation changed" >&2
+          exit 1
+        fi
+
+        deployment_generation=$(kubectl -n "$DBAAS_NAMESPACE" get deployment "$deployment" -o jsonpath='{.metadata.generation}')
+        if [ "$deployment_generation" -gt "$initial_deployment_generation" ]; then
+          break
+        fi
+        if [ "$(date +%s)" -ge "$rollout_deadline" ]; then
+          echo "Aggregator Deployment generation did not change within 120 seconds" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+
+      policy_generation=$(kubectl -n "$DBAAS_NAMESPACE" patch databaseaccesspolicy "$policy" \
+        --type merge -p '{"spec":{"disableGlobalPermissions":true}}' \
+        -o jsonpath='{.metadata.generation}')
+      if [ "$policy_generation" != "2" ]; then
+        echo "Expected DatabaseAccessPolicy generation 2 during the transition, got $policy_generation" >&2
+        exit 1
+      fi
+
+      kubectl -n "$DBAAS_NAMESPACE" wait databaseaccesspolicy/"$policy" \
+        --for=jsonpath='{.status.observedGeneration}'="$policy_generation" --timeout=120s
+      kubectl -n "$DBAAS_NAMESPACE" get databaseaccesspolicy "$policy" -o json |
+        jq -e --argjson generation "$policy_generation" '
+          any(.status.conditions[]?;
+            .type == "Ready" and .status == "True" and .reason == "PolicyApplied" and
+            .observedGeneration == $generation) and
+          any(.status.conditions[]?;
+            .type == "Stalled" and .status == "False" and .observedGeneration == $generation)
+        ' >/dev/null
+
+      if ! kill -0 "$transition_pid" 2>/dev/null; then
+        wait "$transition_pid" || true
+        echo "Aggregator transition completed before the Operator reconciled DatabaseAccessPolicy generation 2" >&2
+        exit 1
+      fi
+
+      wait "$transition_pid"
+      trap - EXIT INT TERM
     timeout: 360
   - script: date -u +%Y-%m-%dT%H:%M:%S.%NZ > /tmp/dbaas-transition-transition-end.txt
     timeout: 10
