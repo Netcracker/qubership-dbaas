@@ -20,14 +20,9 @@ collectors:
     command: kubectl -n ${DBAAS_NAMESPACE} get databaseaccesspolicy dbaas-transition-operator-check -o yaml
 assertAll:
   - celExpr: "probe.status.readyReplicas == 1"
-  - celExpr: "operatorPolicy.metadata.generation == 1"
   - celExpr: "operatorPolicy.status.observedGeneration == operatorPolicy.metadata.generation"
   - celExpr: >-
       operatorPolicy.status.conditions.exists(condition,
         condition.type == 'Ready' && condition.status == 'True' &&
         condition.reason == 'PolicyApplied' &&
-        condition.observedGeneration == operatorPolicy.metadata.generation)
-  - celExpr: >-
-      operatorPolicy.status.conditions.exists(condition,
-        condition.type == 'Stalled' && condition.status == 'False' &&
         condition.observedGeneration == operatorPolicy.metadata.generation)

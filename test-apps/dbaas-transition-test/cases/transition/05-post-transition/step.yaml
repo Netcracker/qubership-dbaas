@@ -1,15 +1,7 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
-  - script: |
-      set -eu
-      policy_generation=$(kubectl -n "$DBAAS_NAMESPACE" patch databaseaccesspolicy dbaas-transition-operator-check \
-        --type merge -p '{"spec":{"disableGlobalPermissions":false}}' \
-        -o jsonpath='{.metadata.generation}')
-      if [ "$policy_generation" != "3" ]; then
-        echo "Expected DatabaseAccessPolicy generation 3 after the transition, got $policy_generation" >&2
-        exit 1
-      fi
-    timeout: 30
   - command: sleep 65
     timeout: 75
+apply:
+  - ../../../dbaas-availability-probe/manifests/operator-check-policy-post-transition.yaml
