@@ -80,7 +80,6 @@ public class DbBackupV2Service {
     private final int retryAttempts;
     private final int retryCount;
 
-
     @Inject
     public DbBackupV2Service(BackupRepository backupRepository,
                              RestoreRepository restoreRepository,

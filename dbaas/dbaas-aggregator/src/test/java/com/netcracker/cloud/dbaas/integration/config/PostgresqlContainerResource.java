@@ -9,7 +9,6 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.util.Map;
 
-@Slf4j
 public class PostgresqlContainerResource implements QuarkusTestResourceLifecycleManager {
 
     public static final String IMAGE_ENV_KEY = "POSTGRESQL_IMAGE";
@@ -30,7 +29,6 @@ public class PostgresqlContainerResource implements QuarkusTestResourceLifecycle
                 postgresql.getFirstMappedPort().toString(),
                 JdbcUtils.DEFAULT_DATABASE_NAME,
                 false);
-        log.info("URL + {}", url);
         return Map.of("quarkus.datasource.jdbc.url", url);
     }
 

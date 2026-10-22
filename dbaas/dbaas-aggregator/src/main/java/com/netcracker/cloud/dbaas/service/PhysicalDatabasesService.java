@@ -27,7 +27,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -44,7 +43,7 @@ public class PhysicalDatabasesService {
     private final static String MESSAGE_UPDATING_EXISTING_DATABASE = "Updating existing database with phydbid = {}, adapterAddress = {}";
     private final static String MESSAGE_DATABASE_UPDATED = "Database updated";
     private final static int RETRY_ATTEMPT = 2;
-    private final static Duration RETRY_DELAY = Duration.of(3, TimeUnit.SECONDS.toChronoUnit());
+    private final static Duration RETRY_DELAY = Duration.ofSeconds(3);
 
     protected final static String LOCK_NAME_PATTERN = "roles-migration-%s-%s";
     protected final static int PORTION_SIZE = 50;
@@ -540,7 +539,7 @@ public class PhysicalDatabasesService {
         Optional<PhysicalDatabaseInstruction> optInstruction =
                 physicalDatabaseInstructionRepository.findByIdOptional(instructionId);
 
-        log.info("current instruction = {}", optInstruction);
+        log.info("Start process instruction={}", instructionId);
         if (optInstruction.isEmpty()) {
             log.error("Instruction with Id = {} not found", instructionId);
             return Response.status(NOT_FOUND)
@@ -690,7 +689,7 @@ public class PhysicalDatabasesService {
                 break;
             }
 
-            logicalDatabases = getDatabasesForMigration(adapter.adapterAddress(), adapter.type(), requiredRoles);
+            logicalDatabases = getDatabasesForMigration(adapter.identifier(), adapter.type(), requiredRoles);
 
             if (logicalDatabases.isEmpty()) {
                 completeMigrationProcedure(
@@ -775,10 +774,11 @@ public class PhysicalDatabasesService {
         resetInstructionFailures(instruction, successRegistrationV3s);
 
         FailureRegistrationV3 failure = instructionRequestV3.getFailure();
-        if (failure != null && !instruction.getFailures().contains(failure)) {
+        if (failure != null) {
+            instruction.getFailures().removeIf(existing -> existing.getId().equals(failure.getId()));
             instruction.getFailures().add(failure);
-            physicalDatabaseInstructionRepository.save(instruction);
         }
+        physicalDatabaseInstructionRepository.save(instruction);
     }
 
     private void resetInstructionFailures(
@@ -794,7 +794,7 @@ public class PhysicalDatabasesService {
                 .collect(Collectors.toSet());
 
         List<FailureRegistrationV3> remainingFailures = instruction.getFailures().stream()
-                .filter(failure -> !failure.getId().isBlank() && migratedDatabaseIds.contains(failure.getId()))
+                .filter(failure -> !failure.getId().isBlank() && !migratedDatabaseIds.contains(failure.getId()))
                 .toList();
 
         instruction.setFailures(new ArrayList<>(remainingFailures));

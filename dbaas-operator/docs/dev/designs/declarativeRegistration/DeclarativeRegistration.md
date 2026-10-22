@@ -307,7 +307,7 @@ Responses of **/{phydbid}/instruction/{instructionid}/additional-roles**
 | `401 Unauthorized` | No credentials provided or invalid authentication token. Returned by Quarkus Security before the method is invoked                                                                                                                                                                    | No error code — Quarkus Security framework response                                                                                                                        |
 | `403 Forbidden`    | Authenticated principal does not have the `DB_CLIENT` role (`@RolesAllowed(DB_CLIENT)` on the controller class)                                                                                                                                                                       | No error code — Quarkus Security framework response                                                                                                                        |
 | `404 Not Found`    | Plain message `Instruction with Id = <id> not found`.                                                                                                                                                                                                                                 | No error code — plain string                                                                                                                                               |
-| `500 Server Error` | Cycle aborted. Instruction row deleted together with the parked request. Connection properties saved earlier in the same request are kept                                                                                                                                             | No error code — plain string: `"An error has occurred:<message>"` on a reported `failure`, `"An error occurred during the migration procedure: <message>"` on a save error |
+| `500 Server Error` | Cycle aborted. Instruction row deleted together with the parked request. Connection properties saved earlier in the same request are kept                                                                                                                                             | No error code — plain string: `"An error has occurred:<message>"` on a reported `failure`. A save failure escapes the handler and is mapped to `CORE-DBAAS-2000` like any uncaught exception |
 
 > **Absent versus `null`.** Lombok generates the `@NonNull` check inside the setter, and Jackson calls the setter only
 > when the key is present. `"metadata": null` therefore fails deserialization and returns 400, while omitting the
@@ -585,7 +585,9 @@ The operator adds the optional `internalMigration=true` query parameter to signa
 migration internally — calling the adapter for new users directly — instead of delegating batches back to the adapter
 via `202 Accepted`.
 
-> **Aggregator-side internal migration is not implemented yet.** The operator already sends `internalMigration=true`.
-> Until the aggregator supports it, the parameter is ignored and the aggregator answers the adapter-driven `202`. The
-> operator does not read the `202` body: it reports `WaitingForDependency` and repeats the registration with a
-> growing delay (5 s doubling up to 1 min) until the aggregator answers `200`.
+> **Aggregator-side behavior.** The operator always sends `internalMigration=true`, and the aggregator drives the
+> migration itself: it takes a keep-alive lock on the physical database, ensures the missing roles on the logical
+> databases in portions (50 per pass, calling the adapter for each new user), and answers `202 Accepted` while the
+> migration runs, or `500` with the recorded failures when the previous pass failed. The operator does not read the
+> body: it reports `WaitingForDependency` and repeats the registration with a growing delay (5 s doubling up to
+> 1 min) until the aggregator answers `200`.

@@ -12,13 +12,12 @@ import net.javacrumbs.shedlock.support.KeepAliveLockProvider;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 
 @Slf4j
 @ApplicationScoped
 public class LockService {
-    private static final Duration DEFAULT_LOCK_AT_MOST = Duration.of(10, TimeUnit.MINUTES.toChronoUnit());
+    private static final Duration DEFAULT_LOCK_AT_MOST = Duration.ofMinutes(10);
     private final LockProvider keepAliveLockProvider;
     private final LockProvider expirableLockProvider;
 

@@ -19,7 +19,7 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 @Slf4j
 @ApplicationScoped
 public class AsyncOperations {
-    private final int MIGRATION_POOL_SIZE = 5;
+    private static final int MIGRATION_POOL_SIZE = 5;
 
     @Getter
     private final ExecutorService backupExecutor;

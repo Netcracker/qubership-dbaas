@@ -141,6 +141,129 @@ class PhysicalDatabasesServiceQuarkusTest {
     }
 
     @Test
+    void testRegisterPhysicalDatabase_internalMigrationMultiplePortions() {
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        String physicalDatabaseId = physicalDatabase.getPhysicalDatabaseIdentifier();
+        String adapterId = physicalDatabase.getAdapter().getAdapterId();
+        physicalDatabase.setRoles(physicalDatabase.getRoles().subList(0, 1));
+        assertNotNull(physicalDatabaseDbaasRepository.save(physicalDatabase), "Physical database save method didn't work");
+
+        int databaseCount = PhysicalDatabasesService.PORTION_SIZE + 3;
+        List<Database> logicalDatabases = Stream.generate(() -> new DatabaseBuilder().physicalDatabaseId(physicalDatabaseId)
+                        .adapterId(adapterId)
+                        .registry()
+                        .build())
+                .limit(databaseCount)
+                .toList();
+        logicalDatabases.forEach(db -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(db.getDatabaseRegistry().getFirst()));
+
+        DbaasAdapter adapter = mock(DbaasAdapter.class);
+        doReturn(adapter)
+                .when(physicalDatabasesService)
+                .getAdapterByPhysDbId(physicalDatabaseId);
+        when(adapter.identifier()).thenReturn(adapterId);
+        when(adapter.type()).thenReturn(DatabaseType.POSTGRESQL.toString());
+        when(adapter.ensureUser(isNull(), isNull(), anyString(), anyString())).thenAnswer(inv -> {
+            String role = inv.getArgument(3);
+            String username = inv.getArgument(2) + "-" + role;
+            String password = inv.getArgument(2) + "-" + role + "password";
+            return new EnsuredUser(username, new HashMap<>(Map.of(ROLE, role, "username", username, "password", password)),
+                    List.of(new DbResource("user", username)), true);
+        });
+
+        PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase = registrationRequest();
+        Response response = physicalDatabasesService.registerPhysicalDatabase(
+                requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
+        assertEquals(ACCEPTED.getStatusCode(), response.getStatus(),
+                "Registration with internal migration must answer 202 Accepted");
+
+        verify(lockService, times(1)).getKeepAliveLock(any());
+        await("migration lock released after the multi-portion internal migration", MIGRATION_TIMEOUT_MS,
+                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
+
+        PhysicalDatabaseInstruction leftInstruction = physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
+        assertNull(leftInstruction, () -> "Instruction is not deleted, failure: " + leftInstruction.getFailures());
+
+        List<String> expectedRoles = expectedRoles(requestedPhysicalDatabase);
+        for (Database db : logicalDatabases) {
+            Database actualDatabase = databaseDbaasRepository.findById(db.getId()).orElseThrow();
+            assertEquals(expectedRoles, rolesOf(actualDatabase.getConnectionProperties()),
+                    "Roles of logical database " + db.getName());
+        }
+
+
+        verify(physicalDatabasesService, atLeast(3)).getDatabasesForMigration(eq(adapterId), anyString(), anyList());
+
+        PhysicalDatabase actualPhysicalDatabase = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
+        assertNotNull(actualPhysicalDatabase, "Physical database doesn't exist");
+        assertEquals(expectedRoles, actualPhysicalDatabase.getRoles());
+
+        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(any(), any());
+        verify(physicalDatabasesService, times(1)).deleteInstruction(any());
+    }
+
+    @Test
+    void testRegisterPhysicalDatabase_markedForDropDatabasesSkippedByMigration() {
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        String physicalDatabaseId = physicalDatabase.getPhysicalDatabaseIdentifier();
+        String adapterId = physicalDatabase.getAdapter().getAdapterId();
+        physicalDatabase.setRoles(physicalDatabase.getRoles().subList(0, 1));
+        assertNotNull(physicalDatabaseDbaasRepository.save(physicalDatabase), "Physical database save method didn't work");
+
+        PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase = registrationRequest();
+        // Role names are stored in lowercase, so the aligned database is built with the normalized names.
+        List<String> requiredRoles = requestedPhysicalDatabase.getMetadata().getSupportedRoles().stream()
+                .map(String::toLowerCase)
+                .toList();
+
+        Database alignedDb = new DatabaseBuilder()
+                .physicalDatabaseId(physicalDatabaseId)
+                .adapterId(adapterId)
+                .registry()
+                .connectionProperties(requiredRoles.stream()
+                        .<Map<String, Object>>map(role -> new HashMap<>(Map.of(ROLE, role, "username", "user-" + role, "password", "password")))
+                        .toList())
+                .build();
+        Database markedDb = new DatabaseBuilder()
+                .physicalDatabaseId(physicalDatabaseId)
+                .adapterId(adapterId)
+                .registry()
+                .build();
+        markedDb.setMarkedForDrop(true);
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(alignedDb.getDatabaseRegistry().getFirst());
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(markedDb.getDatabaseRegistry().getFirst());
+
+        Response response = physicalDatabasesService.registerPhysicalDatabase(
+                requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
+        assertEquals(OK.getStatusCode(), response.getStatus(),
+                "Registration must answer 200 OK when only marked-for-drop databases are missing the roles");
+        verify(lockService, never()).getKeepAliveLock(any());
+        assertNull(physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId),
+                "No instruction must be saved when the migration is not started");
+
+        Database actualMarkedDb = databaseDbaasRepository.findById(markedDb.getId()).orElseThrow();
+        assertEquals(List.of(Role.ADMIN.toString()), rolesOf(actualMarkedDb.getConnectionProperties()),
+                "The marked-for-drop database must stay unchanged");
+        assertTrue(actualMarkedDb.isMarkedForDrop(), "The marked-for-drop flag must stay set");
+
+        PhysicalDatabase actualPhysicalDatabase = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
+        assertEquals(expectedRoles(requestedPhysicalDatabase), actualPhysicalDatabase.getRoles(),
+                "The physical database must pick up the requested roles without a migration");
+
+        Database pendingDb = new DatabaseBuilder()
+                .physicalDatabaseId(physicalDatabaseId)
+                .adapterId(adapterId)
+                .registry()
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(pendingDb.getDatabaseRegistry().getFirst());
+
+        List<Database> planned = physicalDatabasesService.getDatabasesForMigration(
+                adapterId, DatabaseType.POSTGRESQL.toString(), requiredRoles);
+        assertEquals(List.of(pendingDb.getId()), planned.stream().map(Database::getId).toList(),
+                "The migration plan must contain the pending database and skip the aligned and marked-for-drop ones");
+    }
+
+    @Test
     void testRegisterPhysicalDatabase_adapterDrivenMigrationSuccess() {
         PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
         String physicalDatabaseId = physicalDatabase.getPhysicalDatabaseIdentifier();
@@ -496,6 +619,55 @@ class PhysicalDatabasesServiceQuarkusTest {
         verify(physicalDatabasesService, times(1)).deleteInstruction(any(UUID.class));
     }
 
+    @Test
+    void testUpdateConnectionAndInstruction_resetsFailuresOfMigratedDatabasesOnly() {
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        String physicalDatabaseId = physicalDatabase.getPhysicalDatabaseIdentifier();
+        String adapterId = physicalDatabase.getAdapter().getAdapterId();
+
+        List<Database> logicalDatabases = Stream.generate(() -> new DatabaseBuilder().physicalDatabaseId(physicalDatabaseId)
+                        .adapterId(adapterId)
+                        .registry()
+                        .build())
+                .limit(3)
+                .toList();
+        logicalDatabases.forEach(db -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(db.getDatabaseRegistry().getFirst()));
+        Database firstDb = logicalDatabases.getFirst();
+        Database secondDb = logicalDatabases.get(1);
+        Database thirdDb = logicalDatabases.getLast();
+
+        PhysicalDatabaseInstruction instruction = physicalDatabasesService.saveInstructionIntoDB(
+                physicalDatabaseId, registrationRequest());
+        instruction.setFailures(new ArrayList<>(List.of(
+                new FailureRegistrationV3(firstDb.getId().toString(), "first pass failure"),
+                new FailureRegistrationV3("", "thread-level failure"))));
+        physicalDatabaseInstructionRepository.save(instruction);
+
+        InstructionRequestV3 firstPortionReport = new InstructionRequestV3();
+        firstPortionReport.setSuccess(List.of(migratedRoles(firstDb, "readWrite"), migratedRoles(secondDb, "readWrite")));
+        firstPortionReport.setFailure(new FailureRegistrationV3(thirdDb.getId().toString(), "ensure user failed"));
+        physicalDatabasesService.updateConnectionAndInstruction(instruction, firstPortionReport);
+
+        List<FailureRegistrationV3> expectedFailures =
+                List.of(new FailureRegistrationV3(thirdDb.getId().toString(), "ensure user failed"));
+        assertEquals(expectedFailures, instruction.getFailures(),
+                "The failures of the migrated databases and the blank-id thread failure must be dropped, the new failure kept");
+        assertEquals(expectedFailures,
+                physicalDatabaseInstructionRepository.findByIdOptional(instruction.getId()).orElseThrow().getFailures(),
+                "The reset result plus the new failure must be persisted");
+        // Role names are normalized to lowercase when the database record is saved.
+        assertEquals(List.of(Role.ADMIN.toString(), "readWrite".toLowerCase()),
+                rolesOf(databaseDbaasRepository.findById(firstDb.getId()).orElseThrow().getConnectionProperties()),
+                "The connection properties of the migrated database must be updated");
+
+        InstructionRequestV3 secondPortionReport = new InstructionRequestV3();
+        secondPortionReport.setSuccess(List.of(migratedRoles(thirdDb, "readWrite")));
+        physicalDatabasesService.updateConnectionAndInstruction(instruction, secondPortionReport);
+
+        assertTrue(instruction.getFailures().isEmpty(),
+                "The failure of the database that succeeded in the current portion must be dropped");
+    }
+
     private void stubSuccessfulEnsureUsers() {
         WireMockResource.getServer().stubFor(
                 put(urlPathEqualTo(ENSURE_USER_PATH))
@@ -606,6 +778,13 @@ class PhysicalDatabasesServiceQuarkusTest {
         Database actualDatabase = databaseDbaasRepository.findById(database.getId()).orElseThrow();
         assertEquals(List.of(Role.ADMIN.toString()), rolesOf(actualDatabase.getConnectionProperties()),
                 "Roles of logical database " + database.getName() + " must stay unchanged");
+    }
+
+    private SuccessRegistrationV3 migratedRoles(Database database, String role) {
+        String username = database.getName() + "-" + role;
+        Map<String, Object> connectionProperties =
+                new HashMap<>(Map.of(ROLE, role, "username", username, "password", username + "password"));
+        return new SuccessRegistrationV3(database.getId(), List.of(connectionProperties), List.of(new DbResource("user", username)));
     }
 
     private List<String> userNames(String dbName, PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase) {

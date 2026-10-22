@@ -44,7 +44,7 @@ public class PhysicalDatabaseInstruction {
     @Convert(converter = PhysicalDatabaseRegistryRequestConverter.class)
     private PhysicalDatabaseRegistryRequestV3 physicalDbRegRequest;
 
-    @Column(name = "failure", columnDefinition = "jsonb")
+    @Column(name = "failures", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private List<FailureRegistrationV3> failures = new ArrayList<>();
 }
