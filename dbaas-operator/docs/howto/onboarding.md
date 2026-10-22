@@ -76,14 +76,14 @@ The equivalent work performed by hand, and the starting point for a service with
    Each is a singleton with a fixed name in its scope, so two services in a namespace shipping one will
    contend for the same object.
 
-3. **Set `spec.operatorNamespace` on every resource.** The field is required and immutable. A Helm chart
-   derives it from `API_DBAAS_ADDRESS` using the templates below; a plain `kubectl apply` manifest uses
-   the literal namespace.
+3. **Set `spec.operatorNamespace` on every resource.** The field is required and immutable. A Helm
+   chart uses `coretpl.dbaasNamespace` from the latest CoreTPL release that includes the DBaaS
+   helpers. A plain `kubectl apply` manifest uses the literal namespace.
 
 4. **Ship the resources in the service chart** and mount the Secret produced by `DatabaseSecretClaim`
    instead of provisioning at startup. The
    [`go-test-app-service` chart](../../../test-apps/go-test-app-service/helm-templates/go-test-app-service)
-   is the worked example; its CR templates use the expression shown below.
+   is a worked example of the resource and Secret-mount flow.
 
 ### Starter templates
 
@@ -112,7 +112,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME | quote }}
 spec:
-  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   classifier:
     microserviceName: {{ .Values.SERVICE_NAME | quote }}
     scope: service
@@ -130,7 +130,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME | quote }}
 spec:
-  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   classifier:
     microserviceName: {{ .Values.SERVICE_NAME | quote }}
     scope: service

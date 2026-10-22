@@ -49,11 +49,12 @@ be deleted and recreated.
 
 ### Helm charts: derive it from the aggregator address
 
-Derive `spec.operatorNamespace` from the chart's `API_DBAAS_ADDRESS`:
+Use the latest CoreTPL release that provides the DBaaS helpers and derive `spec.operatorNamespace`
+from the chart's `API_DBAAS_ADDRESS`:
 
 ```yaml
 spec:
-  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
 ```
 
 For example, `API_DBAAS_ADDRESS: http://dbaas-aggregator.team-a-operator:8080` renders

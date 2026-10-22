@@ -26,7 +26,7 @@ DBAAS_PROXY_MEMORY_LIMIT: 128Mi
 # ── TCP proxy (data plane) ─────────────────────────────────────────────────────────────────────
 # HAProxy in TCP mode, carrying the application's database traffic. It owns the live sessions, and
 # DBaaS Proxy terminates them through the admin port.
-TCP_PROXY_IMAGE: haproxy:3.4-alpine@sha256:251da69821897ec8c4819f12b1babbc4b71f562943addc9b9eb14bb6ece40dc6
+TCP_PROXY_IMAGE: haproxy:3.4-alpine@sha256:09ba5c0b582cda2fa00e1f7f23f6e29cc27000089d6ffeb3c8683f930126ed10
 TCP_PROXY_PULL_POLICY: IfNotPresent
 TCP_PROXY_SERVICE_NAME: tcp-proxy
 # UID of the haproxy user in the official image. Pin it explicitly: runAsNonRoot cannot verify the

@@ -1,5 +1,9 @@
 # DBaaS migration examples
 
+The Helm examples require the latest available CoreTPL release that provides the DBaaS helpers and use
+`coretpl.dbaasNamespace`. For a plain manifest, replace `<operator-namespace>` with the verified
+namespace of the managing dbaas-operator instance.
+
 ## JSON DatabaseDeclaration to InternalDatabase
 
 Before:
@@ -40,7 +44,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -95,7 +99,7 @@ metadata:
   name: db-declaration-1
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -134,7 +138,7 @@ kind: InternalDatabase
 metadata:
   name: service-db
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: <operator-namespace>
   classifier:
     scope: service
     microserviceName: dbaas-spring-service
@@ -177,7 +181,7 @@ metadata:
   name: database-access-policy
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   microserviceName: "{{ .Values.SERVICE_NAME }}"
   services:
     - name: externalService
@@ -219,7 +223,7 @@ metadata:
   name: database-access-policy
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   microserviceName: "{{ .Values.SERVICE_NAME }}"
   disableGlobalPermissions: false
 ```
@@ -258,7 +262,7 @@ metadata:
     app.kubernetes.io/name: orders
     argocd.argoproj.io/instance: orders
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   microserviceName: "{{ .Values.SERVICE_NAME }}"
   disableGlobalPermissions: true
 ```
@@ -314,7 +318,7 @@ metadata:
   name: transactional-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"
@@ -327,7 +331,7 @@ metadata:
   name: configs-db
   namespace: "{{ .Values.NAMESPACE }}"
 spec:
-  operatorNamespace: "dbaas-system"
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   classifier:
     scope: service
     microserviceName: "{{ .Values.SERVICE_NAME }}"

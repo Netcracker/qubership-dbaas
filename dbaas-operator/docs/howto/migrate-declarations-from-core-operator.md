@@ -32,8 +32,20 @@ behavior (role grants, provisioning, cloning) is unchanged.
 > declaration's `metadata.microserviceName`. The new CRDs make it an explicit,
 > validated, **immutable** spec field so the owner is unambiguous and auditable.
 
-For Helm charts, derive `spec.operatorNamespace` from `API_DBAAS_ADDRESS` using the expression in the
-examples below. A plain `kubectl apply` manifest uses the literal namespace instead.
+For Helm charts, use the latest CoreTPL release that provides the DBaaS helpers and derive
+`spec.operatorNamespace` from `API_DBAAS_ADDRESS` with `coretpl.dbaasNamespace`, as shown below. A
+plain `kubectl apply` manifest uses the literal namespace instead.
+
+If the same chart must support clusters both with and without the DBaaS Operator CRDs, wrap each
+native resource with the CoreTPL capability helper:
+
+```gotemplate
+{{- if include "coretpl.dbaasOperatorEnabled" $ }}
+... native DBaaS resource ...
+{{- end }}
+```
+
+Keep the legacy declaration under the inverse condition until every target cluster has migrated.
 
 ---
 
@@ -91,7 +103,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
-  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
   services:
     - name: install-base-service
@@ -180,7 +192,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
 spec:
-  operatorNamespace: {{ (index (splitList "." (first (splitList ":" (last (splitList "://" .Values.API_DBAAS_ADDRESS))))) 1) | quote }}
+  operatorNamespace: {{ include "coretpl.dbaasNamespace" $ | quote }}
   classifier:
     microserviceName: {{ .Values.SERVICE_NAME }}   # was the app.kubernetes.io/instance label
     scope: service
