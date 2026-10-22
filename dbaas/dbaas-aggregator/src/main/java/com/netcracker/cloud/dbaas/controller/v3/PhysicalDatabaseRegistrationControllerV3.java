@@ -59,7 +59,6 @@ public class PhysicalDatabaseRegistrationControllerV3 {
     })
     @Path("/{phydbid}")
     @PUT
-    @Transactional
     public Response register(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.", required = true)
                              @PathParam("type") String type,
                              @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)
@@ -69,7 +68,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                              @Parameter(description = "Parameters for registering physical database.", required = true)
                              PhysicalDatabaseRegistryRequestV3 parameters)
             throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException, JsonProcessingException {
-        log.debug("Starting registration of new adapter: {}, {}, {}", type, phydbid, parameters);
+        log.debug("Starting registration of new adapter type={}, physicalDatabaseId={}, internalMigration={}, parameters={}", type, phydbid, internalMigration, parameters);
         return physicalDatabasesService.registerPhysicalDatabase(parameters, type, phydbid, internalMigration);
     }
 
@@ -106,7 +105,6 @@ public class PhysicalDatabaseRegistrationControllerV3 {
             @APIResponse(responseCode = "404", description = "Wrong instruction Id")})
     @Path("/{phydbid}/instruction/{instructionid}/additional-roles")
     @POST
-    @Transactional
     public Response instruction(@Parameter(description = "Type of database. Example: MongoDB, PostgreSQL, opensearch, etc.", required = true)
                                 @PathParam("type") String type,
                                 @Parameter(description = "Physical database identifier. The value belongs to the specific database cluster", required = true)

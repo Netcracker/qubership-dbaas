@@ -20,12 +20,12 @@ import java.util.concurrent.TimeUnit;
 public class LockService {
     private static final Duration DEFAULT_LOCK_AT_MOST = Duration.of(10, TimeUnit.MINUTES.toChronoUnit());
     private final LockProvider keepAliveLockProvider;
-    private final LockProvider storageBasedLockProvider;
+    private final LockProvider expirableLockProvider;
 
     @Inject
     public LockService(KeepAliveLockProvider keepAliveLockProvider, ExtensibleLockProvider extensibleLockProvider) {
         this.keepAliveLockProvider = keepAliveLockProvider;
-        this.storageBasedLockProvider = extensibleLockProvider;
+        this.expirableLockProvider = extensibleLockProvider;
     }
 
     public boolean isLocked(String lockName) {
@@ -42,11 +42,11 @@ public class LockService {
         return keepAliveLockProvider.lock(configuration);
     }
 
-    public Optional<SimpleLock> getStorageBasedLock(LockConfiguration configuration) {
-        return storageBasedLockProvider.lock(configuration);
+    public Optional<SimpleLock> getExpirableLock(LockConfiguration configuration) {
+        return expirableLockProvider.lock(configuration);
     }
 
-    public void unlock(SimpleLock simpleLock) {
+    public static void unlock(SimpleLock simpleLock) {
         try {
             simpleLock.unlock();
         } catch (IllegalStateException ex) {

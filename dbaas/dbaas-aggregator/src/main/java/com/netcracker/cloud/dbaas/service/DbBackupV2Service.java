@@ -24,7 +24,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.javacrumbs.shedlock.core.LockConfiguration;
-import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.core.SimpleLock;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
@@ -1782,7 +1781,7 @@ public class DbBackupV2Service {
                 Duration.ofMinutes(LOCK_AT_MOST),
                 Duration.ofMinutes(LOCK_AT_LEAST));
 
-        Optional<SimpleLock> optLock = lockService.getStorageBasedLock(config);
+        Optional<SimpleLock> optLock = lockService.getExpirableLock(config);
 
         if (optLock.isEmpty()) {
             throw new OperationAlreadyRunningException("restore", "");
@@ -1800,7 +1799,7 @@ public class DbBackupV2Service {
 
             return action.get();
         } finally {
-            lockService.unlock(lock);
+            LockService.unlock(lock);
         }
     }
 

@@ -46,6 +46,6 @@ public class PhysicalDatabaseInstruction {
 
     @Column(name = "failure", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    private List<FailureRegistrationV3> failure = new ArrayList<>();
+    private List<FailureRegistrationV3> failures = new ArrayList<>();
 }
 

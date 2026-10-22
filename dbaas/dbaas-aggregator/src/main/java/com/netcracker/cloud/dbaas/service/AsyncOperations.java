@@ -19,6 +19,8 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 @Slf4j
 @ApplicationScoped
 public class AsyncOperations {
+    private final int MIGRATION_POOL_SIZE = 5;
+
     @Getter
     private final ExecutorService backupExecutor;
     @Getter
@@ -40,7 +42,7 @@ public class AsyncOperations {
                 new NamedThreadFactory("backups-")
         );
         migrationExecutor = new ThreadPoolExecutor(
-                5, 5, 0L, TimeUnit.MILLISECONDS,
+                MIGRATION_POOL_SIZE, MIGRATION_POOL_SIZE, 0L, TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<>(),
                 new NamedThreadFactory("logicalDatabaseMigration-")
         );
