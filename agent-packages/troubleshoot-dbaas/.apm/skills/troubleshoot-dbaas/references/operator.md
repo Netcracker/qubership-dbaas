@@ -6,7 +6,7 @@
 
 **Symptoms:**
 
-- With `KUBERNETES_M2M_ENABLED: false`, the pod of Deployment `dbaas-operator` has one of these states:
+- With `M2M_AUTH_MODE: legacy`, the pod of Deployment `dbaas-operator` has one of these states:
   - `ContainerCreating`, with event `FailedMount` for volume `dbaas-security-volume` because Secret
     `dbaas-security-configuration-secret` is not found.
   - `CrashLoopBackOff`, with the following log prefix and `user "dbaas-operator" not found in` in `<error>`:
@@ -105,7 +105,8 @@ dbaas-aggregator returned `401` to the operator:
 
 **How to check:**
 
-1. Read `KUBERNETES_M2M_ENABLED` from the supplied deployment parameters to select Basic or M2M diagnosis.
+1. Read `M2M_AUTH_MODE` from the supplied deployment parameters: `legacy` selects Basic authentication; `hybrid` or
+   `k8s` selects M2M Bearer-token authentication.
 2. For Basic auth, compare the first `401` with changes to `dbaas-security-configuration-secret` and the most recent
    dbaas-aggregator restart.
 3. For M2M, use the exact Aggregator authentication error. Check mode, audience, or roles only when that error or the

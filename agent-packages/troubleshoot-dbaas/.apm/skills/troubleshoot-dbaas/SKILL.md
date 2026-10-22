@@ -1,6 +1,6 @@
 ---
 name: troubleshoot-dbaas
-description: Diagnose DBaaS and the Operator failure modes using exact error strings, alert mappings, and deployment parameter paths for dbaas-aggregator and dbaas-operator (Netcracker/qubership-dbaas). Load when the ticket mentions dbaas-aggregator, DBaaS Aggregator, dbaas-operator, a CORE-DBAAS error code, alert `Pod is Down` for a DBaaS component, lost or ghost databases, logical or physical database registration, DBaaS adapter registration, balancing rules, classifiers, Jobs `validation-hook-dbaas-aggregator` / `dbaas-aggregator-pre-hook`, Secrets `dbaas-storage-credentials` / `dbaas-aggregator-encryption-secret` / `dbaas-security-configuration-secret`, or the CRs `InternalDatabase`, `ExternalDatabase`, `DatabaseSecretClaim`, `DatabaseAccessPolicy`, `MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`.
+description: Diagnose DBaaS and the Operator failure modes using exact error strings, alert mappings, and deployment parameter paths for dbaas-aggregator and dbaas-operator (Netcracker/qubership-dbaas). Load when the ticket mentions dbaas-aggregator, DBaaS Aggregator, dbaas-operator, a CORE-DBAAS error code, alert `Pod is Down` for a DBaaS component, lost or ghost databases, logical or physical database registration, DBaaS adapter registration, balancing rules, classifiers, Jobs `validation-hook-dbaas-aggregator` / `dbaas-aggregator-pre-hook`, Secrets `dbaas-storage-credentials` / `dbaas-aggregator-encryption-secret` / `dbaas-security-configuration-secret`, or a `dbaas.netcracker.com` custom resource reconciled by dbaas-operator.
 ---
 
 # DBaaS assessment
@@ -18,7 +18,8 @@ In scope:
 
 - dbaas-aggregator: installation hooks, registry storage, health, adapter registration, balancing rules, REST errors
   `CORE-DBAAS-<nnnn>`, registry consistency (lost and ghost databases).
-- dbaas-operator: its seven CRs, their status phases, reasons, and events.
+- dbaas-operator: the DBaaS custom resources defined in `dbaas-operator/config/crd/bases/`, their status phases,
+  reasons, and events.
 
 Out of scope — route to another skill:
 
@@ -107,27 +108,34 @@ All dbaas-aggregator parameters are deployment parameters of the `dbaas-aggregat
 `dbaas-aggregator` application and redeploy.» Never recommend editing the rendered Kubernetes object directly; the
 next deployment reverts it.
 
+Do not rely on copied default values in this skill. Read the defaults and profile overrides from the current source:
+
+- dbaas-aggregator: `helm-templates/dbaas-aggregator/values.yaml`, `values.schema.json`, and `resource-profiles/`;
+- dbaas-operator: `dbaas-operator/helm-templates/dbaas-operator/values.yaml` and `values.schema.json`;
+- operator startup flags: `dbaas-operator/cmd/main.go` and the constant referenced by each flag.
+
+Use the matching chart template to verify where a value is rendered before recommending a change.
+
 Rendered into Deployment `dbaas-aggregator`:
 
-- `MEM_ARGS` → container `args` (JVM flags, including `-Xmx`). Default `-Xmx128m`.
-- `MEMORY_LIMIT` → both `resources.requests.memory` and `resources.limits.memory`. Default `520Mi` (dev profiles),
-  `700Mi` (prod profiles).
+- `MEM_ARGS` → container `args` (JVM flags, including `-Xmx`).
+- `MEMORY_LIMIT` → both `resources.requests.memory` and `resources.limits.memory`.
 - `CPU_REQUEST` / `CPU_LIMIT` → `resources.requests.cpu` / `resources.limits.cpu`.
-- `REPLICAS` → `spec.replicas`. Default `1`; `dev-ha` and `prod` profiles use `2`.
-- `LIVENESS_PROBE_INITIAL_DELAY_SECONDS` → `livenessProbe.initialDelaySeconds`. Default `120`.
-- `NODE_SELECTOR_DBAAS_KEY` / `REGION_DBAAS` → `nodeSelector`. Default `region: database`.
+- `REPLICAS` → `spec.replicas`.
+- `LIVENESS_PROBE_INITIAL_DELAY_SECONDS` → `livenessProbe.initialDelaySeconds`.
+- `NODE_SELECTOR_DBAAS_KEY` / `REGION_DBAAS` → `nodeSelector`.
 - `DBAAS_RECREATE_DEPLOYMENT_STRATEGY` → `strategy.type: Recreate` when `true`.
 - Container env: `POSTGRES_HOST`, `POSTGRES_PORT`, `PRODUCTION_MODE`, `DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED`,
   `DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES`, `DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED`,
-  `KUBERNETES_M2M_ENABLED`, `KUBERNETES_M2M_AUDIENCE`, `DBAAS_LOG_LEVEL`, `DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT`,
+  `M2M_AUTH_MODE`, `KUBERNETES_M2M_AUDIENCE`, `DBAAS_LOG_LEVEL`, `DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT`,
   `DBAAS_BACKUP_RESTORE_CHECK_INTERVAL`, `DBAAS_BACKUP_RESTORE_CHECK_ATTEMPTS`,
   `DBAAS_BACKUP_RESTORE_RETRY_DELAY_SECONDS`, `DBAAS_BACKUP_RESTORE_RETRY_ATTEMPTS`.
 
 Rendered into Secret `dbaas-aggregator-env-variables` and used only by the hook Jobs: `POSTGRES_DBA_USER`,
-`POSTGRES_DBA_PASSWORD`, `POSTGRES_DBAAS_USER`, `POSTGRES_DBAAS_PASSWORD`, `POSTGRES_DBAAS_DATABASE_NAME` (default:
-namespace with `-` replaced by `_`), `DBAAS_OWN_PG_DB_CREATED_MANUALLY`, `USE_POSTGRES_PORT_FORWARD`. The validation
-Job reads these values on every install or upgrade. The prepare Job exits without using the database-preparation values
-when Secret `dbaas-storage-credentials` already exists.
+`POSTGRES_DBA_PASSWORD`, `POSTGRES_DBAAS_USER`, `POSTGRES_DBAAS_PASSWORD`, `POSTGRES_DBAAS_DATABASE_NAME`,
+`DBAAS_OWN_PG_DB_CREATED_MANUALLY`, `USE_POSTGRES_PORT_FORWARD`. The validation Job reads these values on every install
+or upgrade. The prepare Job exits without using the database-preparation values when Secret
+`dbaas-storage-credentials` already exists.
 
 Rendered into Secret `dbaas-security-configuration-secret` (`users.json`): `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` /
 `_PASSWORD`, `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` / `_PASSWORD`, `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` / `_PASSWORD`,
@@ -141,18 +149,19 @@ dbaas-operator parameters are deployment parameters of the `dbaas-operator` appl
 - `DBAAS_OPERATOR_ENABLED` → when `false`, the chart renders only a stub ConfigMap. Changing an existing Helm release
   from `true` to `false` removes the previously managed CRDs and consequently all instances of those CRDs.
 - `NAMESPACE` → names of `ClusterRole` / `ClusterRoleBinding` and the binding subject; must equal the release namespace.
-- `KUBERNETES_M2M_ENABLED` → selects Bearer-token authentication when `true` and Basic authentication when `false`.
-  The standard deployment supplies the same setting to dbaas-operator and dbaas-aggregator; investigate a mismatch
-  only when the supplied deployment evidence shows a per-service override or partial deployment.
+- `M2M_AUTH_MODE` → selects Basic authentication in `legacy` mode and Bearer-token authentication in `hybrid` or
+  `k8s` mode. The standard deployment supplies the same setting to dbaas-operator and dbaas-aggregator; investigate a
+  mismatch only when the supplied deployment evidence shows a per-service override or partial deployment.
 - `REPLICAS`, `LEADER_ELECT`, `MEMORY_REQUEST`, `MEMORY_LIMIT`, `CPU_REQUEST`, `CPU_LIMIT` → Deployment
   `dbaas-operator`.
-- `DBAAS_AGGREGATOR_URL` → container env; default `http://dbaas-aggregator:8080`.
-- `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` (default `10m`), `DBAAS_ROTATION_POLL_INTERVAL` (default `30s`),
-  `K8S_EVENTS_ENABLED` (default `true`), `restrictedEnvironment`, `MONITORING_ENABLED`.
-- Backoff flags `--backoff-base-delay` (`1s`) and `--backoff-max-delay` (`5m`) have no Helm value; they are container
-  `args` of Deployment `dbaas-operator`.
-- `spec.operatorNamespace` is not a Helm value. It is a required, immutable field on each of the seven DBaaS CR kinds
-  and must equal the namespace of Deployment `dbaas-operator`, which the operator receives as `CLOUD_NAMESPACE`.
+- `DBAAS_AGGREGATOR_URL` → container env.
+- `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL`, `DBAAS_ROTATION_POLL_INTERVAL`, `K8S_EVENTS_ENABLED`,
+  `restrictedEnvironment`, `MONITORING_ENABLED`.
+- Backoff flags `--backoff-base-delay` and `--backoff-max-delay` have no Helm value; they are container `args` of
+  Deployment `dbaas-operator`.
+- `spec.operatorNamespace` is not a Helm value. For CR kinds whose current schema defines it as required and immutable,
+  it must equal the namespace of Deployment `dbaas-operator`, which the operator receives as `CLOUD_NAMESPACE`.
+  Verify the applicable kinds in `dbaas-operator/config/crd/bases/`.
 
 ## Forbidden actions
 
