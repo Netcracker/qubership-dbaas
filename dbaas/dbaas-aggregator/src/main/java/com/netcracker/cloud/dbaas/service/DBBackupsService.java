@@ -933,12 +933,7 @@ public class DBBackupsService {
                     db.getDatabase().setLastRotatedAt(OffsetDateTime.now());
                 }
                 databaseRegistryDbaasRepository.saveInternalDatabase(db);
-                log.info("Users {} ensured access to db {}",
-                        users.stream()
-                                .map(EnsuredUser::getName)
-                                .toList(),
-                        dbName
-                );
+                log.info("{} users ensured access to db {}", users.size(), dbName);
                 return users;
             } catch (Exception e) {
                 log.error("Failed to ensure user for database {}", db, e);
