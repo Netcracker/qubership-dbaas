@@ -14,8 +14,12 @@ public class PasswordEncryptionHealthIndicator implements ProbeCheck {
 
     private static final String TEST_VALUE = "test-encryption-service-data";
 
+    private final PasswordCipher passwordCipher;
+
     @Inject
-    private PasswordCipher passwordCipher;
+    public PasswordEncryptionHealthIndicator(PasswordCipher passwordCipher) {
+        this.passwordCipher = passwordCipher;
+    }
 
     @Override
     public HealthCheckResponse check() {

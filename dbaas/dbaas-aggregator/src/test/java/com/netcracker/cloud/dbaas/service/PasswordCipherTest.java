@@ -2,14 +2,20 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.exceptions.DecryptException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,6 +30,11 @@ public class PasswordCipherTest {
     private static final String MASTER_KEY = "ZmVkY2JhOTg3NjU0MzIxMA==";
     /** {@link #KEY} encrypted with {@link #MASTER_KEY}, the way a key is stored when SYM_KEY is configured. */
     private static final String WRAPPED_KEY = "PVuaCIiaKQhblgFCbVMTTpet090Hk8duEXLYgdGOcwc=";
+    private static final String OTHER_KEY =
+            Base64.getEncoder().encodeToString("0123456789ABCDEF".getBytes(StandardCharsets.UTF_8));
+    /** A value of {@link #DEFAULT_SETTINGS_VALUES} with one byte added to the payload, breaking the AES block size. */
+    private static final String CORRUPTED_VALUE =
+            "{v2c}{AES}{DEFAULT_KEY}{8WI3xsBb6DbPUaj/G6hkWsMQxPuKn/LBXajeJdXIym0AAA=}";
 
     private static final PasswordCipher CIPHER = new PasswordCipher(Map.of("DEFAULT_KEY", KEY, "LEGACY_KEY", KEY), null);
 
@@ -124,6 +135,64 @@ public class PasswordCipherTest {
     @Test
     void testEncrypt_shouldFail_whenNoKeyIsConfigured() {
         assertThrows(IllegalStateException.class, () -> new PasswordCipher(Map.of(), null).encrypt("plain"));
+    }
+
+    @Test
+    void testDecrypt_shouldFail_whenKeyIsNotTheOneThatEncryptedTheValue() {
+        PasswordCipher other = new PasswordCipher(Map.of("DEFAULT_KEY", OTHER_KEY), null);
+        assertThrows(DecryptException.class, () -> other.decrypt(DEFAULT_SETTINGS_VALUES[0].envelope()));
+    }
+
+    @Test
+    void testDecrypt_shouldFail_whenPayloadOfTheValueIsCorrupted() {
+        assertThrows(DecryptException.class, () -> CIPHER.decrypt(CORRUPTED_VALUE));
+    }
+
+    @Test
+    void testEncrypt_shouldFail_whenKeyMaterialIsNotBase64() {
+        assertThrows(IllegalStateException.class,
+                () -> new PasswordCipher(Map.of("DEFAULT_KEY", "not base64!"), null).encrypt("plain"));
+    }
+
+    @Test
+    void testReadKeyMaterial_shouldTakeAliasesFromFileNamesWithoutThePrefix(@TempDir Path secretsDir)
+            throws IOException {
+        Files.writeString(secretsDir.resolve("KS_DEFAULT_KEY"), KEY + "\n");
+        Files.writeString(secretsDir.resolve("KS_LEGACY_KEY"), KEY);
+        Files.writeString(secretsDir.resolve("SYM_KEY"), MASTER_KEY);
+        Files.writeString(secretsDir.resolve("POSTGRES_PASSWORD"), "ignored");
+
+        assertEquals(Map.of("DEFAULT_KEY", KEY, "LEGACY_KEY", KEY), PasswordCipher.readKeyMaterial(secretsDir));
+    }
+
+    @Test
+    void testReadKeyMaterial_shouldReturnEmptyMap_whenSecretsDirectoryIsAbsent(@TempDir Path secretsDir) {
+        assertEquals(Map.of(), PasswordCipher.readKeyMaterial(secretsDir.resolve("pod-secrets")));
+    }
+
+    @Test
+    void testReadMasterKey_shouldBeAbsent_whenFileIsMissingOrBlank(@TempDir Path secretsDir) throws IOException {
+        assertNull(PasswordCipher.readMasterKey(secretsDir));
+
+        Files.writeString(secretsDir.resolve("SYM_KEY"), "  \n");
+        assertNull(PasswordCipher.readMasterKey(secretsDir));
+    }
+
+    @Test
+    void testEncryptDecrypt_shouldReadMountedKeyFiles_whenTheMasterKeyUnwrapsThem(@TempDir Path secretsDir)
+            throws IOException {
+        Files.writeString(secretsDir.resolve("KS_DEFAULT_KEY"), WRAPPED_KEY + "\n");
+        Files.writeString(secretsDir.resolve("KS_LEGACY_KEY"), WRAPPED_KEY);
+        Files.writeString(secretsDir.resolve("SYM_KEY"), MASTER_KEY + "\n");
+        PasswordCipher mounted = new PasswordCipher(PasswordCipher.readKeyMaterial(secretsDir),
+                PasswordCipher.readMasterKey(secretsDir));
+
+        for (Stored stored : HISTORICAL_VALUES) {
+            assertEquals(stored.plain(), mounted.decrypt(stored.envelope()), stored.envelope());
+        }
+        for (Stored stored : DEFAULT_SETTINGS_VALUES) {
+            assertEquals(stored.envelope(), mounted.encrypt(stored.plain()));
+        }
     }
 
     private static SecretKey masterKey() {

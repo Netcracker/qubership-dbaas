@@ -28,9 +28,9 @@ import java.util.stream.Stream;
  * {@code {v2c}{algorithm}{keyAlias}{iv}{base64(encrypted data)}}. Reading those parts back from the value lets a value
  * written by an older release, or by a key that is no longer the default, still be decrypted.
  *
- * <p>Keys come from {@code KS_*} environment variables and from files with the same names under
- * {@code /etc/secrets/pod-secrets}; the alias is the name after the prefix, and the environment wins over the file.
- * When {@code SYM_KEY} holds a key, every {@code KS_*} value is itself encrypted with it and is unwrapped before use.
+ * <p>Keys are the {@code KS_*} files the aggregator reads under {@code /etc/secrets/pod-secrets}, where the alias is
+ * the file name after the prefix. When {@code SYM_KEY} sits in the same directory, every {@code KS_*} value is itself
+ * encrypted with it and is unwrapped before use.
  */
 @ApplicationScoped
 public class PasswordCipher {
@@ -50,7 +50,7 @@ public class PasswordCipher {
 
     @Inject
     public PasswordCipher() {
-        this(readKeyMaterial(), readMasterKey());
+        this(readKeyMaterial(Path.of(POD_SECRETS_PATH)), readMasterKey(Path.of(POD_SECRETS_PATH)));
     }
 
     PasswordCipher(Map<String, String> keyMaterial, SecretKey masterKey) {
@@ -103,59 +103,43 @@ public class PasswordCipher {
         if (material == null) {
             throw new IllegalStateException("No encryption key is configured for alias " + alias);
         }
-        byte[] decoded = java.util.Base64.getDecoder().decode(material.trim());
         try {
+            byte[] decoded = java.util.Base64.getDecoder().decode(material);
             if (masterKey == null) {
                 return new SecretKeySpec(decoded, AES);
             }
             Cipher unwrapper = Cipher.getInstance(AES);
             unwrapper.init(Cipher.DECRYPT_MODE, masterKey);
             return new SecretKeySpec(unwrapper.doFinal(decoded), AES);
-        } catch (GeneralSecurityException e) {
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
             throw new IllegalStateException("Unable to restore the encryption key configured for alias " + alias, e);
         }
     }
 
-    private static Map<String, String> readKeyMaterial() {
+    static Map<String, String> readKeyMaterial(Path secretsDir) {
         Map<String, String> material = new HashMap<>();
-        System.getenv().forEach((name, value) -> {
-            if (name.startsWith(KEY_PREFIX)) {
-                material.put(name.substring(KEY_PREFIX.length()), value.trim());
-            }
-        });
-
-        Path secretsDir = Path.of(POD_SECRETS_PATH);
-        if (Files.isDirectory(secretsDir)) {
-            try (Stream<Path> files = Files.list(secretsDir)) {
-                files.filter(file -> file.getFileName().toString().startsWith(KEY_PREFIX))
-                        .forEach(file -> {
-                            String value = readSecretFile(file);
-                            if (value != null) {
-                                material.putIfAbsent(file.getFileName().toString().substring(KEY_PREFIX.length()), value);
-                            }
-                        });
-            } catch (IOException e) {
-                throw new IllegalStateException("Unable to read encryption keys from " + POD_SECRETS_PATH, e);
-            }
+        if (!Files.isDirectory(secretsDir)) {
+            return Map.copyOf(material);
+        }
+        try (Stream<Path> files = Files.list(secretsDir)) {
+            files.filter(file -> file.getFileName().toString().startsWith(KEY_PREFIX)).forEach(file -> {
+                String value = readSecretFile(file);
+                if (value != null) {
+                    material.put(file.getFileName().toString().substring(KEY_PREFIX.length()), value);
+                }
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read encryption keys from " + secretsDir, e);
         }
         return Map.copyOf(material);
     }
 
-    private static SecretKey readMasterKey() {
-        String value = readSecret(MASTER_KEY_NAME);
+    static SecretKey readMasterKey(Path secretsDir) {
+        String value = readSecretFile(secretsDir.resolve(MASTER_KEY_NAME));
         if (value == null || value.isBlank()) {
             return null;
         }
-        return new SecretKeySpec(java.util.Base64.getDecoder().decode(value.trim()), AES);
-    }
-
-    private static String readSecret(String name) {
-        String value = System.getenv(name);
-        if (value != null) {
-            return value;
-        }
-        Path file = Path.of(POD_SECRETS_PATH, name);
-        return Files.exists(file) ? readSecretFile(file) : null;
+        return new SecretKeySpec(java.util.Base64.getDecoder().decode(value), AES);
     }
 
     private static String readSecretFile(Path file) {
