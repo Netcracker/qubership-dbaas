@@ -29,6 +29,8 @@ including `deployments/`, `<service-name>-deployments/`, and Helm chart folders.
 
 The writer requires `operatorNamespace` in every plan root and writes that value to every generated
 CR. Use the namespace of the dbaas-operator instance, which may differ from the workload namespace.
+Helm consumers must use the latest CoreTPL release that provides the DBaaS helpers so generated templates can call
+`coretpl.dbaasNamespace` and `coretpl.dbaasOperatorEnabled`.
 
 ## Install
 

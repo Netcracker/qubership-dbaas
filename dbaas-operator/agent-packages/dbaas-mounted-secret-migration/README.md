@@ -10,3 +10,6 @@ identities and leaves request-context-derived tenant identities on the runtime p
 
 Invoke the `dbaas-mounted-secret-migration` skill from a service repository. Review the inventory and
 generated diff before applying it to a cluster.
+
+Helm consumers must use the latest CoreTPL release that provides the DBaaS helpers so generated templates can call
+`coretpl.dbaasNamespace` and `coretpl.dbaasOperatorEnabled`.

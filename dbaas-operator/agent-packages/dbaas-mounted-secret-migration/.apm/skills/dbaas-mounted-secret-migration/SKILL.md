@@ -27,6 +27,12 @@ and Secret consumption; the CR identity rules below remain common.
 Read [contracts.md](references/contracts.md) before building a plan, and
 [testing.md](references/testing.md) when validating generated output or running a cluster test.
 
+For a Helm chart, inspect `Chart.yaml` and `Chart.lock` before inventory. Upgrade the chart to the
+latest available CoreTPL release that includes the DBaaS helpers, refresh its lock file and vendored
+dependencies, and verify that it provides `coretpl.dbaasNamespace` and
+`coretpl.dbaasOperatorEnabled`. Stop if those helpers are unavailable. Plain manifests do not use
+CoreTPL and require a verified literal operator namespace.
+
 `scripts/apply_migration.py` is the only process that creates, modifies, or deletes a file named in
 its plan -- a generated resource, a patched workload manifest, or a superseded declaration. Once
 discovery produces a plan, run it with `--check` to validate, then call it with `--apply` exactly
@@ -115,17 +121,15 @@ Canonicalize classifier maps by keys and values for comparison.
 The operator assignment is a deploy-time value, not a namespace baked into the repository. The
 writer never registers any default for it in `values.yaml`/`values.schema.json` -- the plan's
 `operatorNamespace` must already be a concrete, verified value or Helm expression. For a Helm
-chart, when `API_DBAAS_ADDRESS` is a namespaced in-cluster Kubernetes service address (e.g.
-`http://dbaas-aggregator.dbaas-operator:8080`), derive it with the documented expression (see
-references/contracts.md's "Operator namespace" section) instead:
+chart, resolve it with the CoreTPL helper (see references/contracts.md's "Operator namespace"
+section):
 
 ```gotemplate
-{{ (index (splitList "." (first (splitList ":" (last (splitList "://" $.Values.API_DBAAS_ADDRESS))))) 1) }}
+{{ include "coretpl.dbaasNamespace" $ }}
 ```
 
-An explicitly chosen empty value must fail validation, not be masked. When `API_DBAAS_ADDRESS` is
-external, single-label, empty, or otherwise
-cannot identify the operator namespace, require an explicit, verified literal in the plan instead.
+An explicitly chosen empty value must fail validation, not be masked. When the CoreTPL helper
+cannot resolve the operator namespace, require an explicit, verified literal in the plan instead.
 For plain manifests, which cannot template a value, always resolve a concrete namespace: prefer an
 explicit deployment value, verify it against the intended `dbaas-operator` Deployment or Pod when a
 cluster is available, and stop and ask if it cannot be proven -- never assume `dbaas-system` or
@@ -172,7 +176,7 @@ those namespaces differ.
       "root": "chart",
       "kind": "helm",
       "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
-      "operatorNamespace": "{{ (index (splitList \".\" (first (splitList \":\" (last (splitList \"://\" $.Values.API_DBAAS_ADDRESS))))) 1) }}",
+      "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
       "workloadNamespace": "{{ .Values.NAMESPACE }}",
       "originService": "orders",
       "datasources": [
