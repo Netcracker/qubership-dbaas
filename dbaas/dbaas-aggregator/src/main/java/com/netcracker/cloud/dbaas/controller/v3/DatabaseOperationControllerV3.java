@@ -60,7 +60,7 @@ public class DatabaseOperationControllerV3 {
     @Inject
     OperationService operationService;
     @Inject
-    EncryptionServiceProvider encryptionServiceProvider;
+    PasswordCipher passwordCipher;
 
     @Operation(summary = "V3. Change user password",
             description = "The API changes password of a user that is related to the specified database. A password will be changed to a random value." +
@@ -276,14 +276,11 @@ public class DatabaseOperationControllerV3 {
             errors.add(new InvalidUpdateConnectionPropertiesRequestException("New connection properties must contain key 'role'",
                     Source.builder().build()));
         }
-        if (updateConnectionPropertiesRequest.getConnectionProperties().containsKey("encryptedPassword")) {
-            try {
-                encryptionServiceProvider.getEncryptionService((String) updateConnectionPropertiesRequest.getConnectionProperties().get("encryptedPassword"));
-            } catch (NoSuchElementException e) {
-                log.error("Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext");
-                errors.add(new InvalidUpdateConnectionPropertiesRequestException("Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext",
-                        Source.builder().build()));
-            }
+        if (updateConnectionPropertiesRequest.getConnectionProperties().containsKey("encryptedPassword")
+                && !passwordCipher.isEncrypted((String) updateConnectionPropertiesRequest.getConnectionProperties().get("encryptedPassword"))) {
+            log.error("Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext");
+            errors.add(new InvalidUpdateConnectionPropertiesRequestException("Connection properties containing encryptedPassword must be stored in encrypted form, not as plaintext",
+                    Source.builder().build()));
         }
         if (!errors.isEmpty()) {
             throw new MultiValidationException(errors);

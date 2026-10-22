@@ -20,7 +20,7 @@ import com.netcracker.cloud.dbaas.entity.pg.backup.RestoreResult;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
-import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
+import com.netcracker.cloud.dbaas.exceptions.DecryptException;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;

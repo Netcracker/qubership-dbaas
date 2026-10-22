@@ -1,8 +1,0 @@
-<security-config xmlns="urn:nc:encryption:conf:1.0" xmlns:co="urn:nc:encryption:crypto:1.0">
-    <keystore-subsystem />
-    <encryption-subsystem>
-        <co:default-algorithm>MyJcaAlgorithm</co:default-algorithm>
-        <co:keystore>MyKeyStore</co:keystore>
-        <co:default-key-alias>MyKeyForMyJcaAlgorithm</co:default-key-alias>
-    </encryption-subsystem>
-</security-config>

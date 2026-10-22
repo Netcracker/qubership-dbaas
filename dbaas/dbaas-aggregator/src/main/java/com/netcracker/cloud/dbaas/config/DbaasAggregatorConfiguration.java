@@ -2,7 +2,6 @@ package com.netcracker.cloud.dbaas.config;
 
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.service.*;
-import io.quarkus.arc.All;
 import io.quarkus.runtime.Startup;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
@@ -10,7 +9,6 @@ import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -20,21 +18,8 @@ public class DbaasAggregatorConfiguration {
 
     @Produces
     @Singleton
-    public PasswordEncryption passwordEncryption(EncryptionServiceProvider serviceProvider) {
-        return new PasswordEncryption(serviceProvider);
-    }
-
-    @Produces
-    @Singleton
-    public CryptoServicePasswordEncryption cryptoServicePasswordEncryption(
-    ) {
-        return new CryptoServicePasswordEncryption(null, null);
-    }
-
-    @Produces
-    @Singleton
-    public EncryptionServiceProvider encryptionServiceProvider(@All List<DataEncryption> encryptionServices) {
-        return new EncryptionServiceProvider(encryptionServices);
+    public PasswordEncryption passwordEncryption(PasswordCipher passwordCipher) {
+        return new PasswordEncryption(passwordCipher);
     }
 
     @Produces

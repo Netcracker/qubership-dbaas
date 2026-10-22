@@ -1,9 +1,7 @@
 package com.netcracker.cloud.dbaas.monitoring.indicators;
 
-import com.netcracker.cloud.dbaas.dto.Secret;
 import com.netcracker.cloud.dbaas.monitoring.indicators.HealthCheckResponse.HealthCheckResponseBuilder;
-import com.netcracker.cloud.dbaas.service.DataEncryption;
-import jakarta.enterprise.inject.Instance;
+import com.netcracker.cloud.dbaas.service.PasswordCipher;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -14,19 +12,17 @@ import lombok.extern.slf4j.Slf4j;
 public class PasswordEncryptionHealthIndicator implements ProbeCheck {
     public static final String PASSWORD_HEALTH_CHECK_NAME = "passwordEncryption";
 
-    @Inject
-    private Instance<DataEncryption> dataEncryptionServices;
+    private static final String TEST_VALUE = "test-encryption-service-data";
 
-    private Secret testSecret = new Secret("test-encryption-service-data");
+    @Inject
+    private PasswordCipher passwordCipher;
 
     @Override
     public HealthCheckResponse check() {
         HealthCheckResponseBuilder responseBuilder = HealthCheckResponse.builder().name(PASSWORD_HEALTH_CHECK_NAME);
         try {
-            // check if password encryption works
-            for (DataEncryption encryptionService : dataEncryptionServices) {
-                String encrypted = encryptionService.encrypt(testSecret);
-                encryptionService.remove(encrypted);
+            if (!TEST_VALUE.equals(passwordCipher.decrypt(passwordCipher.encrypt(TEST_VALUE)))) {
+                throw new IllegalStateException("Encrypted value does not decrypt back to the original");
             }
             responseBuilder.up();
         } catch (Exception e) {

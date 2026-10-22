@@ -25,11 +25,6 @@
             <artifactId>dbaas-aggregator</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.netcracker.cloud</groupId>
-            <artifactId>encryption-services-cipher</artifactId>
-            <version>${project.version}</version>
-        </dependency>
     </dependencies>
 
     <build>
