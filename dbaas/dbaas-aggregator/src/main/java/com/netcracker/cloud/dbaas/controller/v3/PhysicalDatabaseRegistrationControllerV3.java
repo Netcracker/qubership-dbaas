@@ -114,6 +114,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                                 @Parameter(description = "Parameters for registering physical database.", required = true)
                                 InstructionRequestV3 parameters)
             throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException {
+        log.info("Starting to handle instruction of adapter type={}, physicalDatabaseId={}, instructionId={}", type, phydbid, instructionid);
         return physicalDatabasesService.handleInstruction(instructionid, parameters);
     }
 

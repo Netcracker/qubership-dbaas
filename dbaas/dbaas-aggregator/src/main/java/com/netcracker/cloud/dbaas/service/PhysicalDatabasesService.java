@@ -574,6 +574,7 @@ public class PhysicalDatabasesService {
         List<AdditionalRoles> additionalRoles =
                 buildInstructionForAdditionalRoles(instructionId, databasesForMigration)
                         .getAdditionalRoles();
+        log.info("The next part of the {} databases that require additional roles has been returned", additionalRoles.size());
         return Response.accepted().entity(additionalRoles).build();
     }
 
