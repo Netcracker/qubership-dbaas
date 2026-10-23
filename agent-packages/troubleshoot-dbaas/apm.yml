@@ -1,0 +1,4 @@
+name: troubleshoot-dbaas
+version: 1.0.0
+description: Diagnose DBaaS Aggregator and DBaaS Operator failures from offline evidence.
+author: Qubership
