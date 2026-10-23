@@ -1918,6 +1918,7 @@
         "description": "V3 Response model for starting the migration procedure",
         "properties": {
           "id": {
+            "$ref": "#/components/schemas/UUID",
             "type": "string",
             "description": "Current instruction Id"
           },
@@ -9305,6 +9306,14 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Enable logical database role migration. Uses only for declarative physical database registration",
+            "name": "internalMigration",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],

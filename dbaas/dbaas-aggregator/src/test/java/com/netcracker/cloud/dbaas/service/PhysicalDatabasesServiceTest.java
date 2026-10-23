@@ -4,10 +4,7 @@ import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
 import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
-import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
-import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
-import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
 import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
@@ -715,5 +712,42 @@ class PhysicalDatabasesServiceTest {
         physicalDatabase.getAdapter().setApiVersions(new ApiVersion(List.of(new ApiVersion.Spec("/anotherRoolUrl", 2, 3, List.of(4, 5)))));
         assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
         physicalDatabase.getAdapter().setApiVersions(apiVersions);
+    }
+
+    @Test
+    void checkDiffInSupportedRolesTest() {
+        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
+        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
+        physicalDatabase.setRoles(Collections.singletonList(Role.ADMIN.toString()));
+        boolean isRolesDifferent = physicalDatabasesService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(),
+                physicalDatabase.getRoles());
+        Assertions.assertTrue(isRolesDifferent);
+    }
+
+    @Test
+    void startMigrationProcedureWithOnePortionTest() {
+        int count = 10;
+        List<Database> logicalDatabases = generateListOfLogicalDatabase(count);
+        Instruction instruction = physicalDatabasesService.buildInstructionForAdditionalRoles(logicalDatabases);
+        Assertions.assertEquals(count, instruction.getAdditionalRoles().size());
+    }
+
+    private List<Database> generateListOfLogicalDatabase(int count) {
+        List<Database> logicalDatabases = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            Database logicalDatabase = new Database();
+            logicalDatabase.setId(UUID.randomUUID());
+            Map<String, Object> connectionPropertiesForAdmin = new HashMap<>();
+            connectionPropertiesForAdmin.put("id", i);
+            connectionPropertiesForAdmin.put("role", "admin");
+            Map<String, Object> connectionPropertiesForRo = new HashMap<>();
+            connectionPropertiesForRo.put("id", i);
+            connectionPropertiesForRo.put("role", "ro");
+            logicalDatabase.setConnectionProperties(Arrays.asList(connectionPropertiesForAdmin, connectionPropertiesForRo));
+            logicalDatabase.setResources(Collections.singletonList(new DbResource("someKind", "someName")));
+            logicalDatabase.setName("test-dbname");
+            logicalDatabases.add(logicalDatabase);
+        }
+        return logicalDatabases;
     }
 }

@@ -59,4 +59,31 @@ public class DatabasesRepository implements PanacheRepositoryBase<Database, UUID
     public List<Database> findByNamespacesWithOffsetBasedPagination(Set<String> namespaces, int offset, int limit) {
         return find("namespace in ?1", namespaces).range(offset, offset + limit - 1).list();
     }
+
+    public List<Database> findDatabasesForMigration(
+            String adapterId,
+            String type,
+            List<String> requiredRoles,
+            int limit) {
+
+        return getEntityManager()
+                .createNativeQuery("""
+                        SELECT d.*
+                        FROM database d
+                        WHERE d.adapter_id = :adapterId
+                          AND d.type = :type
+                          AND d.marked_for_drop = false
+                          AND NOT (
+                              CAST(:requiredRoles AS text[]) <@ ARRAY(
+                                  SELECT cp ->> 'role'
+                                  FROM jsonb_array_elements(d.connection_properties::jsonb) cp
+                              )
+                          )
+                        """, Database.class)
+                .setParameter("adapterId", adapterId)
+                .setParameter("type", type)
+                .setParameter("requiredRoles", requiredRoles.toArray(new String[0]))
+                .setMaxResults(limit)
+                .getResultList();
+    }
 }

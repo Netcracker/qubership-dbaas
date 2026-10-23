@@ -84,6 +84,7 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
     }
 
     @Override
+    @Deprecated(forRemoval = true) // overloads RAM
     public List<Database> findDatabasesByAdapterIdAndType(String phydbid, String type, boolean isUseCache) {
         log.debug("Search logical database with adapterId={} and type={}", phydbid, type);
         List<Database> databases = doGet(() -> databasesRepository.findByAdapterIdAndType(phydbid, type), ex -> {
@@ -99,6 +100,14 @@ public class DatabaseDbaasRepositoryImpl implements DatabaseDbaasRepository {
                 .collect(Collectors.toList());
         log.debug("Was found {} logical databases with adapterId={} and type={}", databasesList.size(), phydbid, type);
         return databasesList;
+    }
+
+    @Override
+    public List<Database> findDatabasesForMigration(String adapterId, String type, List<String> requiredRoles, int limit) {
+        log.debug("Search logical databases for migration with adapterId={} and type={}", adapterId, type);
+        List<Database> databases =  databasesRepository.findDatabasesForMigration(adapterId, type, requiredRoles, limit);
+        log.debug("Was found {} databases for migration", databases.size());
+        return databases;
     }
 
     public List<Database> findByDbState_StateAndDbState_PodName(DbState.DatabaseStateStatus state, String podName) {

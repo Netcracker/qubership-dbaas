@@ -35,6 +35,31 @@ func TestAggregatorResultClassifiesOwnershipBuckets(t *testing.T) {
 	}
 }
 
+func TestAdapterResultClassifiesOwnershipBuckets(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "success", err: nil, want: resultSuccess},
+		{name: "auth", err: &aggregatorclient.AdapterError{StatusCode: 401}, want: resultAuthError},
+		{name: "spec rejection", err: &aggregatorclient.AdapterError{StatusCode: 403}, want: resultSpecRejection},
+		{name: "configuration", err: &aggregatorclient.RequestContextError{Cause: errors.New("request ID missing")}, want: resultConfigurationError},
+		{name: "server", err: &aggregatorclient.AdapterError{StatusCode: 500}, want: resultServerError},
+		{name: "not found is a server error", err: &aggregatorclient.AdapterError{StatusCode: 404}, want: resultServerError},
+		{name: "incomplete answer", err: fmt.Errorf("%w: type", aggregatorclient.ErrAdapterResponseIncomplete), want: resultServerError},
+		{name: "network", err: errors.New("dial tcp: connection refused"), want: resultNetworkError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := adapterResult(tt.err); got != tt.want {
+				t.Fatalf("adapterResult() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSecretResolutionReason(t *testing.T) {
 	tests := []struct {
 		name string

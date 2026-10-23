@@ -38,6 +38,7 @@ const (
 	resourceKindMicroserviceBalancingRule  = "MicroserviceBalancingRule"
 	resourceKindNamespaceBalancingRule     = "NamespaceBalancingRule"
 	resourceKindPermanentBalancingRule     = "PermanentBalancingRule"
+	resourceKindPhysicalDatabase           = "PhysicalDatabase"
 	resourceDeletionStateDeleting          = "deleting"
 	resourceDeletionStateDeletingFinalizer = "deleting_with_finalizer"
 	balancingTargetTypeMicroservice        = "microservice"
@@ -167,6 +168,7 @@ func (c *resourceMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.collectMicroserviceBalancingRules(ctx, ch)
 	c.collectNamespaceBalancingRules(ctx, ch)
 	c.collectPermanentBalancingRules(ctx, ch)
+	c.collectPhysicalDatabases(ctx, ch)
 	c.collectUnassigned(ctx, ch)
 }
 
@@ -232,6 +234,14 @@ func (c *resourceMetricsCollector) collectUnassigned(ctx context.Context, ch cha
 			}
 			return rows
 		})
+	collectUnassignedKind(c, ctx, ch, resourceKindPhysicalDatabase, &dbaasv1.PhysicalDatabaseList{},
+		func(l *dbaasv1.PhysicalDatabaseList) []unassignedRow {
+			rows := make([]unassignedRow, len(l.Items))
+			for i := range l.Items {
+				rows[i] = unassignedRow{l.Items[i].Namespace, l.Items[i].Name, l.Items[i].Spec.OperatorNamespace}
+			}
+			return rows
+		})
 }
 
 type unassignedRow struct {
@@ -287,6 +297,20 @@ func (c *resourceMetricsCollector) collectExternalDatabases(ctx context.Context,
 		if c.manages(item.Spec.OperatorNamespace) {
 			collectOperatorStatus(ch, resourceKindExternalDatabase, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
 			collectDeletionState(ch, resourceKindExternalDatabase, item.Namespace, item.Name, item.DeletionTimestamp, item.Finalizers)
+		}
+	}
+}
+
+func (c *resourceMetricsCollector) collectPhysicalDatabases(ctx context.Context, ch chan<- prometheus.Metric) {
+	list := &dbaasv1.PhysicalDatabaseList{}
+	if !c.collectList(ctx, ch, resourceKindPhysicalDatabase, list) {
+		return
+	}
+	for i := range list.Items {
+		item := &list.Items[i]
+		if c.manages(item.Spec.OperatorNamespace) {
+			collectOperatorStatus(ch, resourceKindPhysicalDatabase, item.Namespace, item.Name, item.Generation, item.Status.OperatorStatus)
+			collectDeletionState(ch, resourceKindPhysicalDatabase, item.Namespace, item.Name, item.DeletionTimestamp, item.Finalizers)
 		}
 	}
 }

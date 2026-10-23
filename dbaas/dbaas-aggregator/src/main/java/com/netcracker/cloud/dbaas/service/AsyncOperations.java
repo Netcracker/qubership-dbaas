@@ -19,12 +19,18 @@ import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdConte
 @Slf4j
 @ApplicationScoped
 public class AsyncOperations {
+    private static final int MIGRATION_POOL_SIZE = 5;
+
     @Getter
     private final ExecutorService backupExecutor;
     @Getter
     private final ExecutorService debugExecutor;
     @Getter
     private final ExecutorService cleanupExecutor;
+    @Getter
+    private final ExecutorService migrationExecutor;
+    @Getter
+    private final ScheduledExecutorService lockHeartBeatExecutor;
 
     @Inject
     public AsyncOperations(
@@ -35,8 +41,14 @@ public class AsyncOperations {
                 new LinkedBlockingQueue<>(),
                 new NamedThreadFactory("backups-")
         );
+        migrationExecutor = new ThreadPoolExecutor(
+                MIGRATION_POOL_SIZE, MIGRATION_POOL_SIZE, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(),
+                new NamedThreadFactory("logicalDatabaseMigration-")
+        );
         debugExecutor = Executors.newVirtualThreadPerTaskExecutor();
         cleanupExecutor = Executors.newSingleThreadExecutor(new NamedThreadFactory("cleanup-"));
+        lockHeartBeatExecutor = Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("lockHeartbeat-"));
     }
 
     private static class NamedThreadFactory implements ThreadFactory {
@@ -83,6 +95,8 @@ public class AsyncOperations {
         shutdown("backupExecutor", backupExecutor);
         shutdown("debugExecutor", debugExecutor);
         shutdown("cleanupExecutor", cleanupExecutor);
+        shutdown("migrationExecutor", migrationExecutor);
+        shutdown("heartbeatExecutor", lockHeartBeatExecutor);
     }
 
     private void shutdown(String serviceName, ExecutorService executorService) {
