@@ -9,7 +9,7 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import com.netcracker.cloud.dbaas.service.*;
-import com.netcracker.cloud.dbaas.test.profile.ProcessOrchestratorEnabledProfile;
+import com.netcracker.cloud.dbaas.test.profile.NonDefaultTestProfile;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import com.netcracker.core.scheduler.po.task.TaskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -43,7 +43,7 @@ import static org.mockito.Mockito.when;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
-@TestProfile(ProcessOrchestratorEnabledProfile.class)
+@TestProfile(NonDefaultTestProfile.class)
 @Slf4j
 class BlueGreenProdModeStabilityTest {
 

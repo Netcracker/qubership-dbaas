@@ -86,7 +86,7 @@ public class PgConnectivityFailureTest {
         await().atMost(1, TimeUnit.MINUTES).pollInterval(1, TimeUnit.SECONDS).pollInSameThread()
                 .until(() -> h2PhysicalDatabaseRepository.findByIdOptional(physicalDatabase.getId()).isPresent());
 
-        PostgresqlContainerResource.postgresql.stop();
+        PostgresqlContainerResource.forceStop();
 
         boolean exceptionHappened = false;
         try {

@@ -20,7 +20,7 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabasesRepository;
 import com.netcracker.cloud.dbaas.service.*;
 import com.netcracker.cloud.dbaas.service.processengine.tasks.*;
-import com.netcracker.cloud.dbaas.test.profile.ProcessOrchestratorEnabledProfile;
+import com.netcracker.cloud.dbaas.test.profile.NonDefaultTestProfile;
 import com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject;
 import com.netcracker.core.scheduler.po.model.pojo.ProcessInstanceImpl;
 import com.netcracker.core.scheduler.po.model.pojo.TaskInstanceImpl;
@@ -35,13 +35,11 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.Response;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
-
 import org.jboss.logmanager.ExtLogRecord;
 import org.jboss.logmanager.LogContext;
 import org.jetbrains.annotations.NotNull;
@@ -54,21 +52,16 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.LogRecord;
 
-import static com.netcracker.cloud.dbaas.Constants.ACTIVE_STATE;
-import static com.netcracker.cloud.dbaas.Constants.CANDIDATE_STATE;
-import static com.netcracker.cloud.dbaas.Constants.IDLE_STATE;
-import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.framework.contexts.xrequestid.XRequestIdContextObject.X_REQUEST_ID;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
 @Slf4j
-@TestProfile(BlueGreenStabilityTest.ProdModeFalseProfile.class)
+@TestProfile(NonDefaultTestProfile.class)
 class BlueGreenStabilityTest {
 
     public static final String NS_1 = "ns1";
@@ -419,7 +412,7 @@ class BlueGreenStabilityTest {
         backupsDbaasRepository.save(namespaceBackup);
 
         Optional<Database> restoredDatabase = blueGreenService.restoreDatabase(databaseDeclarativeConfig, "v1", null, namespaceRestoration.getId(), namespaceBackup.getId(), new HashMap<>());
-        assertEquals("db2",  restoredDatabase.get().getName());
+        assertEquals("db2", restoredDatabase.get().getName());
         namespaceBackup = backupsDbaasRepository.findById(namespaceBackup.getId()).get();
         assertEquals(1, namespaceBackup.getRestorations().size());
         NamespaceRestoration newRestoration = namespaceBackup.getRestorations().get(0);
@@ -578,16 +571,6 @@ class BlueGreenStabilityTest {
         databaseRegistry.setNamespace(namespace);
         databaseRegistry.getClassifier().put("namespace", namespace);
         return databaseRegistry;
-    }
-
-    @NoArgsConstructor
-    protected static final class ProdModeFalseProfile extends ProcessOrchestratorEnabledProfile {
-        @Override
-        public Map<String, String> getConfigOverrides() {
-            Map<String, String> properties = super.getConfigOverrides();
-            properties.put("dbaas.production.mode", "false");
-            return properties;
-        }
     }
 
     @Data
