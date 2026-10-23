@@ -127,6 +127,13 @@ public class PasswordCipherTest {
     }
 
     @Test
+    void testDecrypt_shouldFail_whenValueIsNull() {
+        // PasswordEncryption reads this failure as a record that carries no stored password, so the type matters: a
+        // DecryptException here would make a backup generate a new password instead of reporting the corrupt record.
+        assertThrows(NullPointerException.class, () -> CIPHER.decrypt(null));
+    }
+
+    @Test
     void testDecrypt_shouldFail_whenNoKeyIsConfiguredForTheAliasOfTheValue() {
         assertThrows(IllegalStateException.class,
                 () -> CIPHER.decrypt("{v2c}{AES}{ABSENT_KEY}{8WI3xsBb6DbPUaj/G6hkWsMQxPuKn/LBXajeJdXIym0=}"));
