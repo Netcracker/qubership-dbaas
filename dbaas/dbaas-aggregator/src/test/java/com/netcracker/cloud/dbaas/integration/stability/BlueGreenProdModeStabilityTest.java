@@ -65,9 +65,12 @@ class BlueGreenProdModeStabilityTest {
 
     @InjectMock
     PhysicalDatabasesService physicalDatabasesService;
+    @InjectMock
+    DbaaSHelper dbaaSHelper;
 
     @BeforeEach
     void setUp() {
+        when(dbaaSHelper.isProductionMode()).thenReturn(true);
         clean();
     }
 
