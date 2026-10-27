@@ -19,24 +19,42 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * The expected values below were produced by the encryption library shipped with earlier DBaaS releases. They are the
- * compatibility contract: a value written before an upgrade must still decrypt, and a value written after it must still
- * decrypt on a release that predates it.
- */
 public class PasswordCipherTest {
-
-    private static final String KEY = "MDEyMzQ1Njc4OWFiY2RlZg==";
-    private static final String MASTER_KEY = "ZmVkY2JhOTg3NjU0MzIxMA==";
-    /** {@link #KEY} encrypted with {@link #MASTER_KEY}, the way a key is stored when SYM_KEY is configured. */
+    /**
+     * Values written by the encryption library that earlier DBaaS releases shipped, captured through the wiring those
+     * releases used: the AES algorithm, the DEFAULT_KEY alias, base64 key material. They are the compatibility contract
+     * in both directions: what an earlier release wrote has to decrypt here, and what this writes has to decrypt there.
+     *
+     * <p>The keys are fixtures, not credentials, and each is built here from the text it encodes. The payloads are
+     * ciphertext, so they stay as captured, and they follow from those keys alone because the mode the aggregator
+     * writes in is deterministic: AES/ECB/PKCS5Padding with the decoded key and no IV, plaintext read as UTF-8,
+     * ciphertext in unchunked base64, assembled as {@code {v2c}{AES}{DEFAULT_KEY}{payload}}. Any payload can be
+     * reproduced without this repository:
+     *
+     * <pre>{@code
+     * printf 'simplePassword123' \
+     *   | openssl enc -aes-128-ecb -K 30313233343536373839616263646566 -nosalt -a -A
+     * # -K is the key text "0123456789abcdef" in hex; the result is the payload of DEFAULT_SETTINGS_VALUES[0]
+     * }</pre>
+     */
+    private static final String KEY = base64("0123456789abcdef");
+    private static final String MASTER_KEY = base64("fedcba9876543210");
+    /**
+     * {@link #KEY} encrypted with {@link #MASTER_KEY}, the way a key is stored when SYM_KEY is configured:
+     *
+     * <pre>{@code
+     * printf '0123456789abcdef' \
+     *   | openssl enc -aes-128-ecb -K 66656463626139383736353433323130 -nosalt -a -A
+     * }</pre>
+     */
     private static final String WRAPPED_KEY = "PVuaCIiaKQhblgFCbVMTTpet090Hk8duEXLYgdGOcwc=";
-    private static final String OTHER_KEY =
-            Base64.getEncoder().encodeToString("0123456789ABCDEF".getBytes(StandardCharsets.UTF_8));
+    private static final String OTHER_KEY = base64("0123456789ABCDEF");
     /** A value of {@link #DEFAULT_SETTINGS_VALUES} with one byte added to the payload, breaking the AES block size. */
     private static final String CORRUPTED_VALUE =
             "{v2c}{AES}{DEFAULT_KEY}{8WI3xsBb6DbPUaj/G6hkWsMQxPuKn/LBXajeJdXIym0AAA=}";
 
-    private static final PasswordCipher CIPHER = new PasswordCipher(Map.of("DEFAULT_KEY", KEY, "LEGACY_KEY", KEY), null);
+    private static final PasswordCipher CIPHER =
+            new PasswordCipher(Map.of("DEFAULT_KEY", KEY, "LEGACY_KEY", KEY), null);
 
     private record Stored(String plain, String envelope) {
     }
@@ -45,7 +63,6 @@ public class PasswordCipherTest {
             new Stored("rotatedKeyPassword", "{v2c}{AES}{LEGACY_KEY}{/1+RLnHj9moxXstfYJ15AVJcY8w1AcZRCQ3G6HTODJs=}")
                     .envelope();
 
-    /** Values written with the settings a current release uses: the AES algorithm and the DEFAULT_KEY alias. */
     private static final Stored[] DEFAULT_SETTINGS_VALUES = {
             new Stored("simplePassword123", "{v2c}{AES}{DEFAULT_KEY}{8WI3xsBb6DbPUaj/G6hkWsMQxPuKn/LBXajeJdXIym0=}"),
             new Stored("", "{v2c}{AES}{DEFAULT_KEY}{N3Ii4GGpJMWRzZwn6hY+1A==}"),
@@ -58,16 +75,22 @@ public class PasswordCipherTest {
                             + "ZETaFtSMgigX0D+WDhFikmRE2hbTdyIuBhqSTFkc2cJ+oWPtQ=}"),
     };
 
-    /** The values above plus the shapes an older release could have written with a different algorithm or alias. */
+    /**
+     * The values above, which the settings of a current release produce, plus three that no release wrote but the
+     * format allows: two encrypted with AES/CBC/PKCS5Padding, which fills in the optional initialization vector group,
+     * and one stored under the alias of a key that a later key replaced as the default. A reader has to accept all of
+     * them, a writer of this class produces none of them.
+     */
     private static final Stored[] HISTORICAL_VALUES = {
             DEFAULT_SETTINGS_VALUES[0],
             DEFAULT_SETTINGS_VALUES[1],
             DEFAULT_SETTINGS_VALUES[2],
             DEFAULT_SETTINGS_VALUES[3],
             DEFAULT_SETTINGS_VALUES[4],
-            new Stored("legacyCbcPassword", "{v2c}{AES/CBC/PKCS5Padding}{DEFAULT_KEY}{YWJjZGVmZ2hpamtsbW5vcA==}"
+            new Stored("legacyCbcPassword", "{v2c}{AES/CBC/PKCS5Padding}{DEFAULT_KEY}{" + base64("abcdefghijklmnop") + "}"
                     + "{u5Vg9wYvYBDqenukSrYF8Q0wLjBDai4IRx0Jmr3kDww=}"),
-            new Stored("", "{v2c}{AES/CBC/PKCS5Padding}{DEFAULT_KEY}{YWJjZGVmZ2hpamtsbW5vcA==}{gdhetxVyVGOIr0wMPWN5FA==}"),
+            new Stored("", "{v2c}{AES/CBC/PKCS5Padding}{DEFAULT_KEY}{" + base64("abcdefghijklmnop") + "}"
+                    + "{gdhetxVyVGOIr0wMPWN5FA==}"),
             new Stored("rotatedKeyPassword", ROTATED_ALIAS_VALUE),
     };
 
@@ -200,6 +223,11 @@ public class PasswordCipherTest {
         for (Stored stored : DEFAULT_SETTINGS_VALUES) {
             assertEquals(stored.envelope(), mounted.encrypt(stored.plain()));
         }
+    }
+
+    /** The way the {@code KS_*} files and the {@code {iv}} group hold their bytes: base64 of the text. */
+    private static String base64(String text) {
+        return Base64.getEncoder().encodeToString(text.getBytes(StandardCharsets.UTF_8));
     }
 
     private static SecretKey masterKey() {

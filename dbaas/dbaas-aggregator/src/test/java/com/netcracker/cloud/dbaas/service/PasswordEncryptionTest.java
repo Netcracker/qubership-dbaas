@@ -8,21 +8,12 @@ import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
 import com.netcracker.cloud.dbaas.exceptions.DecryptException;
 import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
-
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
@@ -48,7 +39,7 @@ public class PasswordEncryptionTest {
         database.setDatabaseRegistry(Arrays.asList(new DatabaseRegistry()));
         when(passwordCipher.encrypt(anyString())).thenReturn(ENCRYPTED_VALUE);
         passwordEncryption.encryptPassword(database);
-        assertEquals(ENCRYPTED_VALUE, ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString()).get("encryptedPassword"));
+        assertEquals(ENCRYPTED_VALUE, ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString()).get(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
     }
 
     @Test
@@ -62,7 +53,7 @@ public class PasswordEncryptionTest {
         }});
         when(passwordCipher.encrypt(anyString())).thenReturn(ENCRYPTED_VALUE);
         passwordEncryption.encryptUserPassword(user);
-        assertEquals(ENCRYPTED_VALUE, user.getConnectionProperties().get("encryptedPassword"));
+        assertEquals(ENCRYPTED_VALUE, user.getConnectionProperties().get(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
     }
 
     @Test
@@ -77,7 +68,7 @@ public class PasswordEncryptionTest {
         database.setDatabaseRegistry(Arrays.asList(new DatabaseRegistry()));
         when(passwordCipher.encrypt(anyString())).thenReturn(ENCRYPTED_VALUE);
         passwordEncryption.encryptPassword(database, Role.ADMIN.toString());
-        assertEquals(ENCRYPTED_VALUE, ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN).get().get("encryptedPassword"));
+        assertEquals(ENCRYPTED_VALUE, ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN).get().get(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
     }
 
     @Test
@@ -85,7 +76,7 @@ public class PasswordEncryptionTest {
         Database database = new Database();
         List<Map<String, Object>> connectionList = Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("encryptedPassword", ENCRYPTED_VALUE);
+            put(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }});
         database.setConnectionProperties(connectionList);
@@ -101,7 +92,7 @@ public class PasswordEncryptionTest {
         DatabaseUser user = new DatabaseUser();
         user.setConnectionProperties(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("encryptedPassword", ENCRYPTED_VALUE);
+            put(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }});
         when(passwordCipher.decrypt(ENCRYPTED_VALUE)).thenReturn(PLAIN_VALUE);
@@ -130,27 +121,28 @@ public class PasswordEncryptionTest {
     @Test
     void testDeletePassword_shouldRemoveEncryptedValueWithoutWritingPlaintext() {
         Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
-                "username", "username", "encryptedPassword", ENCRYPTED_VALUE));
+                "username", "username", PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE));
 
         passwordEncryption.deletePassword(database);
 
         Map<String, Object> properties = ConnectionPropertiesUtils
                 .getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString());
-        assertFalse(properties.containsKey("encryptedPassword"));
+        assertFalse(properties.containsKey(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
         assertFalse(properties.containsKey(PasswordEncryption.PASSWORD_FIELD));
         verifyNoInteractions(passwordCipher);
     }
 
     @Test
     void testDeletePasswordByRole_shouldRemoveEncryptedValueOfThatRoleOnly() {
-        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(), "encryptedPassword", ENCRYPTED_VALUE),
-                Map.of(ROLE, "reader", "encryptedPassword", "another encrypted value"));
+        Database database = databaseWith(
+                Map.of(ROLE, Role.ADMIN.toString(), PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE),
+                Map.of(ROLE, "reader", PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, "another encrypted value"));
 
         passwordEncryption.deletePassword(database, Role.ADMIN.toString());
 
-        assertFalse(adminProperties(database).containsKey("encryptedPassword"));
+        assertFalse(adminProperties(database).containsKey(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
         assertTrue(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), "reader")
-                .containsKey("encryptedPassword"));
+                .containsKey(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
         verifyNoInteractions(passwordCipher);
     }
 
@@ -167,7 +159,8 @@ public class PasswordEncryptionTest {
 
     @Test
     void testGetDecryptedPasswordForBackup_shouldReturnPassword_whenTheValueDecrypts() {
-        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(), "encryptedPassword", ENCRYPTED_VALUE));
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
+                PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE));
         when(passwordCipher.decrypt(ENCRYPTED_VALUE)).thenReturn(PLAIN_VALUE);
 
         assertEquals(PLAIN_VALUE, passwordEncryption.getDecryptedPasswordForBackup(database, Role.ADMIN.toString()));
@@ -176,8 +169,6 @@ public class PasswordEncryptionTest {
     @Test
     void testGetDecryptedPasswordForBackup_shouldFailWithIllegalArgument_whenEncryptedPasswordIsAbsent() {
         Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(), "username", "username"));
-        // The cipher is the one that fails on an absent value. PasswordCipherTest pins that it fails with
-        // NullPointerException, which is what makes this branch report a corrupt record instead of a bad key.
         when(passwordCipher.decrypt(null)).thenThrow(new NullPointerException());
 
         assertThrows(IllegalArgumentException.class,
@@ -186,7 +177,8 @@ public class PasswordEncryptionTest {
 
     @Test
     void testGetDecryptedPasswordForBackup_shouldFailWithIllegalArgument_whenEncryptedPasswordIsNotText() {
-        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(), "encryptedPassword", 42));
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
+                PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, 42));
 
         assertThrows(IllegalArgumentException.class,
                 () -> passwordEncryption.getDecryptedPasswordForBackup(database, Role.ADMIN.toString()));
@@ -195,7 +187,8 @@ public class PasswordEncryptionTest {
 
     @Test
     void testGetDecryptedPasswordForBackup_shouldFailWithDecryptException_whenCipherCannotDecrypt() {
-        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(), "encryptedPassword", ENCRYPTED_VALUE));
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
+                PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE));
         when(passwordCipher.decrypt(ENCRYPTED_VALUE)).thenThrow(new IllegalStateException(MISSING_KEY_FAILURE));
 
         DecryptException thrown = assertThrows(DecryptException.class,
