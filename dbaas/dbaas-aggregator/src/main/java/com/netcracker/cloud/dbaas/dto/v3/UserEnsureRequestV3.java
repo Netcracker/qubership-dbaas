@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
 import com.netcracker.cloud.dbaas.dto.UserEnsureRequest;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
 @EqualsAndHashCode(callSuper = true)
@@ -8,11 +9,26 @@ import lombok.*;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Schema(description = "The request to ensure database user. Extends UserEnsureRequest with a required role.")
 public class UserEnsureRequestV3 extends UserEnsureRequest {
+
+    /**
+     * Example request payload for the {@code PUT /users/{name}} operation. Referenced from the adapter contract
+     * annotations; not part of the serialized DTO.
+     */
+    public static final String EXAMPLE_REQUEST = """
+            {
+              "dbName": "inventory",
+              "password": "ChangeMe_123!",
+              "role": "RW"
+            }
+            """;
+
     public UserEnsureRequestV3(String dbName, String password, String role) {
         super(dbName, password);
         this.role = role;
     }
 
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Database role name. For instance Admin, RW or RO role.")
     private String role;
 }

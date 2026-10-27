@@ -63,13 +63,51 @@
       },
       "ApiVersion": {
         "type": "object",
+        "required": [
+          "specs"
+        ],
+        "description": "The adapter API version",
         "properties": {
           "specs": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Spec"
+              "$ref": "#/components/schemas/ApiVersionSpec"
             },
+            "description": "List of supported API version specification"
+          }
+        }
+      },
+      "ApiVersionSpec": {
+        "type": "object",
+        "required": [
+          "specRootUrl",
+          "major",
+          "minor",
+          "supportedMajors"
+        ],
+        "description": "The adapter API version spec",
+        "properties": {
+          "specRootUrl": {
+            "type": "string",
             "description": "The root URL part for that API version"
+          },
+          "major": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The last adapter API major version"
+          },
+          "minor": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The last adapter API minor version"
+          },
+          "supportedMajors": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Contains a list of supported adapter API major versions"
           }
         }
       },
@@ -3596,33 +3634,6 @@
           "pathVariable": {
             "type": "string",
             "description": "URI path variable name which led to the error"
-          }
-        }
-      },
-      "Spec": {
-        "type": "object",
-        "properties": {
-          "specRootUrl": {
-            "type": "string",
-            "description": "The root URL part for that API version"
-          },
-          "major": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The last adapter API major version"
-          },
-          "minor": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The last adapter API minor version"
-          },
-          "supportedMajors": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int32"
-            },
-            "description": "Contains a list of supported adapter API major versions"
           }
         }
       },
