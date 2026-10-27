@@ -43,7 +43,8 @@ import java.util.Set;
                 @Tag(name = "Backup & Restore", description = "Database Specific DBaaS Backup Controller V 2"),
                 @Tag(name = "Common DBaaS adapter operations", description = "Allows to manage database."),
                 @Tag(name = "User & Resource management", description = "Endpoints to manage resources and users."),
-                @Tag(name = "Physical database manage", description = "Endpoints to manage physical database")
+                @Tag(name = "Physical database manage", description = "Endpoints to manage physical database"),
+                @Tag(name = "Support endpoints", description = "Endpoints to check adapter health and supported features")
         })
 @Retry(delay = 1, delayUnit = ChronoUnit.SECONDS, maxRetries = 5,
         retryOn = {SocketTimeoutException.class, NoStackTraceTimeoutException.class})
