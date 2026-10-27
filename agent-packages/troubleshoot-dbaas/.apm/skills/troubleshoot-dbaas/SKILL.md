@@ -9,11 +9,8 @@ DBaaS provisions logical databases for microservices on physical database cluste
 OpenSearch, ClickHouse, ArangoDB, Redis) through a DBaaS adapter that each cluster ships. DBaaS keeps the registry of
 all logical databases and their connection properties.
 
-Source of truth: the current `main` branch of `Netcracker/qubership-dbaas`. Every case source block is rooted at
-`https://github.com/Netcracker/qubership-dbaas/blob/main/`; its entries are repository paths, never paths relative to
-the repository where this skill is installed. If an explicit checkout of `Netcracker/qubership-dbaas` is available,
-resolve the entries under that checkout. Otherwise treat them as GitHub source references and do not search the
-consumer repository for them.
+Source references point to the current `main` branch of `Netcracker/qubership-dbaas`. Resolve them against an available
+checkout or mirror of that repository; otherwise use the corresponding GitHub source path.
 
 ## Scope
 
