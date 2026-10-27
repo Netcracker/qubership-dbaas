@@ -32,7 +32,7 @@ missing deployment parameter stops the Helm render.
    adapter and in Cloud Core projects (dbaas-agent); a new value breaks adapter registration — see
    `Adapters or clients get 401 from dbaas-aggregator after a credential change`.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `helm-templates/dbaas-aggregator/templates/Secret.yaml` (lines 1-5)
 - `docs/installation/parameters.md` — section `CREDENTIALS`
@@ -79,7 +79,7 @@ It fails with exit code `122` when no attempt succeeds. Causes, most frequent fi
    `dbaas-aggregator`.
 2. If PostgreSQL itself is down, restore PostgreSQL first, then redeploy DBaaS.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/validation.sh` — function `check_postgres`
 - `helm-templates/dbaas-aggregator/templates/HookValidation.yaml`, `HookSecret.yaml`
@@ -124,7 +124,7 @@ it uses `POSTGRES_DBA_USER` / `POSTGRES_DBA_PASSWORD` instead. The check fails w
    `DBAAS_OWN_PG_DB_CREATED_MANUALLY: true` together with `POSTGRES_DBAAS_DATABASE_NAME`, `POSTGRES_DBAAS_USER`,
    `POSTGRES_DBAAS_PASSWORD`. With PostgreSQL 15+ the user also needs `GRANT ALL ON SCHEMA public` on that database.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/validation.sh` — function `check_postgres`
 - `docs/installation/parameters.md` — `POSTGRES_DBAAS_DATABASE_NAME / POSTGRES_DBAAS_USER / POSTGRES_DBAAS_PASSWORD`,
@@ -163,7 +163,7 @@ With `DBAAS_OWN_PG_DB_CREATED_MANUALLY: true`, DBaaS does not create its registr
 1. Set `POSTGRES_DBAAS_DATABASE_NAME` to the existing database name and redeploy, or ask the DBA to create the
    database and grant `POSTGRES_DBAAS_USER` access to it.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/validation.sh` — function `check_postgres`
 
@@ -203,7 +203,7 @@ recreated or Secret `dbaas-storage-credentials` was deleted while the PostgreSQL
 Do not delete Secret `dbaas-storage-credentials`. It is the only place where the generated registry password is
 stored.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/prepare-database.sh`
 - `helm-templates/dbaas-aggregator/templates/HookSecret.yaml` — default database name
@@ -234,7 +234,7 @@ Secret `dbaas-storage-credentials` does not exist and neither credential pair is
 1. Set `POSTGRES_DBAAS_USER` / `POSTGRES_DBAAS_PASSWORD` (preferred) or `POSTGRES_DBA_USER` / `POSTGRES_DBA_PASSWORD`
    and redeploy.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/prepare-database.sh`
 - `docs/installation/parameters.md` — `POSTGRES_DBA_USER / POSTGRES_DBA_PASSWORD`
@@ -265,7 +265,7 @@ no such pod exists, the connection to `localhost` fails.
 2. If the deployer has direct network access to PostgreSQL, set `USE_POSTGRES_PORT_FORWARD: false` in the deployment
    parameters of the `dbaas-aggregator` application and redeploy.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/prepare-database.sh` — functions `create_db`, port-forward block
 
@@ -306,7 +306,7 @@ PASSWORD '<new password>'`; then update key `password` in Secret `dbaas-storage-
 
 Treat Secret `dbaas-storage-credentials` as the source of truth for registry credentials after the first install.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/prepare-database.sh` — `isSecretExist` check
 - `helm-templates/dbaas-aggregator/templates/Deployment.yaml` — volume `pod-secrets`
@@ -336,7 +336,7 @@ this label cannot host the pods.
    `dbaas-operator`) application to a label that exists on the target nodes, and redeploy; or ask the cluster
    administrator to label the nodes `region=database`.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `helm-templates/dbaas-aggregator/templates/Deployment.yaml` — `nodeSelector`
 - `docs/installation/installation.md` — section `Requirements`, item 3
@@ -381,7 +381,7 @@ the registry (refreshed every 10 minutes), and writes fail. Causes:
    redeploy dbaas-aggregator — see `Changed registry credentials in deployment parameters have no effect`.
 3. Cause 3: restore DNS resolution and allow traffic from the DBaaS namespace to `POSTGRES_HOST:POSTGRES_PORT`.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 <!-- markdownlint-disable line-length -->
 
@@ -439,7 +439,7 @@ decrypted.
 
 Never delete Secret `dbaas-aggregator-encryption-secret`. Include it in namespace backups.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `validation-image/prepare-database.sh` — function `ensure-encryption-secret`
 - `helm-templates/dbaas-aggregator/templates/Deployment.yaml` — volume `pod-secrets`
@@ -482,7 +482,7 @@ about 500 databases.
 3. Set both values in the deployment parameters of the `dbaas-aggregator` application and redeploy. Do not edit
    Deployment `dbaas-aggregator` directly: the next redeploy reverts the edit.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `docs/installation/Heap memory for H2 cache.md`
 - `helm-templates/dbaas-aggregator/values.yaml`
@@ -521,7 +521,7 @@ adapter. The health state alone does not select one of those causes.
    database type. If only dbaas-aggregator cannot reach the adapter, correct the registered adapter address or network
    policy. The status returns to `UP` on the next poll after connectivity and adapter health recover.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/monitoring/AdapterHealthCheck.java`
 - `docs/FAQ/DBaaS Troubleshooting.md` — `Get overall status`
@@ -565,7 +565,7 @@ global`.
    `docs/howto/Migrate logical DBs between physical DBs.md`. Do not delete the physical database registration in this
    state.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/service/PhysicalDatabasesService.java` —
   `findAndValidate`, `findAndValidateV3`
@@ -612,7 +612,7 @@ error code; classify that from the adjacent exception instead.
 2. For `404`, correct the adapter address or deploy a compatible adapter API version.
 3. For `5xx`, fix the adapter-side failure found in its log.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 <!-- markdownlint-disable line-length -->
 
@@ -653,7 +653,7 @@ consumer) causes `401`.
    database cluster that has a DBaaS adapter, and of every Cloud Core project. Redeploy them in that order, then
    restart dbaas-agent. Full order: `docs/howto/Rotate credentials.md`, section `6. DBaaS Adapter -> DBaaS Aggregator`.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `docs/howto/Rotate credentials.md` — section 6
 - `docs/installation/parameters.md` — `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME / DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
@@ -694,7 +694,7 @@ DBaaS resolved database placement to a physical database that is not registered.
 3. If adapters of the type exist but none is global, make one the default with
    `PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}/global` (role `dba_client`).
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/service/DBaaService.java` — `getAdapter`
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/service/BalancingRulesService.java` —
@@ -730,7 +730,7 @@ namespace without its own rule for `<type>` gets no physical database.
    (`docs/rest-api.md` — `Balancing rules`).
 2. Set `DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED: false` only if the environment does not require manual placement.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/service/BalancingRulesService.java` —
   `applyBalancingRules`, `applyNamespaceBalancingRule`
@@ -763,7 +763,7 @@ physical database of that type must carry this label in its registration `labels
    `PUT /api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices`) to a label carried by exactly one physical
    database, or add the label to the database cluster's adapter registration parameters and redeploy that cluster.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/service/BalancingRulesService.java` —
   `getCheckPhysicalDatabaseByLabel`, `processMicroserviceBalancingRules`
@@ -793,7 +793,7 @@ physical database of that type must carry this label in its registration `labels
    on an environment confirmed to be non-production and where deletion is intended, set `PRODUCTION_MODE: false` in
    the deployment parameters of `dbaas-aggregator` and redeploy. Set it back to `true` after the deletion and redeploy.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/controller/abstact/AbstractController.java`
 
@@ -836,7 +836,7 @@ physical database of that type must carry this label in its registration `labels
    namespaces belong together; otherwise fix the client to call its own namespace. Do not recommend
    `DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED: false` as a fix.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 <!-- markdownlint-disable line-length -->
 
@@ -875,7 +875,7 @@ service: `DatabaseAccessPolicy` CR (dbaas-operator) or legacy `DbPolicy` declara
 
 1. Add `<caller>` with `<role>` to the owner's `DatabaseAccessPolicy` and redeploy the owning service.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/exceptions/ErrorCodes.java`
 - `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseAccessPolicy`
@@ -904,7 +904,7 @@ No database with exactly this classifier and type is registered. Classifier matc
 1. Make the consumer's classifier equal to the registered one, or create the database first (deploy the owning
    service / `InternalDatabase`).
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/exceptions/ErrorCodes.java`
 - `dbaas-operator/docs/howto/migrate-declarations-from-core-operator.md` — section `Gotchas`
@@ -930,7 +930,7 @@ The v3 API requires `microserviceName`, `scope` (`service` or `tenant`), `namesp
 2. `InternalDatabase.spec.classifier` is immutable. Create a replacement CR with a different `metadata.name` and the
    correct classifier instead of editing the existing CR in place.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/exceptions/ErrorCodes.java`
 - `docs/rest-api.md` — section `Classifier`
@@ -956,7 +956,7 @@ The global restore lock or an existing non-completed restore rejected the new re
 1. Wait until every active restore finishes, then retry. Do not use the `/allowParallel` restore endpoint merely to
    bypass this error; use it only when the restore procedure explicitly permits concurrent restores.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/exceptions/OperationAlreadyRunningException.java`
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/service/DbBackupV2Service.java` —
@@ -1000,7 +1000,7 @@ DBaaS trusts its registry and keeps returning the stale record. The metric
    environment where the application creates its database on start: `DELETE /api/v3/dbaas/{namespace}/databases/{type}`
    with the classifier, then restart the application.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `docs/FAQ/DBaaS Troubleshooting.md` — `Database exists in DBaaS registry but is missing in the actual physical
 database instance (lost)`
@@ -1030,6 +1030,6 @@ cluster's own service databases (for PostgreSQL: `postgres`, `template0`, `templ
    confirm that no service uses it. Only then may the database-cluster DBA drop it; DBaaS has no API for this action and
    cannot restore the data.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `docs/FAQ/DBaaS Troubleshooting.md` — `Find ghost databases`

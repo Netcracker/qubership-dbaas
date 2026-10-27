@@ -9,8 +9,11 @@ DBaaS provisions logical databases for microservices on physical database cluste
 OpenSearch, ClickHouse, ArangoDB, Redis) through a DBaaS adapter that each cluster ships. DBaaS keeps the registry of
 all logical databases and their connection properties.
 
-Source of truth: the current `main` branch of `Netcracker/qubership-dbaas`. Paths in case `**Sources:**` blocks are
-relative to that repository.
+Source of truth: the current `main` branch of `Netcracker/qubership-dbaas`. Every case source block is rooted at
+`https://github.com/Netcracker/qubership-dbaas/blob/main/`; its entries are repository paths, never paths relative to
+the repository where this skill is installed. If an explicit checkout of `Netcracker/qubership-dbaas` is available,
+resolve the entries under that checkout. Otherwise treat them as GitHub source references and do not search the
+consumer repository for them.
 
 ## Scope
 
@@ -18,15 +21,14 @@ In scope:
 
 - dbaas-aggregator: installation hooks, registry storage, health, adapter registration, balancing rules, REST errors
   `CORE-DBAAS-<nnnn>`, registry consistency (lost and ghost databases).
-- dbaas-operator: the DBaaS custom resources defined in `dbaas-operator/config/crd/bases/`, their status phases,
-  reasons, and events.
+- dbaas-operator: the DBaaS custom resources defined by its current CRDs, their status phases, reasons, and events.
 
-Out of scope — route to another skill:
+Out of scope — hand off when appropriate troubleshooting guidance is available:
 
-- Adapter health `PROBLEM`, adapter crashes, and engine errors of the database cluster itself → troubleshooting skill
-  of that database type (`troubleshoot-postgres`, `troubleshoot-mongodb`, `troubleshoot-cassandra`,
-  `troubleshoot-opensearch`, `troubleshoot-clickhouse`, `troubleshoot-arangodb`, `troubleshoot-redis`).
-- PostgreSQL that hosts the DBaaS registry being down → `troubleshoot-postgres`. DBaaS only reports the symptom.
+- Adapter health `PROBLEM`, adapter crashes, and engine errors of the database cluster itself → use the appropriate
+  database-specific troubleshooting guidance or skill, if available.
+- PostgreSQL that hosts the DBaaS registry being down → use the appropriate PostgreSQL troubleshooting guidance or
+  skill, if available. DBaaS only reports the symptom.
 
 ## Components and resources
 
@@ -80,7 +82,7 @@ Load the named section from the stated canonical case file.
   `dbaas-operator cannot start because its Basic-auth Secret is missing or invalid`.
 - Alert `Pod is Down` for the PostgreSQL cluster used by `POSTGRES_HOST`, together with `Postgres connection is lost`
   in dbaas-aggregator → `references/aggregator.md` / `dbaas-aggregator lost connection to its PostgreSQL registry`;
-  use `troubleshoot-postgres` for the database-cluster cause.
+  use the appropriate PostgreSQL troubleshooting guidance or skill for the database-cluster cause, if available.
 
 Do not treat Prometheus rule names as platform alert names. If `Pod is Down` has none of the evidence above, do not
 guess a section from the alert alone; use the exact error, pod state, event, or CR status from the ticket.
@@ -110,9 +112,12 @@ next deployment reverts it.
 
 Do not rely on copied default values in this skill. Read the defaults and profile overrides from the current source:
 
-- dbaas-aggregator: `helm-templates/dbaas-aggregator/values.yaml`, `values.schema.json`, and `resource-profiles/`;
-- dbaas-operator: `dbaas-operator/helm-templates/dbaas-operator/values.yaml` and `values.schema.json`;
-- operator startup flags: `dbaas-operator/cmd/main.go` and the constant referenced by each flag.
+- dbaas-aggregator: `Netcracker/qubership-dbaas@main:helm-templates/dbaas-aggregator/values.yaml`, its
+  `values.schema.json`, and `resource-profiles/`;
+- dbaas-operator: `Netcracker/qubership-dbaas@main:dbaas-operator/helm-templates/dbaas-operator/values.yaml` and its
+  `values.schema.json`;
+- operator startup flags: `Netcracker/qubership-dbaas@main:dbaas-operator/cmd/main.go` and the constant referenced by
+  each flag.
 
 Use the matching chart template to verify where a value is rendered before recommending a change.
 
@@ -161,7 +166,7 @@ dbaas-operator parameters are deployment parameters of the `dbaas-operator` appl
   Deployment `dbaas-operator`.
 - `spec.operatorNamespace` is not a Helm value. For CR kinds whose current schema defines it as required and immutable,
   it must equal the namespace of Deployment `dbaas-operator`, which the operator receives as `CLOUD_NAMESPACE`.
-  Verify the applicable kinds in `dbaas-operator/config/crd/bases/`.
+  Verify the applicable kinds in `Netcracker/qubership-dbaas@main:dbaas-operator/config/crd/bases/`.
 
 ## Forbidden actions
 

@@ -36,7 +36,7 @@ the operator uses it. The event or log distinguishes two causes:
    operator pod starts automatically when the Secret appears.
 2. Do not create the Secret or edit `users.json` by hand.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/cmd/credentials.go`
 - `helm-templates/dbaas-aggregator/templates/Secret.yaml`
@@ -72,7 +72,7 @@ operator. Clusters upgraded to 6.15.0 without the `NamespaceBinding` migration h
    cleanup; restore an operator whose `CLOUD_NAMESPACE` matches `spec.operatorNamespace`, then see
    `Balancing rule CR stuck in Terminating`. The other four kinds have no finalizer and can be deleted and recreated.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — sections `High-Level Architecture`, `Custom Resources`
 - `dbaas-operator/docs/howto/migrate-from-namespacebinding.md` — sections `Setting the operator namespace`,
@@ -119,7 +119,7 @@ dbaas-aggregator returned `401` to the operator:
 2. For M2M, correct only the property named by the Aggregator authentication error. If the evidence shows a
    per-service M2M override, remove that override and redeploy through the standard deployment path.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — sections `Authentication: Basic Auth or M2M Token`, `Common Status Model`
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/security/DbaasUsersLoader.java`
@@ -148,7 +148,7 @@ retries with exponential backoff from 1 s up to 5 min. The CR heals by itself wh
 
 1. Fix the aggregator-side cause found in step 1. No change to the CR is needed.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — sections `Common Response Handling`, `Reconcile Backoff`
 
@@ -201,7 +201,7 @@ failure was actually a specification error:
 5. **DANGEROUS — deleting a `DatabaseSecretClaim` also deletes its owned Secret and breaks any workload still using
    it.** Delete the old claim only after no workload references its Secret.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — sections `Common Status Model`, `ExternalDatabase Status Reference`,
   `InternalDatabase Status Reference`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`
@@ -234,7 +234,7 @@ The credential Secret referenced in `credentialsSecretRef` cannot be read:
 2. Other reasons: create or fill the Secret/key. The operator picks it up on the next resync,
    `DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL` (default `10m`).
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — sections `ExternalDatabase Status Reference`, `Secret Access (Namespaced)`
 
@@ -259,7 +259,7 @@ cause is missing Secret RBAC (`forbidden`) in the CR's namespace.
 1. Add the Role and RoleBinding `dbaas-operator-secrets` in that namespace — see
    `ExternalDatabase is BackingOff with reason SecretError`.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseSecretClaim Status Reference`
 - `dbaas-operator/docs/howto/onboarding.md` — section `Secret permissions in the workload namespace`
@@ -292,7 +292,7 @@ dbaas-aggregator returned `404` / `CORE-DBAAS-4006` for the claim's classifier:
    and `spec.secretName`, wait until its Secret is ready, and move every workload to the replacement Secret. Delete the
    old claim only after no workload references its Secret.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseSecretClaim Status Reference`
 
@@ -320,7 +320,7 @@ dbaas-aggregator returned `404` / `CORE-DBAAS-4006` for the claim's classifier:
    written.** Delete it only after its owner is identified, every consuming workload is known, and the owner confirms
    that the Secret is obsolete.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseSecretClaim Status Reference`
 
@@ -351,7 +351,7 @@ Provisioning is asynchronous and not failed. Two variants:
 1. Fix the adapter or database cluster problem; the operator re-polls (5 s growing to 60 s) and completes by itself.
    Do not delete and recreate the CR to "restart" it while an operation is in flight.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — sections `InternalDatabase Status Reference`, `Exponential Poll Backoff`
 
@@ -379,7 +379,7 @@ Provisioning is asynchronous and not failed. Two variants:
 2. **DANGEROUS — leaves the rule applied in dbaas-aggregator with no CR managing it.** Removing the finalizer by hand
    is a last resort; afterward delete the rule through the balancing rules REST API.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — section `Balancing Rule Status Reference`
 
@@ -410,7 +410,7 @@ registered in dbaas-aggregator are not deleted.
 To pause the operator, set `REPLICAS: 0` in the `dbaas-operator` deployment parameters. Never use
 `DBAAS_OPERATOR_ENABLED: false` for this.
 
-**Sources:**
+**Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas-operator/docs/DBaaS Operator.md` — sections `Prerequisites and Installation` (`Upgrade`),
   `Configuration Parameters`
