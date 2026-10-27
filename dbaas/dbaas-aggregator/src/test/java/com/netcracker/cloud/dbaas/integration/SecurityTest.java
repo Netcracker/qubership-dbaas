@@ -16,43 +16,31 @@ import com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.integration.config.JwtUtilsTestResource;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import com.netcracker.cloud.dbaas.integration.config.SecurityTestProfile;
 import com.netcracker.cloud.dbaas.integration.utils.TestJwtUtils;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseDeclarativeConfigRepository;
 import com.netcracker.cloud.dbaas.service.*;
-import com.netcracker.cloud.dbaas.utils.JwtUtils;
-import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
+import com.netcracker.cloud.dbaas.test.profile.NonDefaultTestProfile;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.junit.mockito.MockitoConfig;
-import io.quarkus.test.oidc.server.OidcWiremockTestResource;
 import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.MediaType;
-
-import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.DATABASE_OPERATION_PATH_V3;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.LIST_DATABASES_PATH;
-import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
+import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
 import static com.netcracker.cloud.framework.contexts.tenant.TenantContextObject.TENANT_HEADER;
 import static io.restassured.RestAssured.given;
-import static jakarta.ws.rs.core.Response.Status.CREATED;
-import static jakarta.ws.rs.core.Response.Status.FORBIDDEN;
-import static jakarta.ws.rs.core.Response.Status.OK;
-import static jakarta.ws.rs.core.Response.Status.UNAUTHORIZED;
+import static jakarta.ws.rs.core.Response.Status.*;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -61,7 +49,7 @@ import static org.mockito.Mockito.when;
 @QuarkusTest
 @QuarkusTestResource(PostgresqlContainerResource.class)
 @QuarkusTestResource(JwtUtilsTestResource.class)
-@TestProfile(SecurityTestProfile.class)
+@TestProfile(NonDefaultTestProfile.class)
 class SecurityTest {
 
     private static final String TEST_TYPE = "mongodbtest";
@@ -285,7 +273,7 @@ class SecurityTest {
 
     @Test
     void testCreateDatabaseWithInvalidKubernetesToken() {
-        createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace")+"pad-to-make-invalid-signature")
+        createDatabaseWithKubernetesToken(jwtUtils.getJwt("test-name", "unit-test-namespace") + "pad-to-make-invalid-signature")
                 .statusCode(UNAUTHORIZED.getStatusCode());
     }
 
