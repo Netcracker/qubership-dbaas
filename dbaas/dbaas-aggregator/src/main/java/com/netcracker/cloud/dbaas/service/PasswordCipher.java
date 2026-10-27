@@ -150,10 +150,7 @@ public class PasswordCipher {
         }
     }
 
-    /**
-     * Decodes the parts of a stored envelope. Earlier releases wrote them with the commons-codec encoder, whose decoder
-     * also accepts input the JDK one rejects, so values already in the registry keep decoding.
-     */
+    /** The commons-codec decoder earlier releases read values by, which takes input the strict JDK decoder refuses. */
     private static byte[] decodeBase64(String value) {
         return value == null ? null : Base64.decodeBase64(value);
     }
