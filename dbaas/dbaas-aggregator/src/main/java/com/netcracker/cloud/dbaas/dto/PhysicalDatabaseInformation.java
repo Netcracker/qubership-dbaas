@@ -23,11 +23,10 @@ public class PhysicalDatabaseInformation {
     private ApiVersion apiVersions;
     @Schema(description = "Prohibition or permission of features.",
             requiredMode = Schema.RequiredMode.REQUIRED)
-    private Map<String, Object> features;
+    private Map<String, Boolean> features;
     @Schema(description = "list of supported roles.",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private List<String> supportedRoles;
-    @Schema(description = "Hostname of the read-only replica endpoint",
-            requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Hostname of the read-only replica endpoint")
     private String readOnlyHost;
 }

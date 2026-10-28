@@ -1247,7 +1247,6 @@ components:
       - apiVersions
       - features
       - physicalDatabaseId
-      - readOnlyHost
       - supportedRoles
       - type
       type: object
@@ -1273,7 +1272,7 @@ components:
         features:
           type: object
           additionalProperties:
-            type: object
+            type: boolean
             description: Prohibition or permission of features.
           description: Prohibition or permission of features.
         supportedRoles:
