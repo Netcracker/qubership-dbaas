@@ -519,9 +519,10 @@ paths:
         "401":
           description: Unauthorized.
         "404":
-          description: Not found - this adapter doesn't implement the V2 API
+          description: "The adapter does not implement this endpoint. It returns 404\
+            \ for every request to this path, so a 404 reports a missing endpoint."
         "503":
-          description: Service Unavailable - the adapter temporary unavailable
+          description: The adapter is temporarily unavailable.
   /api/v2/dbaas/adapter/{type}/physical_database:
     get:
       tags:
@@ -1239,35 +1240,8 @@ components:
           type: array
           description: List of supported API version specification
           items:
-            $ref: "#/components/schemas/ApiVersionSpec"
+            $ref: "#/components/schemas/Spec"
       description: The adapter API version
-    ApiVersionSpec:
-      required:
-      - major
-      - minor
-      - specRootUrl
-      - supportedMajors
-      type: object
-      properties:
-        specRootUrl:
-          type: string
-          description: The root URL part for that API version
-        major:
-          type: integer
-          description: The last adapter API major version
-          format: int32
-        minor:
-          type: integer
-          description: The last adapter API minor version
-          format: int32
-        supportedMajors:
-          type: array
-          description: Contains a list of supported adapter API major versions
-          items:
-            type: integer
-            description: Contains a list of supported adapter API major versions
-            format: int32
-      description: The adapter API version spec
     PhysicalDatabaseInformation:
       required:
       - apiVersions
@@ -1312,6 +1286,33 @@ components:
           type: string
           description: Hostname of the read-only replica endpoint
       description: The response to obtain physical database information
+    Spec:
+      required:
+        - major
+        - minor
+        - specRootUrl
+        - supportedMajors
+      type: object
+      properties:
+        specRootUrl:
+          type: string
+          description: The root URL part for that API version
+        major:
+          type: integer
+          description: The last adapter API major version
+          format: int32
+        minor:
+          type: integer
+          description: The last adapter API minor version
+          format: int32
+        supportedMajors:
+          type: array
+          description: Contains a list of supported adapter API major versions
+          items:
+            type: integer
+            description: Contains a list of supported adapter API major versions
+            format: int32
+      description: The adapter API version spec
     RegistrationPhysicalRequest:
       required:
       - id

@@ -11,24 +11,6 @@ import java.util.List;
 @Data
 @Schema(description = "Requests database backup daemon to restore specified backup with specified databases info")
 public class RestoreRequest {
-
-    /**
-     * Example request payload for the {@code POST /backups/{backupId}/restoration} operation. Referenced from the
-     * adapter contract annotations; not part of the serialized DTO.
-     */
-    public static final String EXAMPLE_REQUEST = """
-            {
-              "regenerateNames": true,
-              "databases": [
-                {
-                  "namespace": "payments",
-                  "microservice": "inventory-service",
-                  "name": "inventory"
-                }
-              ]
-            }
-            """;
-
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "List of databases to restore")
     private List<Database> databases = new ArrayList<>();
     @Schema(description = "Defines if adapter should generate names for each restoring database, and restore databases under new names, " +
@@ -57,4 +39,17 @@ public class RestoreRequest {
             this.name = name;
         }
     }
+
+    public static final String EXAMPLE_REQUEST = """
+            {
+              "regenerateNames": true,
+              "databases": [
+                {
+                  "namespace": "payments",
+                  "microservice": "inventory-service",
+                  "name": "inventory"
+                }
+              ]
+            }
+            """;
 }

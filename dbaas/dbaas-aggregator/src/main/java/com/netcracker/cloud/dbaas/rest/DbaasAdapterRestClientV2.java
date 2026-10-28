@@ -92,8 +92,9 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
     @ApiResponse(responseCode = "200", description = "Physical database descriptor returned successfully.",
             content = @Content(schema = @Schema(implementation = PhysicalDatabaseInformation.class)))
     @ApiResponse(responseCode = "401", description = "Unauthorized.")
-    @ApiResponse(responseCode = "404", description = "Not found - this adapter doesn't implement the V2 API")
-    @ApiResponse(responseCode = "503", description = "Service Unavailable - the adapter temporary unavailable")
+    @ApiResponse(responseCode = "404", description = "The adapter does not implement this endpoint." +
+            " It returns 404 for every request to this path, so a 404 reports a missing endpoint.")
+    @ApiResponse(responseCode = "503", description = "The adapter is temporarily unavailable.")
     Response getPhysicalDatabaseInformation();
 
     @GET

@@ -12,10 +12,6 @@ public record RestoreAdapterRequest(
         @Schema(description = "List of databases to restore, each entry is a map with the database name under the databaseName key")
         List<Map<String, String>> databases) {
 
-    /**
-     * Example request payload for the {@code POST /backups/backup/{backupId}/restore} operation. Referenced from the
-     * adapter contract annotations; not part of the serialized DTO.
-     */
     public static final String EXAMPLE_REQUEST = """
             {
               "storageName": "minio",

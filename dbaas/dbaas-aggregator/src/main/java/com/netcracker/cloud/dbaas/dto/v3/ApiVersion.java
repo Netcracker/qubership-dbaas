@@ -1,9 +1,9 @@
 package com.netcracker.cloud.dbaas.dto.v3;
 
 import io.swagger.v3.oas.annotations.media.Schema.RequiredMode;
-import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.util.List;
 
@@ -19,8 +19,8 @@ public class ApiVersion {
 
     @Data
     @AllArgsConstructor
-    @Schema(name = "ApiVersionSpec", description = "The adapter API version spec")
-    @io.swagger.v3.oas.annotations.media.Schema(name = "ApiVersionSpec", description = "The adapter API version spec")
+    @Schema(name = "Spec", description = "The adapter API version spec")
+    @io.swagger.v3.oas.annotations.media.Schema(name = "Spec", description = "The adapter API version spec")
     public static class Spec {
         @Schema(description = "The root URL part for that API version", required = true)
         @io.swagger.v3.oas.annotations.media.Schema(description = "The root URL part for that API version",
