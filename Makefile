@@ -85,7 +85,22 @@ verify:
 	fi; \
 	echo "[verify] SUCCESS"
 
-test: test-go test-python test-java
+test:
+	@go_failed=0; py_failed=0; java_failed=0; \
+	echo "=== Running Go tests ==="; \
+	$(MAKE) --no-print-directory test-go || go_failed=1; \
+	echo ""; \
+	echo "=== Running Python tests ==="; \
+	$(MAKE) --no-print-directory test-python || py_failed=1; \
+	echo ""; \
+	echo "=== Running Java tests ==="; \
+	$(MAKE) --no-print-directory test-java || java_failed=1; \
+	echo ""; \
+	if [ "$$go_failed" -eq 1 ] || [ "$$py_failed" -eq 1 ] || [ "$$java_failed" -eq 1 ]; then \
+		echo "[test] FAILED"; \
+		exit 1; \
+	fi; \
+	echo "[test] SUCCESS"
 
 test-go:
 	@repo_root="$(REPO_ROOT)"; \
