@@ -38,6 +38,14 @@ jobs:
           restore-keys: |
             pip-${{ runner.os }}-
 
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: .m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-
+
       - name: Configure Git authentication for private Go modules
         run: |
           git config --global url."https://token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
@@ -48,3 +56,4 @@ jobs:
           CI: "true"
           DEFAULT_BRANCH: "main"
           PIP_CACHE_DIR: "${{ github.workspace }}/.pip-cache"
+          MAVEN_OPTS: "-Dmaven.repo.local=${{ github.workspace }}/.m2/repository"
