@@ -15,7 +15,7 @@
         <skipIT>true</skipIT>
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
         <logback.version>1.5.38</logback.version>
-        <lombok.version>1.18.46</lombok.version>
+        <lombok.version>1.18.48</lombok.version>
         <junit.version>6.0.3</junit.version>
         <maven.test.failure.ignore>true</maven.test.failure.ignore>
     </properties>
@@ -45,7 +45,7 @@
         <dependency>
             <groupId>org.springframework.data</groupId>
             <artifactId>spring-data-mongodb</artifactId>
-            <version>5.1.1</version>
+            <version>5.1.2</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains</groupId>
@@ -91,7 +91,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.13</version>
+            <version>42.7.14</version>
         </dependency>
         <dependency>
             <groupId>com.googlecode.json-simple</groupId>
@@ -122,7 +122,7 @@
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
-            <version>5.6.4</version>
+            <version>5.6.5</version>
         </dependency>
         <dependency>
             <groupId>com.datastax.cassandra</groupId>
@@ -162,7 +162,7 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-web</artifactId>
-            <version>7.0.9</version>
+            <version>7.0.10</version>
         </dependency>
         <dependency>
             <groupId>net.jodah</groupId>
@@ -212,7 +212,7 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                            <version>1.18.46</version>
+                            <version>1.18.48</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
