@@ -2,13 +2,13 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.google.common.collect.Maps;
 import com.netcracker.cloud.dbaas.dto.*;
-import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabaseInstructionRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.Nullable;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -106,45 +106,6 @@ public class PhysicalDatabasesService {
     }
 
 
-    // returns false if new db was registered, true if update
-    @Transactional
-    public boolean save(String physicalDatabaseId,
-                        String type,
-                        PhysicalDatabaseRegistryRequestV3 request) throws
-            AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
-        log.info("Starting registration of {} with type {}", physicalDatabaseId, type);
-        String username = request.getHttpBasicCredentials().getUsername();
-        String password = request.getHttpBasicCredentials().getPassword();
-        Optional<PhysicalDatabase> foundDatabase = findAndValidate(
-                physicalDatabaseId,
-                type,
-                request,
-                username,
-                password);
-        if (foundDatabase.isPresent()) {
-            writeChanges(physicalDatabaseId, request, foundDatabase.get());
-            return true;
-        }
-        log.info("Registration of new database");
-        encryption.encryptPassword(request);
-        PhysicalDatabaseRegistrationBuilder builder = new PhysicalDatabaseRegistrationBuilder();
-        boolean isThisANewPhyDBOfThisType = physicalDatabaseDbaasRepository.findByType(type).count() == 0;
-        PhysicalDatabase databaseRegistration =
-                builder.addPhysicalDatabaseIdentifier(physicalDatabaseId)
-                        .addType(type)
-                        .addAdapter(UUID.randomUUID().toString(), request.getAdapterAddress(), request.getHttpBasicCredentials(), VERSION_2, request.getMetadata().getApiVersions())
-                        .addLabels(request.getLabels())
-                        .global(isThisANewPhyDBOfThisType)
-                        .addUnidentified(false)
-                        .addRoles(Collections.singletonList(Role.ADMIN.toString()))
-                        .addRoHost(request.getMetadata().getRoHost())
-                        .build();
-        physicalDatabaseDbaasRepository.save(databaseRegistration);
-        log.info("Database created");
-        return false;
-    }
-
     public Optional<PhysicalDatabase> foundPhysicalDatabase(String physicalDatabaseId,
                                                             String type,
                                                             PhysicalDatabaseRegistryRequestV3 request) throws
@@ -168,7 +129,6 @@ public class PhysicalDatabasesService {
         return optionalPhysicalDatabase;
     }
 
-    @Transactional
     public PhysicalDatabase physicalDatabaseRegistration(String physicalDatabaseId,
                                                          String type,
                                                          PhysicalDatabaseRegistryRequestV3 request) {
@@ -197,7 +157,6 @@ public class PhysicalDatabasesService {
         return save;
     }
 
-    @Transactional
     public void writeChanges(String physicalDatabaseId,
                              PhysicalDatabaseRegistryRequestV3 updateReq,
                              PhysicalDatabase existing) {
@@ -218,9 +177,6 @@ public class PhysicalDatabasesService {
             existing.setUnidentified(false);
         }
         physicalDatabaseDbaasRepository.save(existing);
-        // reset cache so restemplate with new credentials is created
-        resetCacheForAdapter(existing.getAdapter().getAdapterId());
-        resetCacheForPhyDb(existing.getPhysicalDatabaseIdentifier());
         log.info(MESSAGE_DATABASE_UPDATED);
     }
 
@@ -252,40 +208,6 @@ public class PhysicalDatabasesService {
                 .findFirst().orElseThrow(
                         () -> new UnregisteredPhysicalDatabaseException("DB type: " + type));
         //TODO add balancing here in case if there are more defaults
-    }
-
-    // Returns Optional.empty() if new database should be created or PhysicalDatabaseRegistration
-    // if already registered db should be updated
-    private Optional<PhysicalDatabase> findAndValidate(
-            String physicalDatabaseId,
-            String type,
-            PhysicalDatabaseRegistryRequestV3 request,
-            String username, String password)
-            throws
-            AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
-        handshakeClient.handshake(physicalDatabaseId, request.getAdapterAddress(), type, username, password, VERSION_2);
-        PhysicalDatabase byPhyDBId = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
-        PhysicalDatabase byAdapter = physicalDatabaseDbaasRepository.findByAdapterAddress(request.getAdapterAddress());
-        if (byPhyDBId == null && byAdapter == null) {
-            log.info("Database with set params does not exist, new one should be registered");
-            return Optional.empty();
-        }
-        if (byPhyDBId != null && !request.getAdapterAddress().equals(byPhyDBId.getAdapter().getAddress())) {
-            if (!isTLSUpdate(byPhyDBId.getAdapter().getAddress(), request.getAdapterAddress())) {
-                log.error("Address from request: {} conflicts with already saved address: {}", request.getAdapterAddress(), byPhyDBId.getAdapter().getAddress());
-                throw new PhysicalDatabaseRegistrationConflictException("Database with phydbid " + physicalDatabaseId +
-                        " already exists, but adapter address differs. Cannot register another one as adapter " +
-                        "address is unique and immutable");
-            }
-        } else if (byAdapter != null && !physicalDatabaseId.equals(byAdapter.getPhysicalDatabaseIdentifier()) &&
-                byAdapter.isIdentified()) {
-            log.error("sent physicalDatabaseIdentifier = {}, stored at db = {}",
-                    physicalDatabaseId, byAdapter.getPhysicalDatabaseIdentifier());
-            throw new PhysicalDatabaseRegistrationConflictException("Database with set adapter exists but its " +
-                    "phydbid is different from provided value and cannot be updated");
-        }
-        return Optional.of(byPhyDBId != null ? byPhyDBId : byAdapter);
     }
 
     private boolean isTLSUpdate(String oldAddress, String newAddress) {
@@ -434,26 +356,9 @@ public class PhysicalDatabasesService {
         return !registeredInAdapter.isEmpty();
     }
 
-    @Transactional
     public void dropDatabase(PhysicalDatabase databaseForDeletion) {
         physicalDatabaseDbaasRepository.delete(databaseForDeletion);
         log.info("Successfully drop database {}", databaseForDeletion.getPhysicalDatabaseIdentifier());
-    }
-
-    public boolean checkSupportedVersion(String physicalDatabaseIdentifier, double version) {
-        PhysicalDatabase phydb = getByPhysicalDatabaseIdentifier(physicalDatabaseIdentifier);
-        assert phydb != null;
-        ApiVersion apiVersions = phydb.getAdapter().getApiVersions();
-        if (apiVersions != null && !apiVersions.getSpecs().isEmpty()) {
-            for (ApiVersion.Spec spec : apiVersions.getSpecs()) {
-                if (spec.getSpecRootUrl().equals("/api")) {
-                    double supportedVersion = Double.parseDouble(spec.getMajor() + "." + spec.getMinor());
-                    int major = (int) Math.floor(version);
-                    return (supportedVersion >= version) && spec.getSupportedMajors().contains(major);
-                }
-            }
-        }
-        return false;
     }
 
     @Transactional
@@ -529,12 +434,13 @@ public class PhysicalDatabasesService {
             log.info("Adapter '{}' update is not required", physicalDatabase.getPhysicalDatabaseIdentifier());
         } else {
             writeChanges(physicalDatabaseId, requestedPhysicalDatabase, physicalDatabase);
+            resetCacheForAdapter(physicalDatabase.getAdapter().getAdapterId());
+            resetCacheForPhyDb(physicalDatabase.getPhysicalDatabaseIdentifier());
         }
 
         return Response.ok().build();
     }
 
-    @Transactional
     public Response handleInstruction(UUID instructionId, InstructionRequestV3 parameters) {
         Optional<PhysicalDatabaseInstruction> optInstruction =
                 physicalDatabaseInstructionRepository.findByIdOptional(instructionId);
@@ -567,7 +473,14 @@ public class PhysicalDatabasesService {
 
         if (databasesForMigration.isEmpty()) {
             log.info("All logical databases processed in instruction with id = {}", instructionId);
-            completeMigrationProcedure(instruction.getPhysicalDatabaseId(), instructionId, instruction.getPhysicalDbRegRequest());
+            QuarkusTransaction.requiringNew().run(() ->
+                    completeMigrationProcedure(
+                            instruction.getPhysicalDatabaseId(),
+                            instructionId,
+                            instruction.getPhysicalDbRegRequest(),
+                            physicalDatabase.getAdapter().getAdapterId()
+                    )
+            );
             return Response.ok().build();
         }
 
@@ -693,10 +606,13 @@ public class PhysicalDatabasesService {
             logicalDatabases = getDatabasesForMigration(adapter.identifier(), adapter.type(), requiredRoles);
 
             if (logicalDatabases.isEmpty()) {
-                completeMigrationProcedure(
-                        instruction.getPhysicalDatabaseId(),
-                        instruction.getId(),
-                        instruction.getPhysicalDbRegRequest()
+                QuarkusTransaction.requiringNew().run(() ->
+                        completeMigrationProcedure(
+                                instruction.getPhysicalDatabaseId(),
+                                instruction.getId(),
+                                instruction.getPhysicalDbRegRequest(),
+                                adapter.identifier()
+                        )
                 );
             }
         }
@@ -767,7 +683,6 @@ public class PhysicalDatabasesService {
         return requiredRoles.stream().filter(role -> !existRoles.contains(role)).toList();
     }
 
-    @Transactional
     public void updateConnectionAndInstruction(PhysicalDatabaseInstruction instruction, InstructionRequestV3 instructionRequestV3) {
         List<SuccessRegistrationV3> successRegistrationV3s = instructionRequestV3.getSuccess();
         saveConnectionPropertiesAfterRolesRegistration(successRegistrationV3s);
@@ -883,12 +798,15 @@ public class PhysicalDatabasesService {
     public void completeMigrationProcedure(
             String physicalDatabaseId,
             UUID instructionId,
-            PhysicalDatabaseRegistryRequestV3 requestV3
+            PhysicalDatabaseRegistryRequestV3 requestV3,
+            String adapterId
     ) {
         log.info("Saving supported roles in physical database with id = {}", physicalDatabaseId);
         savePhysicalDatabaseWithRoles(physicalDatabaseId, requestV3);
         log.info("Removing instruction after saving roles by id = {}", instructionId);
         deleteInstruction(instructionId);
+        resetCacheForAdapter(adapterId);
+        resetCacheForPhyDb(physicalDatabaseId);
     }
 
     protected PhysicalDatabaseInstruction saveInstructionIntoDB(String physicalDatabaseId, PhysicalDatabaseRegistryRequestV3 parameters) {

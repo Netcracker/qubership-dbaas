@@ -50,6 +50,7 @@ import static org.mockito.Mockito.*;
 @QuarkusTestResource(PostgresqlContainerResource.class)
 class PhysicalDatabasesServiceQuarkusTest {
     private static final long MIGRATION_TIMEOUT_MS = 30_000;
+    private static final String COMPLETION_FAILURE_MESSAGE = "Instruction deletion failed";
     private static final String ENSURE_USER_PATH =
             "/api/v2/dbaas/adapter/" + DatabaseType.POSTGRESQL + "/users";
 
@@ -615,6 +616,140 @@ class PhysicalDatabasesServiceQuarkusTest {
 
         verify(physicalDatabasesService, times(1)).saveInstructionIntoDB(eq(physicalDatabaseId), eq(requestedPhysicalDatabase));
         verify(physicalDatabasesService, times(3)).startAsyncInternalMigration(any(), any());
+        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(eq(physicalDatabaseId), any());
+        verify(physicalDatabasesService, times(1)).deleteInstruction(any(UUID.class));
+    }
+
+    @Test
+    void testRegisterPhysicalDatabase_completeMigrationRollbackKeepsPreviousState() {
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        String physicalDatabaseId = physicalDatabase.getPhysicalDatabaseIdentifier();
+        String adapterId = physicalDatabase.getAdapter().getAdapterId();
+        physicalDatabase.setRoles(new ArrayList<>(List.of(Role.ADMIN.toString())));
+        assertNotNull(physicalDatabaseDbaasRepository.save(physicalDatabase), "Physical database save method didn't work");
+
+        Database logicalDatabase = new DatabaseBuilder()
+                .physicalDatabaseId(physicalDatabaseId)
+                .adapterId(adapterId)
+                .registry()
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(logicalDatabase.getDatabaseRegistry().getFirst());
+
+        DbaasAdapter adapter = mock(DbaasAdapter.class);
+        doReturn(adapter)
+                .when(physicalDatabasesService)
+                .getAdapterByPhysDbId(physicalDatabaseId);
+        when(adapter.identifier()).thenReturn(adapterId);
+        when(adapter.type()).thenReturn(DatabaseType.POSTGRESQL.toString());
+        when(adapter.ensureUser(isNull(), isNull(), anyString(), anyString())).thenAnswer(inv -> {
+            String role = inv.getArgument(3);
+            String username = inv.getArgument(2) + "-" + role;
+            String password = inv.getArgument(2) + "-" + role + "password";
+            return new EnsuredUser(username, new HashMap<>(Map.of(ROLE, role, "username", username, "password", password)),
+                    List.of(new DbResource("user", username)), true);
+        });
+
+        PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase = registrationRequest();
+        requestedPhysicalDatabase.getMetadata().getFeatures().putIfAbsent("TEST_DATA", true);
+        doThrow(new RuntimeException(COMPLETION_FAILURE_MESSAGE))
+                .when(physicalDatabasesService)
+                .deleteInstruction(any(UUID.class));
+
+        Response response = physicalDatabasesService.registerPhysicalDatabase(
+                requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
+        assertEquals(ACCEPTED.getStatusCode(), response.getStatus(),
+                "Registration with internal migration must answer 202 Accepted");
+
+        await("completion failure recorded on the instruction", MIGRATION_TIMEOUT_MS,
+                () -> {
+                    PhysicalDatabaseInstruction instruction =
+                            physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
+                    return instruction != null && instruction.getFailures().stream()
+                            .anyMatch(failure -> failure.getMessage().contains(COMPLETION_FAILURE_MESSAGE));
+                });
+        await("migration lock released after the failed completion", MIGRATION_TIMEOUT_MS,
+                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
+
+        PhysicalDatabase parkedPhysicalDatabase =
+                physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
+        assertNotNull(parkedPhysicalDatabase, "Physical database doesn't exist");
+        assertEquals(List.of(Role.ADMIN.toString()), parkedPhysicalDatabase.getRoles(),
+                "The physical database must keep the old roles when the completion transaction rolls back");
+        assertFalse(parkedPhysicalDatabase.getFeatures().containsKey("TEST_DATA"),
+                "The physical database must keep the old features when the completion transaction rolls back");
+
+        PhysicalDatabaseInstruction failedInstruction =
+                physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
+        assertNotNull(failedInstruction, "The instruction must survive the failed completion");
+        assertEquals(1, failedInstruction.getFailures().size(),
+                "Exactly one completion failure is expected");
+        assertTrue(failedInstruction.getFailures().getFirst().getMessage().contains(COMPLETION_FAILURE_MESSAGE),
+                "The recorded failure must carry the completion error");
+
+        Database actualDatabase = databaseDbaasRepository.findById(logicalDatabase.getId()).orElseThrow();
+        assertEquals(expectedRoles(requestedPhysicalDatabase), rolesOf(actualDatabase.getConnectionProperties()),
+                "The migrated logical database must keep its roles when the completion transaction rolls back");
+
+        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(eq(physicalDatabaseId), any());
+        verify(physicalDatabasesService, times(1)).deleteInstruction(any(UUID.class));
+    }
+
+    @Test
+    void testHandleInstruction_completeMigrationFailureKeepsPreviousState() {
+        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        String physicalDatabaseId = physicalDatabase.getPhysicalDatabaseIdentifier();
+        String adapterId = physicalDatabase.getAdapter().getAdapterId();
+        physicalDatabase.setRoles(new ArrayList<>(List.of(Role.ADMIN.toString())));
+        assertNotNull(physicalDatabaseDbaasRepository.save(physicalDatabase), "Physical database save method didn't work");
+
+        PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase = registrationRequest();
+        requestedPhysicalDatabase.getMetadata().getFeatures().putIfAbsent("TEST_DATA", true);
+        // registerPhysicalDatabase normalizes the requested roles to lowercase before the instruction is saved,
+        // and the persistence layer lowercases the roles stored in the connection properties.
+        requestedPhysicalDatabase.getMetadata().getSupportedRoles().replaceAll(String::toLowerCase);
+        // The logical database is already aligned with the requested roles, so the handler goes straight to the completion.
+        Database alignedDatabase = new DatabaseBuilder()
+                .physicalDatabaseId(physicalDatabaseId)
+                .adapterId(adapterId)
+                .registry()
+                .connectionProperties(requestedPhysicalDatabase.getMetadata().getSupportedRoles().stream()
+                        .<Map<String, Object>>map(role -> new HashMap<>(Map.of(ROLE, role, "username", "user-" + role, "password", "password")))
+                        .toList())
+                .build();
+        databaseRegistryDbaasRepository.saveAnyTypeLogDb(alignedDatabase.getDatabaseRegistry().getFirst());
+
+        PhysicalDatabaseInstruction instruction =
+                physicalDatabasesService.saveInstructionIntoDB(physicalDatabaseId, requestedPhysicalDatabase);
+
+        doThrow(new RuntimeException(COMPLETION_FAILURE_MESSAGE))
+                .when(physicalDatabasesService)
+                .deleteInstruction(any(UUID.class));
+
+        List<Database> planned = physicalDatabasesService.getDatabasesForMigration(
+                adapterId, physicalDatabase.getType(),
+                requestedPhysicalDatabase.getMetadata().getSupportedRoles());
+        assertTrue(planned.isEmpty(),
+                "Precondition violated: the aligned database must be excluded from the migration plan, planned=" + planned.size());
+
+        Exception exception = assertThrows(Exception.class,
+                () -> physicalDatabasesService.handleInstruction(instruction.getId(), new InstructionRequestV3()));
+        assertTrue(exception.toString().contains(COMPLETION_FAILURE_MESSAGE),
+                "The completion error must be propagated to the caller");
+
+        PhysicalDatabase parkedPhysicalDatabase =
+                physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
+        assertNotNull(parkedPhysicalDatabase, "Physical database doesn't exist");
+        assertEquals(List.of(Role.ADMIN.toString()), parkedPhysicalDatabase.getRoles(),
+                "The physical database must keep the old roles when the completion transaction rolls back");
+        assertFalse(parkedPhysicalDatabase.getFeatures().containsKey("TEST_DATA"),
+                "The physical database must keep the old features when the completion transaction rolls back");
+
+        PhysicalDatabaseInstruction survivingInstruction =
+                physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
+        assertNotNull(survivingInstruction, "The instruction must survive the failed completion");
+        assertTrue(survivingInstruction.getFailures().isEmpty(),
+                "The adapter-driven path reports the failure via the response, the instruction must stay clean");
+
         verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(eq(physicalDatabaseId), any());
         verify(physicalDatabasesService, times(1)).deleteInstruction(any(UUID.class));
     }
