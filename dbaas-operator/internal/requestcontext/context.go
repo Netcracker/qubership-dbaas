@@ -41,6 +41,7 @@ func WithFreshRequestID(ctx context.Context) (context.Context, string) {
 	}), id
 }
 
+
 // RequestID returns the initialized request ID with an actionable error that
 // distinguishes missing startup registration from a caller that omitted setup.
 func RequestID(ctx context.Context) (string, error) {
