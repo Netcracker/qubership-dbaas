@@ -1,22 +1,22 @@
 name: DBaaS Upgrade/Downgrade Availability
 
 run-name: >
-  DBaaS aggregator ${{ github.event.inputs.direction }}
+  DBaaS stack ${{ github.event.inputs.direction }}
   ${{ github.event.inputs.older-version }} <-> ${{ github.event.inputs.newer-version }}
 
-# Each direction runs in a separate Kind cluster with the operator fixed at the newer version.
+# Each direction runs in a separate Kind cluster and can transition the Aggregator and Operator together.
 # Job-level concurrency lets upgrade and downgrade run in parallel while serializing repeated runs.
 
 on:
   workflow_dispatch:
     inputs:
       older-version:
-        description: 'Older dbaas-aggregator version (for example, 6.14.1) or latest'
+        description: 'Older DBaaS version (for example, 6.14.1) or latest'
         required: true
         default: latest
         type: string
       newer-version:
-        description: 'Newer dbaas-aggregator version (for example, 6.15.0) or main'
+        description: 'Newer DBaaS version (for example, 6.15.0) or main'
         required: true
         default: main
         type: string
@@ -29,6 +29,11 @@ on:
           - both
           - upgrade
           - downgrade
+      operator-enabled:
+        description: Deploy and test the DBaaS Operator. Uncheck for transitions with incompatible Operator changes.
+        required: false
+        default: true
+        type: boolean
 
 permissions: {}
 
@@ -92,7 +97,7 @@ jobs:
       direction: upgrade
       initial-version: ${{ needs.resolve-versions.outputs.older-version }}
       target-version: ${{ needs.resolve-versions.outputs.newer-version }}
-      fixture-version: ${{ needs.resolve-versions.outputs.newer-version }}
+      operator-enabled: ${{ github.event.inputs['operator-enabled'] == 'true' }}
 
   downgrade:
     name: Downgrade ${{ needs.resolve-versions.outputs.newer-version }} -> ${{ needs.resolve-versions.outputs.older-version }}
@@ -105,7 +110,7 @@ jobs:
       direction: downgrade
       initial-version: ${{ needs.resolve-versions.outputs.newer-version }}
       target-version: ${{ needs.resolve-versions.outputs.older-version }}
-      fixture-version: ${{ needs.resolve-versions.outputs.newer-version }}
+      operator-enabled: ${{ github.event.inputs['operator-enabled'] == 'true' }}
 
   # Keep one branch-protection check name for all direction selections.
   gate:

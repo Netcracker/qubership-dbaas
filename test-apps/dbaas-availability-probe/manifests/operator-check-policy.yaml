@@ -1,0 +1,12 @@
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseAccessPolicy
+metadata:
+  name: dbaas-transition-operator-check
+  namespace: ${DBAAS_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: dbaas-transition-operator-check
+    app.kubernetes.io/component: test-fixture
+spec:
+  operatorNamespace: ${DBAAS_NAMESPACE}
+  microserviceName: dbaas-transition-operator-check
+  disableGlobalPermissions: false

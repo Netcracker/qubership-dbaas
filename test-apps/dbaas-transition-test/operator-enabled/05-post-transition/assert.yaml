@@ -1,0 +1,26 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 120
+resourceRefs:
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: ${DBAAS_NAMESPACE}
+    name: dbaas-aggregator
+    ref: aggregator
+  - apiVersion: dbaas.netcracker.com/v1
+    kind: DatabaseAccessPolicy
+    namespace: ${DBAAS_NAMESPACE}
+    name: dbaas-transition-operator-check
+    ref: operatorPolicy
+collectors:
+  - type: command
+    command: kubectl -n ${DBAAS_NAMESPACE} get databaseaccesspolicy dbaas-transition-operator-check -o yaml
+assertAll:
+  - celExpr: "aggregator.status.readyReplicas == 2"
+  - celExpr: "aggregator.spec.strategy.type == 'RollingUpdate'"
+  - celExpr: "operatorPolicy.status.observedGeneration == operatorPolicy.metadata.generation"
+  - celExpr: >-
+      operatorPolicy.status.conditions.exists(condition,
+        condition.type == 'Ready' && condition.status == 'True' &&
+        condition.reason == 'PolicyApplied' &&
+        condition.observedGeneration == operatorPolicy.metadata.generation)
