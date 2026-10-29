@@ -13,7 +13,7 @@ public class PhysicalDatabaseInformation {
     @Schema(description = "Physical database identifier. The value belongs to the specific database cluster",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String physicalDatabaseId;
-    @Schema(description = "Type of database. Example: MongoDB, PostgreSQL, elasticsearch, etc.",
+    @Schema(description = "Type of database. Example: MongoDB, PostgreSQL, etc.",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String type;
     @Schema(description = "Additional information about physical database. It may be a version of database cluster, any labels, and etc.")

@@ -17,14 +17,14 @@ public class UserEnsureRequestV3 extends UserEnsureRequest {
         this.role = role;
     }
 
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Database role name. For instance Admin, RW or RO role.")
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Database role name. For instance admin, rw or ro role.")
     private String role;
 
     public static final String EXAMPLE_REQUEST = """
             {
               "dbName": "inventory",
               "password": "ChangeMe_123!",
-              "role": "RW"
+              "role": "rw"
             }
             """;
 

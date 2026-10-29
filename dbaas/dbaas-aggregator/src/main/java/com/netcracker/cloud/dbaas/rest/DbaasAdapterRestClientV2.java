@@ -148,7 +148,7 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
                                         content = @Content(schema = @Schema(implementation = String[].class),
                                                 examples = @ExampleObject(value = """
                                                         [
-                                                            "inventory", "orders"
+                                                            "postgres-logical-database", "arango-logical-database"
                                                         ]
                                                         """)))
                                 List<String> databases);
@@ -172,7 +172,7 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
                                         content = @Content(schema = @Schema(implementation = String[].class),
                                                 examples = @ExampleObject(value = """
                                                         [
-                                                            "inventory", "orders"
+                                                            "postgres-logical-database", "arango-logical-database"
                                                         ]
                                                         """)))
                                 List<String> databases);
@@ -298,8 +298,8 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
                                    content = @Content(schema = @Schema(implementation = DbResource[].class),
                                            examples = @ExampleObject(value = """
                                                    [
-                                                     { "kind": "database", "name": "inventory" },
-                                                     { "kind": "user", "name": "svc_inventory_rw" }
+                                                     { "kind": "database", "name": "postgres-databse" },
+                                                     { "kind": "user", "name": "username" }
                                                    ]""")))
                            List<DbResource> resources);
 
@@ -391,7 +391,8 @@ public interface DbaasAdapterRestClientV2 extends AutoCloseable {
                                                 {
                                                   "classifier": {
                                                     "microserviceName": "inventory-service",
-                                                    "namespace": "payments"
+                                                    "namespace": "payments",
+                                                    "scope": "service"
                                                   },
                                                   "microserviceName": "inventory-service"
                                                 }""")))

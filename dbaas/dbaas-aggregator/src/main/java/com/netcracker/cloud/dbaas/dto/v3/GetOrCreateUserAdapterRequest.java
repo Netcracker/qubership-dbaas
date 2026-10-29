@@ -12,7 +12,7 @@ import lombok.*;
 public class GetOrCreateUserAdapterRequest {
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Database name to create user.")
     private String dbName;
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Database role name. For instance Admin, RW or RO role.")
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Database role name. For instance admin, rw or ro role.")
     private String role;
     @Schema(description = "Prefix for username.")
     private String userNamePrefix;
@@ -20,7 +20,7 @@ public class GetOrCreateUserAdapterRequest {
     public static final String EXAMPLE_REQUEST = """
             {
               "dbName": "inventory",
-              "role": "RW",
+              "role": "rw",
               "userNamePrefix": "svc_inventory_"
             }
             """;
