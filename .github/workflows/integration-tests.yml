@@ -363,7 +363,7 @@ jobs:
         run: python3 .github/scripts/build-test-report.py
 
       - name: Email test report
-        if: always() && steps.build_report.outcome == 'success'
+        if: always() && steps.build_report.outcome == 'success' && steps.build_report.outputs.status != 'success'
         continue-on-error: true
         # Pinned to the commit that adds email-action (#782); no release tag includes it yet.
         uses: Netcracker/qubership-workflow-hub/actions/email-action@f4a2c6f57cfdd620676d0dc7321491b33d7c214b
