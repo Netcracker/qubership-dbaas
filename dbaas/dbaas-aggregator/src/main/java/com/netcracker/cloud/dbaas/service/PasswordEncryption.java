@@ -3,13 +3,11 @@ package com.netcracker.cloud.dbaas.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.ConnectionDescription;
 import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
-import com.netcracker.cloud.dbaas.dto.Secret;
 import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
-import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.exceptions.DecryptException;
 import com.netcracker.cloud.dbaas.exceptions.RecordIsCorruptedException;
-import com.netcracker.cloud.encryption.cipher.exception.DecryptException;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -28,13 +26,13 @@ public class PasswordEncryption {
     public static final String ENCRYPTED_SECRET_FIELD = "encryptedSecret";
     public static final String PASSWORD_FIELD = "password";
 
-    public PasswordEncryption(@NonNull EncryptionServiceProvider encryptionServiceProvider) {
-        this.encryptionServiceProvider = encryptionServiceProvider;
+    public PasswordEncryption(@NonNull PasswordCipher passwordCipher) {
+        this.passwordCipher = passwordCipher;
         this.objectMapper = new ObjectMapper();
     }
 
     @NonNull
-    private EncryptionServiceProvider encryptionServiceProvider;
+    private PasswordCipher passwordCipher;
 
 
     private ObjectMapper objectMapper;
@@ -53,8 +51,7 @@ public class PasswordEncryption {
                         cp.containsKey(field.getKey()))
                 .forEach(field -> {
                     String parameter = field.getKey();
-                    Secret secret = new Secret((String) cp.get(parameter));
-                    cp.put(encryptedFieldName(parameter), encrypt(secret));
+                    cp.put(encryptedFieldName(parameter), passwordCipher.encrypt((String) cp.get(parameter)));
                     cp.remove(parameter);
                 });
         database.setConnectionProperties(connectionProperties);
@@ -74,8 +71,7 @@ public class PasswordEncryption {
                                 cp.containsKey(field.getKey()))
                         .forEach(field -> {
                             String parameter = field.getKey();
-                            Secret secret = new Secret((String) cp.get(parameter));
-                            cp.put(encryptedFieldName(parameter), encrypt(secret));
+                            cp.put(encryptedFieldName(parameter), passwordCipher.encrypt((String) cp.get(parameter)));
                             cp.remove(parameter);
                         }));
         database.setConnectionProperties(connectionProperties);
@@ -91,8 +87,7 @@ public class PasswordEncryption {
                 .filter(field -> PASSWORD == field.getValue().getType() && cp.containsKey(field.getKey()))
                 .forEach(field -> {
                     String parameter = field.getKey();
-                    Secret secret = new Secret((String) cp.get(parameter));
-                    cp.put(encryptedFieldName(parameter), encrypt(secret));
+                    cp.put(encryptedFieldName(parameter), passwordCipher.encrypt((String) cp.get(parameter)));
                     cp.remove(parameter);
                 });
         user.setConnectionProperties(cp);
@@ -194,10 +189,7 @@ public class PasswordEncryption {
                 .forEach(field -> {
                     String parameter = field.getKey();
                     if (cp != null && cp.containsKey(encryptedFieldName(parameter))) {
-                        String encryptedData = (String) cp.get(encryptedFieldName(parameter));
-                        DataEncryption encryption = encryptionServiceProvider.getEncryptionService(encryptedData);
                         log.info("Delete encrypted data for database {}", database.getName());
-                        encryption.remove(encryptedData);
                         cp.remove(encryptedFieldName(parameter));
                     }
                 });
@@ -222,27 +214,15 @@ public class PasswordEncryption {
                         .forEach(field -> {
                             String parameter = field.getKey();
                             if (cp.containsKey(encryptedFieldName(parameter))) {
-                                String encryptedData = (String) cp.get(encryptedFieldName(parameter));
-                                DataEncryption encryption = encryptionServiceProvider.getEncryptionService(encryptedData);
                                 log.info("Delete encrypted data for database {}", name);
-                                encryption.remove(encryptedData);
                                 cp.remove(encryptedFieldName(parameter));
                             }
                         }));
     }
 
-    public void deletePassword(PhysicalDatabase database) {
-        HttpBasicCredentials adapterHttpBasicCredentials = database.getAdapter().getHttpBasicCredentials();
-        DataEncryption encryption = encryptionServiceProvider.getEncryptionService(adapterHttpBasicCredentials.getPassword());
-        log.info("Delete encrypted data for physical database {}", database.getPhysicalDatabaseIdentifier());
-        encryption.remove(adapterHttpBasicCredentials.getPassword());
-    }
-
     public void encryptPassword(PhysicalDatabaseRegistryRequestV3 registryRequest) {
         HttpBasicCredentials adapterHttpBasicCredentials = registryRequest.getHttpBasicCredentials();
-        Secret secret = new Secret(adapterHttpBasicCredentials.getPassword());
-        String encryptedPassword = encrypt(secret);
-        adapterHttpBasicCredentials.setPassword(encryptedPassword);
+        adapterHttpBasicCredentials.setPassword(passwordCipher.encrypt(adapterHttpBasicCredentials.getPassword()));
     }
 
 
@@ -264,13 +244,7 @@ public class PasswordEncryption {
     }
 
     public String decrypt(String encryptedPassword) {
-        return encryptionServiceProvider.getEncryptionService(encryptedPassword)
-                .decrypt(encryptedPassword)
-                .getData();
-    }
-
-    private String encrypt(Secret secret) {
-        return encryptionServiceProvider.getEncryptionService().encrypt(secret);
+        return passwordCipher.decrypt(encryptedPassword);
     }
 
     private String encryptedFieldName(String word) {

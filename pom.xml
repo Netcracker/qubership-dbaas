@@ -29,7 +29,6 @@
             </activation>
             <modules>
                 <module>dbaas/dbaas-aggregator-parent</module>
-                <module>dbaas/encryption-services-cipher</module>
                 <module>dbaas/dbaas-aggregator</module>
                 <module>dbaas/dbaas-integration-tests</module>
                 <module>dbaas/dbaas-report-aggregate</module>
