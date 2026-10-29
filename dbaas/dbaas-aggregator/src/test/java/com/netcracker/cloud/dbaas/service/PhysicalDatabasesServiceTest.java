@@ -5,16 +5,15 @@ import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
-import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
 import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
+import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.LogicalDbDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
-
+import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabaseInstructionRepository;
 import jakarta.ws.rs.core.Response;
-
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,17 +23,15 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.lang.reflect.Field;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.same;
 
 @ExtendWith(MockitoExtension.class)
 class PhysicalDatabasesServiceTest {
@@ -42,7 +39,7 @@ class PhysicalDatabasesServiceTest {
     private static final String TEST_USERNAME = "test-username";
     private static final String TEST_PASSWORD = "test-password";
     private static final String TEST_ADAPTER_ID = "test-adapter-id";
-    private static final String TEST_ADAPTER_ADDRESS = "test-adapter-address";
+    private static final String TEST_ADAPTER_ADDRESS = "http://test-adapter-address:8080";
     private static final String TEST_TYPE = "test-type";
     private static final String TEST_PHYDBID = "test-phydbid";
     private static final String TEST_LABEL_KEY = "db_cpq_domain";
@@ -65,7 +62,13 @@ class PhysicalDatabasesServiceTest {
     @Mock
     private LogicalDbDbaasRepository logicalDbDbaasRepository;
     @Mock
+    private DatabaseDbaasRepository databaseDbaasRepository;
+    @Mock
     private DbaasAdapterRESTClientFactory dbaasAdapterRESTClientFactory;
+    @Mock
+    private LockService lockService;
+    @Mock
+    private PhysicalDatabaseInstructionRepository physicalDatabaseInstructionRepository;
 
     @InjectMocks
     private PhysicalDatabasesService physicalDatabasesService;
@@ -115,16 +118,20 @@ class PhysicalDatabasesServiceTest {
     }
 
     @Test
-    void writeChanges_updatesExistingDatabaseWithRequestValues() {
+    void registerPhysicalDatabase_updatesExistingDatabaseWithRequestValues() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
-        physicalDatabaseRegistryRequest.setAdapterAddress("http://updated-adapter:8080");
         physicalDatabaseRegistryRequest.setLabels(Map.of("db_ext_domain", "ext"));
         physicalDatabaseRegistryRequest.getMetadata().setSupportedRoles(new ArrayList<>(List.of("admin", "readwrite")));
         physicalDatabaseRegistryRequest.getMetadata().setApiVersions(new ApiVersion(List.of(new ApiVersion.Spec("/api", 2, 3, List.of(2)))));
         final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
+        when(physicalDatabaseDbaasRepository.findByAdapterAddress(TEST_ADAPTER_ADDRESS)).thenReturn(physicalDatabase);
+        stubEmptyMigrationPlan();
 
-        physicalDatabasesService.writeChanges(TEST_PHYDBID, physicalDatabaseRegistryRequest, physicalDatabase);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
         verify(encryption).deletePassword(physicalDatabase);
         verify(encryption).encryptPassword(physicalDatabaseRegistryRequest);
         verify(physicalDatabaseDbaasRepository).save(physicalDatabase);
@@ -132,47 +139,70 @@ class PhysicalDatabasesServiceTest {
         assertEquals(List.of("admin", "readwrite"), physicalDatabase.getRoles());
         assertEquals(Map.of("multiusers", true), physicalDatabase.getFeatures());
         assertEquals(TEST_RO_HOST, physicalDatabase.getRoHost());
-        assertEquals("http://updated-adapter:8080", physicalDatabase.getAdapter().getAddress());
+        assertEquals(TEST_ADAPTER_ADDRESS, physicalDatabase.getAdapter().getAddress());
         assertEquals(physicalDatabaseRegistryRequest.getMetadata().getApiVersion(), physicalDatabase.getAdapter().getSupportedVersion());
         assertEquals(new ApiVersion(List.of(new ApiVersion.Spec("/api", 2, 3, List.of(2)))), physicalDatabase.getAdapter().getApiVersions());
         assertSame(physicalDatabaseRegistryRequest.getHttpBasicCredentials(), physicalDatabase.getAdapter().getHttpBasicCredentials());
     }
 
     @Test
-    void foundPhysicalDatabase_allowsChangingAdapterProtocol() {
+    void registerPhysicalDatabase_identifiesUnidentifiedPhysicalDatabase() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
-        physicalDatabaseRegistryRequest.setAdapterAddress("http://some-adapter");
         final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        physicalDatabase.getAdapter().setAddress("https://some-adapter");
+        physicalDatabase.setPhysicalDatabaseIdentifier("identifier-from-previous-release");
+        physicalDatabase.setUnidentified(true);
         when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
+        stubEmptyMigrationPlan();
 
-        final Optional<PhysicalDatabase> foundPhysicalDatabase =
-                physicalDatabasesService.foundPhysicalDatabase(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
-        assertTrue(foundPhysicalDatabase.isPresent());
-        assertSame(physicalDatabase, foundPhysicalDatabase.get());
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+        assertEquals(TEST_PHYDBID, physicalDatabase.getPhysicalDatabaseIdentifier());
+        assertFalse(physicalDatabase.isUnidentified());
+        verify(physicalDatabaseDbaasRepository).save(physicalDatabase);
     }
 
     @Test
-    void foundPhysicalDatabase_throwsWhenAdapterAddressOfRegisteredDatabaseDiffers() {
+    void registerPhysicalDatabase_allowsChangingAdapterProtocol() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
-        physicalDatabaseRegistryRequest.setAdapterAddress("http://another-adapter");
+        physicalDatabaseRegistryRequest.setAdapterAddress("http://some-adapter:8080");
         final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        physicalDatabase.getAdapter().setAddress("http://some-adapter");
+        physicalDatabase.getAdapter().setAddress("https://some-adapter:8080");
+        when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
+        stubEmptyMigrationPlan();
+
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
+
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatus(),
+                "A TLS address update is not a conflict and must be applied");
+        assertEquals("http://some-adapter:8080", physicalDatabase.getAdapter().getAddress());
+        verify(physicalDatabaseDbaasRepository).save(physicalDatabase);
+    }
+
+    @Test
+    void registerPhysicalDatabase_throwsWhenAdapterAddressOfRegisteredDatabaseDiffers() {
+        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
+        physicalDatabaseRegistryRequest.setAdapterAddress("http://another-adapter:8080");
+        final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        physicalDatabase.getAdapter().setAddress("http://some-adapter:8080");
         when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
 
         assertThrows(PhysicalDatabaseRegistrationConflictException.class,
-                () -> physicalDatabasesService.foundPhysicalDatabase(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest));
+                () -> physicalDatabasesService.registerPhysicalDatabase(
+                        physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false));
     }
 
     @Test
-    void testFoundPhysicalDatabase_missingHttpBasicCredentialsFailsBeforeHandshake() {
-        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestSample();
+    void registerPhysicalDatabase_missingHttpBasicCredentialsFailsBeforeHandshake() {
+        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
         physicalDatabaseRegistryRequest.setHttpBasicCredentials(null);
 
         // The registration endpoint maps this exception to a 500 response.
         assertThrows(NullPointerException.class,
-                () -> physicalDatabasesService.foundPhysicalDatabase(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest));
+                () -> physicalDatabasesService.registerPhysicalDatabase(
+                        physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false));
         verifyNoInteractions(handshakeClient, physicalDatabaseDbaasRepository);
     }
 
@@ -290,75 +320,51 @@ class PhysicalDatabasesServiceTest {
     }
 
     @Test
-    void foundPhysicalDatabaseTest() throws AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
+    void registerPhysicalDatabase_foundByIdentifierAndAdapterIsUpdated() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
         final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
         when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
         when(physicalDatabaseDbaasRepository.findByAdapterAddress(TEST_ADAPTER_ADDRESS)).thenReturn(physicalDatabase);
+        stubEmptyMigrationPlan();
 
-        physicalDatabase.setPhysicalDatabaseIdentifier(TEST_PHYDBID);
-        Optional<PhysicalDatabase> testPhysicalDatabase = physicalDatabasesService.foundPhysicalDatabase(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
-        assertTrue(testPhysicalDatabase.isPresent());
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
         verify(physicalDatabaseDbaasRepository, times(1)).findByPhysicalDatabaseIdentifier(TEST_PHYDBID);
         verify(physicalDatabaseDbaasRepository, times(1)).findByAdapterAddress(TEST_ADAPTER_ADDRESS);
-        verifyNoMoreInteractions(handshakeClient, physicalDatabaseDbaasRepository);
-
+        verify(physicalDatabaseDbaasRepository, times(1)).save(physicalDatabase);
     }
 
-
     @Test
-    void foundPhysicalDatabaseTestWithException() throws AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
+    void registerPhysicalDatabase_throwsWhenAdapterBelongsToAnotherPhysicalDatabase() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
         final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        physicalDatabase.setPhysicalDatabaseIdentifier("another-id");
         when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
         when(physicalDatabaseDbaasRepository.findByAdapterAddress(TEST_ADAPTER_ADDRESS)).thenReturn(physicalDatabase);
-
-        physicalDatabase.setPhysicalDatabaseIdentifier("another-id");
 
         Assertions.assertThrows(PhysicalDatabaseRegistrationConflictException.class, () -> {
-            physicalDatabasesService.foundPhysicalDatabase(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
+            physicalDatabasesService.registerPhysicalDatabase(
+                    physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
         });
-
     }
 
     @Test
-    void notFoundPhysicalDatabaseTest() throws AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
-        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
-        final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(null);
-        when(physicalDatabaseDbaasRepository.findByAdapterAddress(TEST_ADAPTER_ADDRESS)).thenReturn(null);
-
-        physicalDatabase.setPhysicalDatabaseIdentifier(TEST_PHYDBID);
-        Optional<PhysicalDatabase> testPhysicalDatabase = physicalDatabasesService.foundPhysicalDatabase(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
-        assertFalse(testPhysicalDatabase.isPresent());
-
-        verify(physicalDatabaseDbaasRepository, times(1)).findByPhysicalDatabaseIdentifier(TEST_PHYDBID);
-        verify(physicalDatabaseDbaasRepository, times(1)).findByAdapterAddress(TEST_ADAPTER_ADDRESS);
-        verifyNoMoreInteractions(handshakeClient, physicalDatabaseDbaasRepository);
-
-    }
-
-    @Test
-    void physicalDatabaseRegistration_persistsValuesFromRegistrationRequest() {
+    void registerPhysicalDatabase_persistsValuesFromRegistrationRequest() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
-        when(physicalDatabaseDbaasRepository.findByType(TEST_TYPE)).thenReturn(Stream.empty());
-        when(physicalDatabaseDbaasRepository.save(any(PhysicalDatabase.class))).thenAnswer((invocation) -> invocation.getArgument(0));
+        stubNewPhysicalDatabaseRegistration();
 
-        final PhysicalDatabase physicalDatabase =
-                physicalDatabasesService.physicalDatabaseRegistration(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
-        final ArgumentCaptor<PhysicalDatabase> savedPhysicalDatabase = ArgumentCaptor.forClass(PhysicalDatabase.class);
+        assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
+
+        final PhysicalDatabase physicalDatabase = captureSavedPhysicalDatabase();
         verify(physicalDatabaseDbaasRepository).findByType(TEST_TYPE);
-        verify(physicalDatabaseDbaasRepository).save(savedPhysicalDatabase.capture());
-        verifyNoMoreInteractions(physicalDatabaseDbaasRepository);
         verify(encryption).encryptPassword(physicalDatabaseRegistryRequest);
         // the adapter handshake and the conflict checks belong to foundPhysicalDatabase, not to the registration itself
         verifyNoInteractions(handshakeClient);
-        assertSame(savedPhysicalDatabase.getValue(), physicalDatabase, "The saved physical database must be returned");
 
         assertEquals(TEST_PHYDBID, physicalDatabase.getPhysicalDatabaseIdentifier());
         assertEquals(TEST_TYPE, physicalDatabase.getType());
@@ -373,78 +379,107 @@ class PhysicalDatabasesServiceTest {
     }
 
     @Test
-    void physicalDatabaseRegistration_usesAdapterApiVersionsFromRequest() {
+    void registerPhysicalDatabase_usesAdapterApiVersionsFromRequest() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
-        when(physicalDatabaseDbaasRepository.findByType(TEST_TYPE)).thenReturn(Stream.empty());
-        when(physicalDatabaseDbaasRepository.save(any(PhysicalDatabase.class))).thenAnswer((invocation) -> invocation.getArgument(0));
+        stubNewPhysicalDatabaseRegistration();
 
-        final PhysicalDatabase physicalDatabase =
-                physicalDatabasesService.physicalDatabaseRegistration(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
+        assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
+        final PhysicalDatabase physicalDatabase = captureSavedPhysicalDatabase();
         assertSame(physicalDatabaseRegistryRequest.getMetadata().getApiVersions(), physicalDatabase.getAdapter().getApiVersions());
         assertFalse(physicalDatabase.getAdapter().getApiVersions().getSpecs().isEmpty());
         assertEquals(physicalDatabaseRegistryRequest.getMetadata().getApiVersion(), physicalDatabase.getAdapter().getSupportedVersion());
     }
 
     @Test
-    void physicalDatabaseRegistration_storesRolesFromRequestInLowerCase() {
+    void registerPhysicalDatabase_storesRolesFromRequestInLowerCase() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
         physicalDatabaseRegistryRequest.getMetadata().setSupportedRoles(new ArrayList<>(List.of("ADMIN", "ReadWrite")));
-        when(physicalDatabaseDbaasRepository.findByType(TEST_TYPE)).thenReturn(Stream.empty());
-        when(physicalDatabaseDbaasRepository.save(any(PhysicalDatabase.class))).thenAnswer((invocation) -> invocation.getArgument(0));
+        stubNewPhysicalDatabaseRegistration();
 
-        final PhysicalDatabase physicalDatabase =
-                physicalDatabasesService.physicalDatabaseRegistration(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
+        assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
+        final PhysicalDatabase physicalDatabase = captureSavedPhysicalDatabase();
         assertEquals(List.of("admin", "readwrite"), physicalDatabase.getRoles());
         assertEquals(List.of("admin", "readwrite"), physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(),
                 "Roles of the request are normalized, the migration and isDbActual rely on it");
     }
 
     @Test
-    void physicalDatabaseRegistration_marksGlobalWhenItIsFirstDatabaseOfTheType() {
+    void registerPhysicalDatabase_marksGlobalWhenItIsFirstDatabaseOfTheType() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
-        when(physicalDatabaseDbaasRepository.findByType(TEST_TYPE)).thenReturn(Stream.empty());
-        when(physicalDatabaseDbaasRepository.save(any(PhysicalDatabase.class))).thenAnswer((invocation) -> invocation.getArgument(0));
+        stubNewPhysicalDatabaseRegistration();
 
-        final PhysicalDatabase physicalDatabase =
-                physicalDatabasesService.physicalDatabaseRegistration(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
-        assertTrue(physicalDatabase.isGlobal());
+        assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
+        assertTrue(captureSavedPhysicalDatabase().isGlobal());
     }
 
     @Test
-    void physicalDatabaseRegistration_doesNotMarkGlobalWhenTypeIsAlreadyRegistered() {
+    void registerPhysicalDatabase_doesNotMarkGlobalWhenTypeIsAlreadyRegistered() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
         when(physicalDatabaseDbaasRepository.findByType(TEST_TYPE)).thenReturn(Stream.of(getPhysicalDatabaseSample()));
-        when(physicalDatabaseDbaasRepository.save(any(PhysicalDatabase.class))).thenAnswer((invocation) -> invocation.getArgument(0));
+        when(physicalDatabaseDbaasRepository.save(any(PhysicalDatabase.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        final PhysicalDatabase physicalDatabase =
-                physicalDatabasesService.physicalDatabaseRegistration(TEST_PHYDBID, TEST_TYPE, physicalDatabaseRegistryRequest);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
-        assertFalse(physicalDatabase.isGlobal());
+        assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
+        assertFalse(captureSavedPhysicalDatabase().isGlobal());
     }
 
     @Test
-    void writeChanges_identifiesUnidentifiedPhysicalDatabase() {
+    void registerPhysicalDatabase_skipsUpdateWhenRequestMatchesExistingDatabase() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
         final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        physicalDatabase.setPhysicalDatabaseIdentifier("identifier-from-previous-release");
-        physicalDatabase.setUnidentified(true);
+        physicalDatabase.setRoles(new ArrayList<>(List.of("admin", "ro")));
+        physicalDatabase.setFeatures(new HashMap<>(Map.of("multiusers", true)));
+        physicalDatabase.setRoHost(TEST_RO_HOST);
+        physicalDatabase.getAdapter().setApiVersions(physicalDatabaseRegistryRequest.getMetadata().getApiVersions());
+        when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
+        when(encryption.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        physicalDatabasesService.writeChanges(TEST_PHYDBID, physicalDatabaseRegistryRequest, physicalDatabase);
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
-        assertEquals(TEST_PHYDBID, physicalDatabase.getPhysicalDatabaseIdentifier());
-        assertFalse(physicalDatabase.isUnidentified());
-        verify(physicalDatabaseDbaasRepository).save(physicalDatabase);
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+        verify(physicalDatabaseDbaasRepository, never()).save(any(PhysicalDatabase.class));
+        verify(encryption, never()).deletePassword(any(PhysicalDatabase.class));
     }
 
+    @Test
+    void registerPhysicalDatabase_startsMigrationWhenRequiredRolesAreMissed() {
+        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistrationRequestSample();
+        final PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
+        final Database logicalDatabase = generateRandomDatabase(true, physicalDatabase.getAdapter().getAdapterId()).getDatabase();
+        when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
+        when(logicalDbDbaasRepository.getDatabaseDbaasRepository()).thenReturn(databaseDbaasRepository);
+        when(databaseDbaasRepository.findDatabasesForMigration(anyString(), anyString(), anyList(), anyInt()))
+                .thenReturn(List.of(logicalDatabase));
+
+        final Response response = physicalDatabasesService.registerPhysicalDatabase(
+                physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
+
+        assertEquals(Response.Status.ACCEPTED.getStatusCode(), response.getStatus());
+
+        final Map<String, Object> responseEntity = (Map<String, Object>) response.getEntity();
+        final Instruction instruction = (Instruction) responseEntity.get("instruction");
+        assertNotNull(instruction, "The migration instruction must be returned to the adapter");
+        assertEquals(1, instruction.getAdditionalRoles().size());
+        assertEquals(logicalDatabase.getId(), instruction.getAdditionalRoles().get(0).getId());
+        verify(physicalDatabaseInstructionRepository).persist(any(PhysicalDatabaseInstruction.class));
+    }
 
     private PhysicalDatabaseRegistryRequestV3 getPhysicalDatabaseRegistryRequestV3Sample() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequestV3 = new PhysicalDatabaseRegistryRequestV3();
         Map<String, Boolean> features = new HashMap<>();
         features.put("multiusers", true);
-        physicalDatabaseRegistryRequestV3.setAdapterAddress("test-address");
         physicalDatabaseRegistryRequestV3.setHttpBasicCredentials(new HttpBasicCredentials(TEST_USERNAME, TEST_PASSWORD));
         physicalDatabaseRegistryRequestV3.setAdapterAddress(TEST_ADAPTER_ADDRESS);
         physicalDatabaseRegistryRequestV3.setStatus("running");
@@ -452,7 +487,6 @@ class PhysicalDatabasesServiceTest {
                 Arrays.asList(Role.ADMIN.toString(), "ro"), features));
         return physicalDatabaseRegistryRequestV3;
     }
-
 
     private PhysicalDatabase getPhysicalDatabaseSample() {
         final PhysicalDatabase physicalDatabase = new PhysicalDatabase();
@@ -467,21 +501,6 @@ class PhysicalDatabasesServiceTest {
         return physicalDatabase;
     }
 
-    private PhysicalDatabaseRegistryRequestV3 getPhysicalDatabaseRegistryRequestSample() {
-        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = new PhysicalDatabaseRegistryRequestV3();
-        physicalDatabaseRegistryRequest.setAdapterAddress(TEST_ADAPTER_ADDRESS);
-        physicalDatabaseRegistryRequest.setHttpBasicCredentials(getHttpBasicCredentialsSample());
-        Metadata metadata = new Metadata();
-        metadata.setApiVersion("v2");
-        metadata.setSupportedRoles(List.of("admin"));
-        metadata.setApiVersions(new ApiVersion(List.of(new ApiVersion.Spec("/api", 1, 2, List.of(1)))));
-        physicalDatabaseRegistryRequest.setMetadata(metadata);
-        return physicalDatabaseRegistryRequest;
-    }
-
-    /**
-     * A complete V3 registration request: labels, features, RO host and API versions are all filled in.
-     */
     private PhysicalDatabaseRegistryRequestV3 getPhysicalDatabaseRegistrationRequestSample() {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = new PhysicalDatabaseRegistryRequestV3();
         physicalDatabaseRegistryRequest.setAdapterAddress(TEST_ADAPTER_ADDRESS);
@@ -498,11 +517,21 @@ class PhysicalDatabasesServiceTest {
         return physicalDatabaseRegistryRequest;
     }
 
-    @SuppressWarnings("unchecked")
-    private <T> ConcurrentHashMap<String, T> readCache(String cacheName) throws Exception {
-        final Field cacheField = PhysicalDatabasesService.class.getDeclaredField(cacheName);
-        cacheField.setAccessible(true);
-        return (ConcurrentHashMap<String, T>) cacheField.get(physicalDatabasesService);
+    private void stubNewPhysicalDatabaseRegistration() {
+        when(physicalDatabaseDbaasRepository.findByType(TEST_TYPE)).thenReturn(Stream.empty());
+        when(physicalDatabaseDbaasRepository.save(any(PhysicalDatabase.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    private void stubEmptyMigrationPlan() {
+        when(logicalDbDbaasRepository.getDatabaseDbaasRepository()).thenReturn(databaseDbaasRepository);
+        when(databaseDbaasRepository.findDatabasesForMigration(anyString(), anyString(), anyList(), anyInt()))
+                .thenReturn(Collections.emptyList());
+    }
+
+    private PhysicalDatabase captureSavedPhysicalDatabase() {
+        final ArgumentCaptor<PhysicalDatabase> savedPhysicalDatabase = ArgumentCaptor.forClass(PhysicalDatabase.class);
+        verify(physicalDatabaseDbaasRepository).save(savedPhysicalDatabase.capture());
+        return savedPhysicalDatabase.getValue();
     }
 
     private HttpBasicCredentials getHttpBasicCredentialsSample() {
@@ -526,6 +555,7 @@ class PhysicalDatabasesServiceTest {
             classifier.put("tenantId", UUID.randomUUID().toString());
         }
         db.setClassifier(classifier);
+        db.setResources(new ArrayList<>());
         HashMap<String, Object> connectionProperties = new HashMap<>();
         connectionProperties.put("username", UUID.randomUUID().toString());
         connectionProperties.put("password", UUID.randomUUID().toString());
@@ -660,149 +690,5 @@ class PhysicalDatabasesServiceTest {
         physicalDatabasesService.makeGlobal(oldGlobal);
         verifyNoMoreInteractions(physicalDatabaseDbaasRepository);
         assertTrue(oldGlobal.isGlobal());
-    }
-
-    @Test
-    void testIsDbActual_ActuallyActual() {
-        Mockito.doAnswer(invocation -> {
-                    PhysicalDatabaseRegistryRequestV3 request = invocation.getArgument(0, PhysicalDatabaseRegistryRequestV3.class);
-                    HttpBasicCredentials httpBasicCredentials = request.getHttpBasicCredentials();
-                    httpBasicCredentials.setPassword(httpBasicCredentials.getPassword() + "-encrypted");
-                    return null;
-                })
-                .when(encryption).encryptPassword(any(PhysicalDatabaseRegistryRequestV3.class));
-        when(encryption.decrypt(any())).thenAnswer(invocation -> invocation.getArgument(0, String.class).replace("-encrypted", ""));
-
-        Map<String, String> labels = Map.of("label1", "value1", "label2", "value2");
-        List<String> supportedRoles = List.of("role1", "role2");
-        Map<String, Boolean> features = Map.of("feature1", false, "feature2", true);
-        String roHost = "roHost";
-        String adapterAddress = "addr";
-        HttpBasicCredentials httpBasicCredentials = new HttpBasicCredentials("username", "password");
-        String supportedVersion = "v1";
-        ApiVersion apiVersions = new ApiVersion(List.of(new ApiVersion.Spec("/roolUrl", 1, 2, List.of(1, 2))));
-
-        HttpBasicCredentials encryptedHttpBasicCredentials = new HttpBasicCredentials(httpBasicCredentials.getUsername(), httpBasicCredentials.getPassword());
-        PhysicalDatabaseRegistryRequestV3 tempEncryptedRequest = new PhysicalDatabaseRegistryRequestV3();
-        tempEncryptedRequest.setHttpBasicCredentials(encryptedHttpBasicCredentials);
-        encryption.encryptPassword(tempEncryptedRequest);
-
-        PhysicalDatabaseRegistryRequestV3 request = new PhysicalDatabaseRegistryRequestV3();
-        request.setAdapterAddress(adapterAddress);
-        request.setHttpBasicCredentials(httpBasicCredentials);
-        request.setLabels(labels);
-        request.setMetadata(new Metadata(supportedVersion, apiVersions, supportedRoles, features, roHost));
-        request.setStatus("testing");
-
-        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
-        physicalDatabase.setLabels(labels);
-        physicalDatabase.setRoles(supportedRoles);
-        physicalDatabase.setFeatures(features);
-        physicalDatabase.setRoHost(roHost);
-        physicalDatabase.setAdapter(new ExternalAdapterRegistrationEntry(
-                "123", adapterAddress, encryptedHttpBasicCredentials, supportedVersion, apiVersions));
-
-        assertTrue(physicalDatabasesService.isDbActual(request, physicalDatabase));
-
-        physicalDatabase.setRoles(supportedRoles.reversed());
-        assertTrue(physicalDatabasesService.isDbActual(request, physicalDatabase));
-    }
-
-    @Test
-    void testIsDbActual_ActuallyNotActual() {
-        Map<String, String> labels = Map.of("label1", "value1", "label2", "value2");
-        List<String> supportedRoles = List.of("role1", "role2");
-        Map<String, Boolean> features = Map.of("feature1", false, "feature2", true);
-        String roHost = "roHost";
-        String adapterAddress = "addr";
-        HttpBasicCredentials httpBasicCredentials = new HttpBasicCredentials("username", "password");
-        String supportedVersion = "v1";
-        ApiVersion apiVersions = new ApiVersion(List.of(new ApiVersion.Spec("/roolUrl", 1, 2, List.of(1, 2))));
-
-        PhysicalDatabaseRegistryRequestV3 request = new PhysicalDatabaseRegistryRequestV3();
-        request.setAdapterAddress(adapterAddress);
-        request.setHttpBasicCredentials(httpBasicCredentials);
-        request.setLabels(labels);
-        request.setMetadata(new Metadata(supportedVersion, apiVersions, supportedRoles, features, roHost));
-        request.setStatus("testing");
-
-        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
-        physicalDatabase.setLabels(labels);
-        physicalDatabase.setRoles(supportedRoles);
-        physicalDatabase.setFeatures(features);
-        physicalDatabase.setRoHost(roHost);
-        physicalDatabase.setAdapter(new ExternalAdapterRegistrationEntry(
-                "123", adapterAddress, httpBasicCredentials, supportedVersion, apiVersions));
-
-        physicalDatabase.setLabels(Map.of("label2", "value2"));
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.setLabels(Map.of("label1", "value2", "label2", "value1"));
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.setLabels(labels);
-
-        physicalDatabase.setRoles(List.of("role2", "role1", "role3"));
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.setRoles(supportedRoles);
-
-        physicalDatabase.setFeatures(Map.of("feature1", true, "feature2", false));
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.setFeatures(features);
-
-        physicalDatabase.setRoHost("anotherRoHost");
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.setRoHost(roHost);
-
-        physicalDatabase.getAdapter().setAddress("anotherAddress");
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.getAdapter().setAddress(adapterAddress);
-
-        physicalDatabase.getAdapter().setHttpBasicCredentials(new HttpBasicCredentials("username1", "password2"));
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.getAdapter().setHttpBasicCredentials(httpBasicCredentials);
-
-        physicalDatabase.getAdapter().setSupportedVersion("v2");
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.getAdapter().setSupportedVersion(supportedVersion);
-
-        physicalDatabase.getAdapter().setApiVersions(new ApiVersion(List.of(new ApiVersion.Spec("/anotherRoolUrl", 2, 3, List.of(4, 5)))));
-        assertFalse(physicalDatabasesService.isDbActual(request, physicalDatabase));
-        physicalDatabase.getAdapter().setApiVersions(apiVersions);
-    }
-
-    @Test
-    void checkDiffInSupportedRolesTest() {
-        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
-        PhysicalDatabase physicalDatabase = new PhysicalDatabase();
-        physicalDatabase.setRoles(Collections.singletonList(Role.ADMIN.toString()));
-        boolean isRolesDifferent = physicalDatabasesService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(),
-                physicalDatabase.getRoles());
-        Assertions.assertTrue(isRolesDifferent);
-    }
-
-    @Test
-    void startMigrationProcedureWithOnePortionTest() {
-        int count = 10;
-        List<Database> logicalDatabases = generateListOfLogicalDatabase(count);
-        Instruction instruction = physicalDatabasesService.buildInstructionForAdditionalRoles(logicalDatabases);
-        Assertions.assertEquals(count, instruction.getAdditionalRoles().size());
-    }
-
-    private List<Database> generateListOfLogicalDatabase(int count) {
-        List<Database> logicalDatabases = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            Database logicalDatabase = new Database();
-            logicalDatabase.setId(UUID.randomUUID());
-            Map<String, Object> connectionPropertiesForAdmin = new HashMap<>();
-            connectionPropertiesForAdmin.put("id", i);
-            connectionPropertiesForAdmin.put("role", "admin");
-            Map<String, Object> connectionPropertiesForRo = new HashMap<>();
-            connectionPropertiesForRo.put("id", i);
-            connectionPropertiesForRo.put("role", "ro");
-            logicalDatabase.setConnectionProperties(Arrays.asList(connectionPropertiesForAdmin, connectionPropertiesForRo));
-            logicalDatabase.setResources(Collections.singletonList(new DbResource("someKind", "someName")));
-            logicalDatabase.setName("test-dbname");
-            logicalDatabases.add(logicalDatabase);
-        }
-        return logicalDatabases;
     }
 }

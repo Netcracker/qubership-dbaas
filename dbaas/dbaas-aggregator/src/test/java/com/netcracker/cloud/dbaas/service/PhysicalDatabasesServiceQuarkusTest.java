@@ -18,16 +18,17 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.dbaas.PhysicalDatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.PhysicalDatabaseInstructionRepository;
 import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
+import net.javacrumbs.shedlock.core.LockConfiguration;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.*;
 import java.util.function.BooleanSupplier;
@@ -37,13 +38,13 @@ import java.util.stream.Stream;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.VERSION_2;
-import static jakarta.ws.rs.core.Response.Status.ACCEPTED;
-import static jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
-import static jakarta.ws.rs.core.Response.Status.OK;
+import static jakarta.ws.rs.core.Response.Status.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.verify;
 
 @QuarkusTest
 @QuarkusTestResource(WireMockResource.class)
@@ -67,7 +68,7 @@ class PhysicalDatabasesServiceQuarkusTest {
     DatabaseRegistryDbaasRepository databaseRegistryDbaasRepository;
     @Inject
     DatabaseDbaasRepository databaseDbaasRepository;
-    @Inject
+    @InjectSpy
     PhysicalDatabaseInstructionRepository physicalDatabaseInstructionRepository;
     @Inject
     PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
@@ -77,7 +78,8 @@ class PhysicalDatabasesServiceQuarkusTest {
     @AfterEach
     void cleanUp() {
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType().forEach(databaseRegistryDbaasRepository::delete);
-        QuarkusTransaction.requiringNew().run(physicalDatabaseInstructionRepository::deleteAll);
+        physicalDatabaseDbaasRepository.findAll().forEach(physicalDatabaseDbaasRepository::delete);
+        physicalDatabaseInstructionRepository.deleteAll();
     }
 
     @Test
@@ -111,8 +113,8 @@ class PhysicalDatabasesServiceQuarkusTest {
 
         verify(lockService, times(1)).getKeepAliveLock(any());
         await("migration lock released after the internal migration", MIGRATION_TIMEOUT_MS,
-                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
-        assertFalse(lockService.isLocked(migrationLockName(physicalDatabaseId)),
+                () -> !lockService.isLocked(migrationLockName()));
+        assertFalse(lockService.isLocked(migrationLockName()),
                 "Physical database registration process still locked");
 
         PhysicalDatabaseInstruction leftInstruction = physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
@@ -135,10 +137,7 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertEquals(DatabaseType.POSTGRESQL.toString(), actualPhysicalDatabase.getType());
         assertEquals(expectedRoles, actualPhysicalDatabase.getRoles());
 
-        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(any(), any());
-        verify(physicalDatabasesService, times(1)).deleteInstruction(any());
-        verify(physicalDatabasesService, times(1)).findInstructionByPhyDbId(any());
-        verify(physicalDatabasesService, times(1)).saveInstructionIntoDB(anyString(), eq(requestedPhysicalDatabase));
+        verify(physicalDatabaseInstructionRepository, times(1)).persist(any(PhysicalDatabaseInstruction.class));
     }
 
     @Test
@@ -149,7 +148,7 @@ class PhysicalDatabasesServiceQuarkusTest {
         physicalDatabase.setRoles(physicalDatabase.getRoles().subList(0, 1));
         assertNotNull(physicalDatabaseDbaasRepository.save(physicalDatabase), "Physical database save method didn't work");
 
-        int databaseCount = PhysicalDatabasesService.PORTION_SIZE + 3;
+        int databaseCount = 50 + 3; // must exceed the migration portion size to cover the multi-portion processing
         List<Database> logicalDatabases = Stream.generate(() -> new DatabaseBuilder().physicalDatabaseId(physicalDatabaseId)
                         .adapterId(adapterId)
                         .registry()
@@ -180,7 +179,7 @@ class PhysicalDatabasesServiceQuarkusTest {
 
         verify(lockService, times(1)).getKeepAliveLock(any());
         await("migration lock released after the multi-portion internal migration", MIGRATION_TIMEOUT_MS,
-                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
+                () -> !lockService.isLocked(migrationLockName()));
 
         PhysicalDatabaseInstruction leftInstruction = physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
         assertNull(leftInstruction, () -> "Instruction is not deleted, failure: " + leftInstruction.getFailures());
@@ -193,14 +192,11 @@ class PhysicalDatabasesServiceQuarkusTest {
         }
 
 
-        verify(physicalDatabasesService, atLeast(3)).getDatabasesForMigration(eq(adapterId), anyString(), anyList());
-
         PhysicalDatabase actualPhysicalDatabase = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
         assertNotNull(actualPhysicalDatabase, "Physical database doesn't exist");
         assertEquals(expectedRoles, actualPhysicalDatabase.getRoles());
 
-        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(any(), any());
-        verify(physicalDatabasesService, times(1)).deleteInstruction(any());
+        verify(physicalDatabaseInstructionRepository, times(1)).persist(any(PhysicalDatabaseInstruction.class));
     }
 
     @Test
@@ -251,17 +247,6 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertEquals(expectedRoles(requestedPhysicalDatabase), actualPhysicalDatabase.getRoles(),
                 "The physical database must pick up the requested roles without a migration");
 
-        Database pendingDb = new DatabaseBuilder()
-                .physicalDatabaseId(physicalDatabaseId)
-                .adapterId(adapterId)
-                .registry()
-                .build();
-        databaseRegistryDbaasRepository.saveAnyTypeLogDb(pendingDb.getDatabaseRegistry().getFirst());
-
-        List<Database> planned = physicalDatabasesService.getDatabasesForMigration(
-                adapterId, DatabaseType.POSTGRESQL.toString(), requiredRoles);
-        assertEquals(List.of(pendingDb.getId()), planned.stream().map(Database::getId).toList(),
-                "The migration plan must contain the pending database and skip the aligned and marked-for-drop ones");
     }
 
     @Test
@@ -344,10 +329,8 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertTrue(physicalDatabaseInstructionRepository.findByIdOptional(instruction.getId()).isEmpty(),
                 "Instruction with the reported id must be deleted");
 
-        verify(physicalDatabasesService, times(1)).saveInstructionIntoDB(physicalDatabaseId, requestedPhysicalDatabase);
-        verify(physicalDatabasesService, times(1)).findInstructionByPhyDbId(physicalDatabaseId);
-        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(physicalDatabaseId, requestedPhysicalDatabase);
-        verify(physicalDatabasesService, times(1)).deleteInstruction(instruction.getId());
+        verify(physicalDatabaseInstructionRepository, times(1)).persist(any(PhysicalDatabaseInstruction.class));
+        verify(physicalDatabaseInstructionRepository, times(1)).deleteById(instruction.getId());
         verify(lockService, never()).getKeepAliveLock(any());
     }
 
@@ -453,10 +436,8 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertTrue(physicalDatabaseInstructionRepository.findByIdOptional(reTriggeredInstruction.getId()).isEmpty(),
                 "The re-triggered instruction must be deleted after the migration completes");
 
-        verify(physicalDatabasesService, times(2)).saveInstructionIntoDB(eq(physicalDatabaseId), eq(requestedPhysicalDatabase));
-        verify(physicalDatabasesService, times(2)).findInstructionByPhyDbId(physicalDatabaseId);
-        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(physicalDatabaseId, requestedPhysicalDatabase);
-        verify(physicalDatabasesService, times(2)).deleteInstruction(any(UUID.class));
+        verify(physicalDatabaseInstructionRepository, times(2)).persist(any(PhysicalDatabaseInstruction.class));
+        verify(physicalDatabaseInstructionRepository, times(2)).deleteById(any(UUID.class));
         verify(lockService, never()).getKeepAliveLock(any());
     }
 
@@ -477,9 +458,9 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertEquals(requestedPhysicalDatabase.getMetadata().getFeatures(), actualPhysicalDatabase.getFeatures());
         assertEquals(expectedRoles(requestedPhysicalDatabase), actualPhysicalDatabase.getRoles());
 
-        verify(lockService, times(0)).getKeepAliveLock(any());
-        verify(physicalDatabasesService, times(0)).getDatabasesForMigration(anyString(), anyString(), any());
-        verify(physicalDatabasesService, times(1)).writeChanges(anyString(), any(), any());
+        verify(lockService, never()).getKeepAliveLock(any());
+        assertNull(physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId),
+                "No instruction must be saved when the migration is not required");
     }
 
     @Test
@@ -487,8 +468,11 @@ class PhysicalDatabasesServiceQuarkusTest {
         String physicalDatabaseId = "phDbId-" + Math.random();
         PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase = registrationRequest();
         requestedPhysicalDatabase.setAdapterAddress(wiremockAddress);
-        PhysicalDatabase physicalDatabase = physicalDatabasesService.physicalDatabaseRegistration(
-                physicalDatabaseId, DatabaseType.POSTGRESQL.toString(), requestedPhysicalDatabase);
+        Response registrationResponse = physicalDatabasesService.registerPhysicalDatabase(
+                requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
+        assertEquals(CREATED.getStatusCode(), registrationResponse.getStatus(),
+                "A brand new physical database must be registered");
+        PhysicalDatabase physicalDatabase = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
         physicalDatabase.setRoles(new ArrayList<>(List.of(Role.ADMIN.toString())));
         assertNotNull(physicalDatabaseDbaasRepository.save(physicalDatabase), "Physical database save method didn't work");
 
@@ -520,7 +504,7 @@ class PhysicalDatabasesServiceQuarkusTest {
                     .anyMatch(failure -> secondDb.getId().toString().equals(failure.getId()));
         });
         await("migration lock released after the failed pass", MIGRATION_TIMEOUT_MS,
-                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
+                () -> !lockService.isLocked(migrationLockName()));
 
         PhysicalDatabaseInstruction failedInstruction =
                 physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
@@ -535,14 +519,6 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertEquals(List.of(Role.ADMIN.toString()), parkedPhysicalDatabase.getRoles(),
                 "Physical database must keep the old roles while the migration is failed");
 
-        List<Database> databasesForMigration = physicalDatabasesService.getDatabasesForMigration(
-                physicalDatabase.getAdapter().getAdapterId(), DatabaseType.POSTGRESQL.toString(),
-                expectedRoles(requestedPhysicalDatabase));
-        assertEquals(2, databasesForMigration.size(),
-                "The failed pass must leave the second database and one more without the required roles");
-        assertTrue(databasesForMigration.stream().anyMatch(db -> db.getId().equals(secondDb.getId())),
-                "The second logical database must still be waiting for the migration");
-
         Response failedReTrigger = physicalDatabasesService.registerPhysicalDatabase(
                 requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
         assertEquals(INTERNAL_SERVER_ERROR.getStatusCode(), failedReTrigger.getStatus(),
@@ -552,7 +528,7 @@ class PhysicalDatabasesServiceQuarkusTest {
                 "The bad response must carry the recorded failure of the second logical database");
 
         await("migration lock released after the failed re-trigger", MIGRATION_TIMEOUT_MS,
-                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
+                () -> !lockService.isLocked(migrationLockName()));
         PhysicalDatabaseInstruction reTriggeredInstruction =
                 physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
         assertNotNull(reTriggeredInstruction, "The instruction must survive the failed re-trigger");
@@ -582,7 +558,7 @@ class PhysicalDatabasesServiceQuarkusTest {
         await("instruction deleted after the successful re-triggered migration", MIGRATION_TIMEOUT_MS,
                 () -> physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId) == null);
         await("migration lock released after the successful re-triggered migration", MIGRATION_TIMEOUT_MS,
-                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
+                () -> !lockService.isLocked(migrationLockName()));
 
         for (Database db : logicalDatabases) {
             Database actualDatabase = databaseDbaasRepository.findById(db.getId()).orElseThrow();
@@ -614,10 +590,8 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertEquals(OK.getStatusCode(), okReTrigger.getStatus(),
                 "After the migration completes the re-trigger must return 200 OK");
 
-        verify(physicalDatabasesService, times(1)).saveInstructionIntoDB(eq(physicalDatabaseId), eq(requestedPhysicalDatabase));
-        verify(physicalDatabasesService, times(3)).startAsyncInternalMigration(any(), any());
-        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(eq(physicalDatabaseId), any());
-        verify(physicalDatabasesService, times(1)).deleteInstruction(any(UUID.class));
+        verify(physicalDatabaseInstructionRepository, times(1)).persist(any(PhysicalDatabaseInstruction.class));
+        verify(physicalDatabaseInstructionRepository, times(1)).deleteById(any(UUID.class));
     }
 
     @Test
@@ -652,8 +626,8 @@ class PhysicalDatabasesServiceQuarkusTest {
         PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase = registrationRequest();
         requestedPhysicalDatabase.getMetadata().getFeatures().putIfAbsent("TEST_DATA", true);
         doThrow(new RuntimeException(COMPLETION_FAILURE_MESSAGE))
-                .when(physicalDatabasesService)
-                .deleteInstruction(any(UUID.class));
+                .when(physicalDatabaseInstructionRepository)
+                .deleteById(any(UUID.class));
 
         Response response = physicalDatabasesService.registerPhysicalDatabase(
                 requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
@@ -668,7 +642,7 @@ class PhysicalDatabasesServiceQuarkusTest {
                             .anyMatch(failure -> failure.getMessage().contains(COMPLETION_FAILURE_MESSAGE));
                 });
         await("migration lock released after the failed completion", MIGRATION_TIMEOUT_MS,
-                () -> !lockService.isLocked(migrationLockName(physicalDatabaseId)));
+                () -> !lockService.isLocked(migrationLockName()));
 
         PhysicalDatabase parkedPhysicalDatabase =
                 physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
@@ -690,8 +664,7 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertEquals(expectedRoles(requestedPhysicalDatabase), rolesOf(actualDatabase.getConnectionProperties()),
                 "The migrated logical database must keep its roles when the completion transaction rolls back");
 
-        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(eq(physicalDatabaseId), any());
-        verify(physicalDatabasesService, times(1)).deleteInstruction(any(UUID.class));
+        verify(physicalDatabaseInstructionRepository, times(1)).deleteById(any(UUID.class));
     }
 
     @Test
@@ -719,17 +692,11 @@ class PhysicalDatabasesServiceQuarkusTest {
         databaseRegistryDbaasRepository.saveAnyTypeLogDb(alignedDatabase.getDatabaseRegistry().getFirst());
 
         PhysicalDatabaseInstruction instruction =
-                physicalDatabasesService.saveInstructionIntoDB(physicalDatabaseId, requestedPhysicalDatabase);
+                saveInstruction(physicalDatabaseId, requestedPhysicalDatabase);
 
         doThrow(new RuntimeException(COMPLETION_FAILURE_MESSAGE))
-                .when(physicalDatabasesService)
-                .deleteInstruction(any(UUID.class));
-
-        List<Database> planned = physicalDatabasesService.getDatabasesForMigration(
-                adapterId, physicalDatabase.getType(),
-                requestedPhysicalDatabase.getMetadata().getSupportedRoles());
-        assertTrue(planned.isEmpty(),
-                "Precondition violated: the aligned database must be excluded from the migration plan, planned=" + planned.size());
+                .when(physicalDatabaseInstructionRepository)
+                .deleteById(any(UUID.class));
 
         Exception exception = assertThrows(Exception.class,
                 () -> physicalDatabasesService.handleInstruction(instruction.getId(), new InstructionRequestV3()));
@@ -750,57 +717,87 @@ class PhysicalDatabasesServiceQuarkusTest {
         assertTrue(survivingInstruction.getFailures().isEmpty(),
                 "The adapter-driven path reports the failure via the response, the instruction must stay clean");
 
-        verify(physicalDatabasesService, times(1)).savePhysicalDatabaseWithRoles(eq(physicalDatabaseId), any());
-        verify(physicalDatabasesService, times(1)).deleteInstruction(any(UUID.class));
+        verify(physicalDatabaseInstructionRepository, times(1)).deleteById(any(UUID.class));
     }
 
     @Test
-    void testUpdateConnectionAndInstruction_resetsFailuresOfMigratedDatabasesOnly() {
-        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        String physicalDatabaseId = physicalDatabase.getPhysicalDatabaseIdentifier();
+    void testRegisterPhysicalDatabase_failedPortionResetsFailuresOfMigratedDatabasesOnly() {
+        String physicalDatabaseId = "phDbId-" + Math.random();
+        PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase = registrationRequest();
+        requestedPhysicalDatabase.setAdapterAddress(wiremockAddress);
+        Response registrationResponse = physicalDatabasesService.registerPhysicalDatabase(
+                requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
+        assertEquals(CREATED.getStatusCode(), registrationResponse.getStatus(),
+                "A brand new physical database must be registered");
+        PhysicalDatabase physicalDatabase = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
         String adapterId = physicalDatabase.getAdapter().getAdapterId();
+        physicalDatabase.setRoles(new ArrayList<>(List.of(Role.ADMIN.toString())));
+        assertNotNull(physicalDatabaseDbaasRepository.save(physicalDatabase), "Physical database save method didn't work");
 
-        List<Database> logicalDatabases = Stream.generate(() -> new DatabaseBuilder().physicalDatabaseId(physicalDatabaseId)
-                        .adapterId(adapterId)
-                        .registry()
-                        .build())
-                .limit(3)
-                .toList();
+        // One database is already aligned, the other two still miss the required roles.
+        List<String> requiredRoles = requestedPhysicalDatabase.getMetadata().getSupportedRoles();
+        Database alignedDb = new DatabaseBuilder()
+                .physicalDatabaseId(physicalDatabaseId)
+                .adapterId(adapterId)
+                .registry()
+                .connectionProperties(requiredRoles.stream()
+                        .<Map<String, Object>>map(role -> new HashMap<>(Map.of(ROLE, role, "username", "user-" + role, "password", "password")))
+                        .toList())
+                .build();
+        Database firstDb = new DatabaseBuilder().physicalDatabaseId(physicalDatabaseId).adapterId(adapterId).registry().build();
+        Database failingDb = new DatabaseBuilder().physicalDatabaseId(physicalDatabaseId).adapterId(adapterId).registry().build();
+        List<Database> logicalDatabases = List.of(alignedDb, firstDb, failingDb);
         logicalDatabases.forEach(db -> databaseRegistryDbaasRepository.saveAnyTypeLogDb(db.getDatabaseRegistry().getFirst()));
-        Database firstDb = logicalDatabases.getFirst();
-        Database secondDb = logicalDatabases.get(1);
-        Database thirdDb = logicalDatabases.getLast();
 
-        PhysicalDatabaseInstruction instruction = physicalDatabasesService.saveInstructionIntoDB(
-                physicalDatabaseId, registrationRequest());
+        // A previous pass left a failure for the first pending database, plus a thread-level failure with a blank id.
+        PhysicalDatabaseInstruction instruction = saveInstruction(physicalDatabaseId, registrationRequest());
         instruction.setFailures(new ArrayList<>(List.of(
                 new FailureRegistrationV3(firstDb.getId().toString(), "first pass failure"),
                 new FailureRegistrationV3("", "thread-level failure"))));
         physicalDatabaseInstructionRepository.save(instruction);
 
-        InstructionRequestV3 firstPortionReport = new InstructionRequestV3();
-        firstPortionReport.setSuccess(List.of(migratedRoles(firstDb, "readWrite"), migratedRoles(secondDb, "readWrite")));
-        firstPortionReport.setFailure(new FailureRegistrationV3(thirdDb.getId().toString(), "ensure user failed"));
-        physicalDatabasesService.updateConnectionAndInstruction(instruction, firstPortionReport);
+        WireMockResource.getServer().resetAll();
+        stubSuccessfulEnsureUsers();
+        stubFailedEnsureUsers(failingDb.getName());
+        when(encryption.decrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        List<FailureRegistrationV3> expectedFailures =
-                List.of(new FailureRegistrationV3(thirdDb.getId().toString(), "ensure user failed"));
-        assertEquals(expectedFailures, instruction.getFailures(),
-                "The failures of the migrated databases and the blank-id thread failure must be dropped, the new failure kept");
-        assertEquals(expectedFailures,
-                physicalDatabaseInstructionRepository.findByIdOptional(instruction.getId()).orElseThrow().getFailures(),
-                "The reset result plus the new failure must be persisted");
-        // Role names are normalized to lowercase when the database record is saved.
-        assertEquals(List.of(Role.ADMIN.toString(), "readWrite".toLowerCase()),
-                rolesOf(databaseDbaasRepository.findById(firstDb.getId()).orElseThrow().getConnectionProperties()),
-                "The connection properties of the migrated database must be updated");
+        Response response = physicalDatabasesService.registerPhysicalDatabase(
+                requestedPhysicalDatabase, DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
+        assertEquals(INTERNAL_SERVER_ERROR.getStatusCode(), response.getStatus(),
+                "The re-trigger must answer the failures recorded on the surviving instruction");
+        List<FailureRegistrationV3> triggeredFailures = (List<FailureRegistrationV3>) response.getEntity();
+        assertEquals(List.of(firstDb.getId().toString(), ""),
+                triggeredFailures.stream().map(FailureRegistrationV3::getId).toList(),
+                "The bad response must carry the failures recorded before the re-trigger");
 
-        InstructionRequestV3 secondPortionReport = new InstructionRequestV3();
-        secondPortionReport.setSuccess(List.of(migratedRoles(thirdDb, "readWrite")));
-        physicalDatabasesService.updateConnectionAndInstruction(instruction, secondPortionReport);
+        await("migration lock released after the failed pass", MIGRATION_TIMEOUT_MS,
+                () -> !lockService.isLocked(migrationLockName()));
 
-        assertTrue(instruction.getFailures().isEmpty(),
-                "The failure of the database that succeeded in the current portion must be dropped");
+        PhysicalDatabaseInstruction actualInstruction =
+                physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseId);
+        assertNotNull(actualInstruction, "The instruction must survive the failed pass");
+        List<String> actualFailureIds = actualInstruction.getFailures().stream()
+                .map(FailureRegistrationV3::getId)
+                .toList();
+        assertTrue(actualFailureIds.contains(failingDb.getId().toString()),
+                "The failure of the database that failed in the current portion must be kept");
+        assertFalse(actualFailureIds.contains(""),
+                "The thread-level failure with a blank id must be dropped");
+
+        List<UUID> alignedIds = logicalDatabases.stream()
+                .filter(db -> expectedRoles(requestedPhysicalDatabase)
+                        .equals(rolesOf(databaseDbaasRepository.findById(db.getId()).orElseThrow().getConnectionProperties())))
+                .map(Database::getId)
+                .toList();
+        assertTrue(alignedIds.contains(alignedDb.getId()), "The pre-aligned database must stay aligned");
+        assertFalse(alignedIds.contains(failingDb.getId()), "The failed database must stay not aligned");
+        if (alignedIds.contains(firstDb.getId())) {
+            assertFalse(actualFailureIds.contains(firstDb.getId().toString()),
+                    "The failure of the database that was migrated in the current portion must be dropped");
+        } else {
+            assertTrue(actualFailureIds.contains(firstDb.getId().toString()),
+                    "The failure of the database that was not reached in the current portion must be kept");
+        }
     }
 
     private void stubSuccessfulEnsureUsers() {
@@ -841,8 +838,10 @@ class PhysicalDatabasesServiceQuarkusTest {
                                         """)));
     }
 
-    private String migrationLockName(String physicalDatabaseId) {
-        return PhysicalDatabasesService.getLockName(physicalDatabaseId, DatabaseType.POSTGRESQL.toString());
+    private String migrationLockName() {
+        ArgumentCaptor<LockConfiguration> configurationCaptor = ArgumentCaptor.forClass(LockConfiguration.class);
+        verify(lockService, atLeastOnce()).getKeepAliveLock(configurationCaptor.capture());
+        return configurationCaptor.getValue().getName();
     }
 
     private void await(String description, long timeoutMs, BooleanSupplier condition) {
@@ -915,11 +914,17 @@ class PhysicalDatabasesServiceQuarkusTest {
                 "Roles of logical database " + database.getName() + " must stay unchanged");
     }
 
-    private SuccessRegistrationV3 migratedRoles(Database database, String role) {
-        String username = database.getName() + "-" + role;
-        Map<String, Object> connectionProperties =
-                new HashMap<>(Map.of(ROLE, role, "username", username, "password", username + "password"));
-        return new SuccessRegistrationV3(database.getId(), List.of(connectionProperties), List.of(new DbResource("user", username)));
+    private PhysicalDatabaseInstruction saveInstruction(String physicalDatabaseId, PhysicalDatabaseRegistryRequestV3 request) {
+        request.getMetadata().getSupportedRoles().replaceAll(String::toLowerCase);
+        PhysicalDatabaseInstruction instruction = new PhysicalDatabaseInstruction();
+        instruction.setId(UUID.randomUUID());
+        instruction.setPhysicalDatabaseId(physicalDatabaseId);
+        instruction.setContext("[]"); // resolves as blank list
+        instruction.setPhysicalDbRegRequest(request);
+        instruction.setInstructionType(InstructionType.MULTIUSERS_MIGRATION);
+        instruction.setTimeCreation(new Date());
+        physicalDatabaseInstructionRepository.save(instruction);
+        return instruction;
     }
 
     private List<String> userNames(String dbName, PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase) {
@@ -952,6 +957,12 @@ class PhysicalDatabasesServiceQuarkusTest {
 
     private PhysicalDatabase getPhysicalDatabaseSample() {
         String physicalDatabaseId = "phDbId-" + Math.random();
-        return physicalDatabasesService.physicalDatabaseRegistration(physicalDatabaseId, DatabaseType.POSTGRESQL.toString(), registrationRequest());
+        Response response = physicalDatabasesService.registerPhysicalDatabase(
+                registrationRequest(), DatabaseType.POSTGRESQL.toString(), physicalDatabaseId, true);
+        assertEquals(CREATED.getStatusCode(), response.getStatus(),
+                "A brand new physical database must be registered");
+        PhysicalDatabase physicalDatabase = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
+        assertNotNull(physicalDatabase, "The registered physical database must be stored");
+        return physicalDatabase;
     }
 }

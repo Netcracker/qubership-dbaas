@@ -45,8 +45,8 @@ public class PhysicalDatabasesService {
     private final static int RETRY_ATTEMPT = 2;
     private final static Duration RETRY_DELAY = Duration.ofSeconds(3);
 
-    protected final static String LOCK_NAME_PATTERN = "roles-migration-%s-%s";
-    protected final static int PORTION_SIZE = 50;
+    private final static String LOCK_NAME_PATTERN = "roles-migration-%s-%s";
+    private final static int PORTION_SIZE = 50;
 
     @Inject
     PhysicalDatabaseDbaasRepository physicalDatabaseDbaasRepository;
@@ -106,9 +106,9 @@ public class PhysicalDatabasesService {
     }
 
 
-    public Optional<PhysicalDatabase> foundPhysicalDatabase(String physicalDatabaseId,
-                                                            String type,
-                                                            PhysicalDatabaseRegistryRequestV3 request) throws
+    private Optional<PhysicalDatabase> foundPhysicalDatabase(String physicalDatabaseId,
+                                                             String type,
+                                                             PhysicalDatabaseRegistryRequestV3 request) throws
             AdapterUnavailableException,
             PhysicalDatabaseRegistrationConflictException {
         log.debug("Search physical database with physicalDatabaseId={} and type={}", physicalDatabaseId, type);
@@ -129,9 +129,9 @@ public class PhysicalDatabasesService {
         return optionalPhysicalDatabase;
     }
 
-    public PhysicalDatabase physicalDatabaseRegistration(String physicalDatabaseId,
-                                                         String type,
-                                                         PhysicalDatabaseRegistryRequestV3 request) {
+    private void physicalDatabaseRegistration(String physicalDatabaseId,
+                                              String type,
+                                              PhysicalDatabaseRegistryRequestV3 request) {
         log.info("Registration of new database with physicalDatabaseId={} and type={}", physicalDatabaseId, type);
         request.getMetadata().getSupportedRoles().replaceAll(String::toLowerCase);
         encryption.encryptPassword(request);
@@ -154,12 +154,11 @@ public class PhysicalDatabasesService {
                         .build();
         PhysicalDatabase save = physicalDatabaseDbaasRepository.save(databaseRegistration);
         log.info("Database with physicalDatabaseId={} and type={} was created", physicalDatabaseId, type);
-        return save;
     }
 
-    public void writeChanges(String physicalDatabaseId,
-                             PhysicalDatabaseRegistryRequestV3 updateReq,
-                             PhysicalDatabase existing) {
+    private void writeChanges(String physicalDatabaseId,
+                              PhysicalDatabaseRegistryRequestV3 updateReq,
+                              PhysicalDatabase existing) {
         log.info(MESSAGE_UPDATING_EXISTING_DATABASE,
                 existing.getPhysicalDatabaseIdentifier(), existing.getAdapter().getAddress());
         existing.setLabels(updateReq.getLabels());
@@ -186,7 +185,7 @@ public class PhysicalDatabasesService {
         return logicalDbDbaasRepository.getDatabaseDbaasRepository().findDatabasesByAdapterIdAndType(adapterId, type, false);
     }
 
-    public List<Database> getDatabasesForMigration(String adapterId, String type, List<String> requiredRoles) {
+    private List<Database> getDatabasesForMigration(String adapterId, String type, List<String> requiredRoles) {
         return logicalDbDbaasRepository.getDatabaseDbaasRepository().findDatabasesForMigration(adapterId, type, requiredRoles, PORTION_SIZE);
     }
 
@@ -194,7 +193,7 @@ public class PhysicalDatabasesService {
         return physicalDatabaseDbaasRepository.findByAdapterHost(adapterHost);
     }
 
-    public void savePhysicalDatabaseWithRoles(String physicalDatabaseId, PhysicalDatabaseRegistryRequestV3 updateReq) {
+    private void savePhysicalDatabaseWithRoles(String physicalDatabaseId, PhysicalDatabaseRegistryRequestV3 updateReq) {
         PhysicalDatabase existing = physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(physicalDatabaseId);
         writeChanges(physicalDatabaseId, updateReq, existing);
     }
@@ -381,7 +380,7 @@ public class PhysicalDatabasesService {
         physicalDatabaseDbaasRepository.save(newGlobal);
     }
 
-    public boolean isDbActual(PhysicalDatabaseRegistryRequestV3 registerRequest, PhysicalDatabase existingDatabase) {
+    private boolean isDbActual(PhysicalDatabaseRegistryRequestV3 registerRequest, PhysicalDatabase existingDatabase) {
         ExternalAdapterRegistrationEntry adapter = existingDatabase.getAdapter();
         Metadata metadata = registerRequest.getMetadata();
         return Objects.equals(registerRequest.getAdapterAddress(), adapter.getAddress())
@@ -510,7 +509,7 @@ public class PhysicalDatabasesService {
 
         if (physicalDatabaseInstruction == null) {
             log.debug("There is no instruction for physicalDatabaseId={}, start creation", physicalDatabaseId);
-            physicalDatabaseInstruction = saveInstructionIntoDB(physicalDatabaseId, requestedPhysicalDatabase);
+            physicalDatabaseInstruction = createInstruction(physicalDatabaseId, requestedPhysicalDatabase);
         }
 
         if (internalMigration) {
@@ -550,7 +549,7 @@ public class PhysicalDatabasesService {
         return response;
     }
 
-    public void startAsyncInternalMigration(
+    private void startAsyncInternalMigration(
             PhysicalDatabaseInstruction instruction,
             SimpleLock simpleLock
     ) {
@@ -600,22 +599,20 @@ public class PhysicalDatabasesService {
             updateConnectionAndInstruction(instruction, instructionRequest);
 
             if (instructionRequest.getFailure() != null) {
-                break;
+                return;
             }
 
             logicalDatabases = getDatabasesForMigration(adapter.identifier(), adapter.type(), requiredRoles);
-
-            if (logicalDatabases.isEmpty()) {
-                QuarkusTransaction.requiringNew().run(() ->
-                        completeMigrationProcedure(
-                                instruction.getPhysicalDatabaseId(),
-                                instruction.getId(),
-                                instruction.getPhysicalDbRegRequest(),
-                                adapter.identifier()
-                        )
-                );
-            }
         }
+
+        QuarkusTransaction.requiringNew().run(() ->
+                completeMigrationProcedure(
+                        instruction.getPhysicalDatabaseId(),
+                        instruction.getId(),
+                        instruction.getPhysicalDbRegRequest(),
+                        adapter.identifier()
+                )
+        );
     }
 
     private InstructionRequestV3 migrateLogicalDatabases(
@@ -683,7 +680,7 @@ public class PhysicalDatabasesService {
         return requiredRoles.stream().filter(role -> !existRoles.contains(role)).toList();
     }
 
-    public void updateConnectionAndInstruction(PhysicalDatabaseInstruction instruction, InstructionRequestV3 instructionRequestV3) {
+    private void updateConnectionAndInstruction(PhysicalDatabaseInstruction instruction, InstructionRequestV3 instructionRequestV3) {
         List<SuccessRegistrationV3> successRegistrationV3s = instructionRequestV3.getSuccess();
         saveConnectionPropertiesAfterRolesRegistration(successRegistrationV3s);
 
@@ -742,7 +739,7 @@ public class PhysicalDatabasesService {
 
     private boolean isMigrationRequired(PhysicalDatabase physicalDatabase, PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase) {
         List<String> requiredRoles = requestedPhysicalDatabase.getMetadata().getSupportedRoles();
-        Boolean rolesDifferent = isRolesDifferent(requiredRoles, physicalDatabase.getRoles());
+        boolean rolesDifferent = isRolesDifferent(requiredRoles, physicalDatabase.getRoles());
         boolean multiUsersEnabled = requestedPhysicalDatabase.getMetadata().getFeatures().get("multiusers");
 
         if (!(rolesDifferent && multiUsersEnabled)) {
@@ -763,23 +760,19 @@ public class PhysicalDatabasesService {
         return lockService.isLocked(name);
     }
 
-    public Boolean isRolesDifferent(List<String> receivedRoles, List<String> currentSupportedRoles) {
+    private boolean isRolesDifferent(List<String> receivedRoles, List<String> currentSupportedRoles) {
         receivedRoles.replaceAll(String::toLowerCase);
         return !CollectionUtils.isEqualCollection(receivedRoles, currentSupportedRoles);
     }
 
-    public Instruction buildInstructionForAdditionalRoles(UUID instructionId, String adapterId, String type, List<String> requiredRoles) {
+    private Instruction buildInstructionForAdditionalRoles(UUID instructionId, String adapterId, String type, List<String> requiredRoles) {
         List<Database> databasesForMigration = getDatabasesForMigration(adapterId,
                 type,
                 requiredRoles);
         return buildInstructionForAdditionalRoles(instructionId, databasesForMigration);
     }
 
-    public Instruction buildInstructionForAdditionalRoles(List<Database> logicalDatabases) {
-        return buildInstructionForAdditionalRoles(UUID.randomUUID(), logicalDatabases);
-    }
-
-    public Instruction buildInstructionForAdditionalRoles(UUID instructionId, List<Database> logicalDatabases) {
+    private Instruction buildInstructionForAdditionalRoles(UUID instructionId, List<Database> logicalDatabases) {
         Instruction instruction = new Instruction();
         instruction.setId(instructionId);
         List<AdditionalRoles> additionalRolesList = new ArrayList<>();
@@ -795,7 +788,7 @@ public class PhysicalDatabasesService {
         return instruction;
     }
 
-    public void completeMigrationProcedure(
+    private void completeMigrationProcedure(
             String physicalDatabaseId,
             UUID instructionId,
             PhysicalDatabaseRegistryRequestV3 requestV3,
@@ -809,7 +802,7 @@ public class PhysicalDatabasesService {
         resetCacheForPhyDb(physicalDatabaseId);
     }
 
-    protected PhysicalDatabaseInstruction saveInstructionIntoDB(String physicalDatabaseId, PhysicalDatabaseRegistryRequestV3 parameters) {
+    private PhysicalDatabaseInstruction createInstruction(String physicalDatabaseId, PhysicalDatabaseRegistryRequestV3 parameters) {
         PhysicalDatabaseInstruction physicalDatabaseInstruction = new PhysicalDatabaseInstruction();
         physicalDatabaseInstruction.setId(UUID.randomUUID());
         physicalDatabaseInstruction.setPhysicalDatabaseId(physicalDatabaseId);
@@ -825,7 +818,7 @@ public class PhysicalDatabasesService {
         return physicalDatabaseInstruction;
     }
 
-    public void deleteInstruction(UUID instructionId) {
+    private void deleteInstruction(UUID instructionId) {
         Optional<PhysicalDatabaseInstruction> physicalDatabaseInstruction = physicalDatabaseInstructionRepository.findByIdOptional(instructionId);
         if (physicalDatabaseInstruction.isPresent()) {
             log.info("Deleting instruction data from physicalDatabaseInstruction = {}", instructionId);
@@ -835,11 +828,11 @@ public class PhysicalDatabasesService {
         }
     }
 
-    public PhysicalDatabaseInstruction findInstructionByPhyDbId(String physicalDatabaseIdentifier) {
+    private PhysicalDatabaseInstruction findInstructionByPhyDbId(String physicalDatabaseIdentifier) {
         return physicalDatabaseInstructionRepository.findByPhysicalDatabaseId(physicalDatabaseIdentifier);
     }
 
-    public void saveConnectionPropertiesAfterRolesRegistration(List<SuccessRegistrationV3> successRegistrationList) {
+    private void saveConnectionPropertiesAfterRolesRegistration(List<SuccessRegistrationV3> successRegistrationList) {
         for (SuccessRegistrationV3 successRegistration : successRegistrationList) {
             dBaaService.updateDatabaseConnectionPropertiesAndResourcesById(successRegistration.getId(),
                     successRegistration.getConnectionProperties(), successRegistration.getResources());
@@ -847,7 +840,7 @@ public class PhysicalDatabasesService {
         log.info("All processed logical databases successfully saved");
     }
 
-    protected static String getLockName(String physicalDatabaseId, String type) {
+    private static String getLockName(String physicalDatabaseId, String type) {
         return String.format(LOCK_NAME_PATTERN, physicalDatabaseId, type);
     }
 }

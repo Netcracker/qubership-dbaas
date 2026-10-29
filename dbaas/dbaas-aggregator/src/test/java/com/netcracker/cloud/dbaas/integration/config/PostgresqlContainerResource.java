@@ -2,7 +2,6 @@ package com.netcracker.cloud.dbaas.integration.config;
 
 import com.netcracker.cloud.dbaas.JdbcUtils;
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;

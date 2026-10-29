@@ -174,8 +174,6 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
                 .body("code", is("CORE-DBAAS-2000"));
-        verify(physicalDatabasesService, never()).foundPhysicalDatabase(any(), any(), any());
-        verify(physicalDatabasesService, never()).physicalDatabaseRegistration(any(), any(), any());
     }
 
     @Test
@@ -211,9 +209,6 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(NOT_FOUND.getStatusCode())
                 .body(is(String.format("Instruction with Id = %s not found", INSTRUCTION_ID)));
-
-        verify(physicalDatabasesService, never()).saveConnectionPropertiesAfterRolesRegistration(any());
-        verify(physicalDatabasesService, never()).deleteInstruction(any());
     }
 
     @Test
