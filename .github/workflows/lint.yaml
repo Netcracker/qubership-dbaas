@@ -30,4 +30,3 @@ jobs:
         run: make lint
         env:
           RUN_LOCAL: "true"
-          SKILLCHECK_PATTERNS: "dbaas-operator/agent-packages/*/.apm/skills"
