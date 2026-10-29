@@ -61,7 +61,6 @@ public class CryptoServiceStub implements CryptoService {
         keystore.put(keyAlias, aliasedKey);
     }
 
-
     @Nonnull
     @Override
     public String encrypt(@Nonnull String data) {
