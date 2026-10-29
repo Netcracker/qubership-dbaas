@@ -60,7 +60,7 @@ class SecurityTest {
     DbaasAdapter testDbaasAdapter;
     @InjectMock
     @MockitoConfig(convertScopes = true)
-    CryptoServicePasswordEncryption cryptoServicePasswordEncryption;
+    PasswordCipher passwordCipher;
     @InjectMock
     PhysicalDatabasesService physicalDatabasesService;
     @InjectMock

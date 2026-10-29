@@ -1,43 +1,45 @@
 package com.netcracker.cloud.dbaas.service;
 
-import com.netcracker.cloud.dbaas.dto.Secret;
+import com.netcracker.cloud.dbaas.dto.HttpBasicCredentials;
+import com.netcracker.cloud.dbaas.dto.role.Role;
+import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseUser;
-import com.netcracker.cloud.dbaas.dto.role.Role;
-
+import com.netcracker.cloud.dbaas.exceptions.DecryptException;
+import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 public class PasswordEncryptionTest {
 
-    EncryptionServiceProvider encryptionServiceProvider = mock(EncryptionServiceProvider.class);
-    DataEncryption dataEncryption = mock(DataEncryption.class);
+    static final String PLAIN_VALUE = "this is plain value";
+    static final String ENCRYPTED_VALUE = "this is encrypted value";
+    private static final String MISSING_KEY_FAILURE = "No encryption key is configured for alias DEFAULT_KEY";
+
+    PasswordCipher passwordCipher = mock(PasswordCipher.class);
+    PasswordEncryption passwordEncryption = new PasswordEncryption(passwordCipher);
 
     @Test
     void testEncrypt() {
         Database database = new Database();
         List<Map<String, Object>> connectionList = Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("password", "this is plain value");
+            put("password", PLAIN_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }});
         database.setConnectionProperties(connectionList);
         database.setDatabaseRegistry(Arrays.asList(new DatabaseRegistry()));
-        PasswordEncryption passwordEncryption = new PasswordEncryption(encryptionServiceProvider);
-        when(encryptionServiceProvider.getEncryptionService()).thenReturn(dataEncryption);
-        when(dataEncryption.encrypt(any(Secret.class))).thenReturn("this is encrypted value");
+        when(passwordCipher.encrypt(anyString())).thenReturn(ENCRYPTED_VALUE);
         passwordEncryption.encryptPassword(database);
-        assertEquals("this is encrypted value", ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString()).get("encryptedPassword"));
+        assertEquals(ENCRYPTED_VALUE, ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString()).get(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
     }
 
     @Test
@@ -46,14 +48,12 @@ public class PasswordEncryptionTest {
         user.setDatabase(new Database());
         user.setConnectionProperties(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("password", "this is plain value");
+            put("password", PLAIN_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }});
-        PasswordEncryption passwordEncryption = new PasswordEncryption(encryptionServiceProvider);
-        when(encryptionServiceProvider.getEncryptionService()).thenReturn(dataEncryption);
-        when(dataEncryption.encrypt(any(Secret.class))).thenReturn("this is encrypted value");
+        when(passwordCipher.encrypt(anyString())).thenReturn(ENCRYPTED_VALUE);
         passwordEncryption.encryptUserPassword(user);
-        assertEquals("this is encrypted value", user.getConnectionProperties().get("encryptedPassword"));
+        assertEquals(ENCRYPTED_VALUE, user.getConnectionProperties().get(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
     }
 
     @Test
@@ -61,16 +61,14 @@ public class PasswordEncryptionTest {
         Database database = new Database();
         List<Map<String, Object>> connectionList = Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("password", "this is plain value");
+            put("password", PLAIN_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }});
         database.setConnectionProperties(connectionList);
         database.setDatabaseRegistry(Arrays.asList(new DatabaseRegistry()));
-        PasswordEncryption passwordEncryption = new PasswordEncryption(encryptionServiceProvider);
-        when(encryptionServiceProvider.getEncryptionService()).thenReturn(dataEncryption);
-        when(dataEncryption.encrypt(any(Secret.class))).thenReturn("this is encrypted value");
+        when(passwordCipher.encrypt(anyString())).thenReturn(ENCRYPTED_VALUE);
         passwordEncryption.encryptPassword(database, Role.ADMIN.toString());
-        assertEquals("this is encrypted value", ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN).get().get("encryptedPassword"));
+        assertEquals(ENCRYPTED_VALUE, ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN).get().get(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
     }
 
     @Test
@@ -78,18 +76,15 @@ public class PasswordEncryptionTest {
         Database database = new Database();
         List<Map<String, Object>> connectionList = Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("encryptedPassword", "this is encrypted value");
+            put(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }});
         database.setConnectionProperties(connectionList);
         database.setDatabaseRegistry(Arrays.asList(new DatabaseRegistry()));
-        PasswordEncryption passwordEncryption = new PasswordEncryption(encryptionServiceProvider);
-        Secret secret = new Secret("this is plain value");
-        when(encryptionServiceProvider.getEncryptionService("this is encrypted value")).thenReturn(dataEncryption);
-        when(dataEncryption.decrypt("this is encrypted value")).thenReturn(secret);
+        when(passwordCipher.decrypt(ENCRYPTED_VALUE)).thenReturn(PLAIN_VALUE);
         passwordEncryption.decryptPassword(database);
 
-        assertEquals("this is plain value", ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString()).get("password"));
+        assertEquals(PLAIN_VALUE, ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString()).get("password"));
     }
 
     @Test
@@ -97,16 +92,13 @@ public class PasswordEncryptionTest {
         DatabaseUser user = new DatabaseUser();
         user.setConnectionProperties(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("encryptedPassword", "this is encrypted value");
+            put(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }});
-        PasswordEncryption passwordEncryption = new PasswordEncryption(encryptionServiceProvider);
-        Secret secret = new Secret("this is plain value");
-        when(encryptionServiceProvider.getEncryptionService("this is encrypted value")).thenReturn(dataEncryption);
-        when(dataEncryption.decrypt("this is encrypted value")).thenReturn(secret);
+        when(passwordCipher.decrypt(ENCRYPTED_VALUE)).thenReturn(PLAIN_VALUE);
         passwordEncryption.decryptUserPassword(user);
 
-        assertEquals("this is plain value", user.getConnectionProperties().get("password"));
+        assertEquals(PLAIN_VALUE, user.getConnectionProperties().get("password"));
     }
 
     @Test
@@ -114,15 +106,108 @@ public class PasswordEncryptionTest {
         Database database = new Database();
         database.setConnectionProperties(Arrays.asList(new HashMap<String, Object>() {{
             put("authDbName", "test-encrypt");
-            put("password", "this is encrypted value");
+            put("password", ENCRYPTED_VALUE);
             put(ROLE, Role.ADMIN.toString());
         }}));
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();
         database.setDatabaseRegistry(Arrays.asList(databaseRegistry));
-        PasswordEncryption passwordEncryption = spy(new PasswordEncryption(encryptionServiceProvider));
-        doReturn(true).when(passwordEncryption).decryptPassword(any());
-        doNothing().when(passwordEncryption).encryptPassword(any(Database.class));
-        passwordEncryption.updatePassword(database, "new password");
+        PasswordEncryption spyPasswordEncryption = spy(passwordEncryption);
+        doReturn(true).when(spyPasswordEncryption).decryptPassword(any());
+        doNothing().when(spyPasswordEncryption).encryptPassword(any(Database.class));
+        spyPasswordEncryption.updatePassword(database, "new password");
         assertEquals("new password", ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString()).get("password"));
+    }
+
+    @Test
+    void testDeletePassword_shouldRemoveEncryptedValueWithoutWritingPlaintext() {
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
+                "username", "username", PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE));
+
+        passwordEncryption.deletePassword(database);
+
+        Map<String, Object> properties = ConnectionPropertiesUtils
+                .getConnectionProperties(database.getConnectionProperties(), Role.ADMIN.toString());
+        assertFalse(properties.containsKey(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
+        assertFalse(properties.containsKey(PasswordEncryption.PASSWORD_FIELD));
+        verifyNoInteractions(passwordCipher);
+    }
+
+    @Test
+    void testDeletePasswordByRole_shouldRemoveEncryptedValueOfThatRoleOnly() {
+        Database database = databaseWith(
+                Map.of(ROLE, Role.ADMIN.toString(), PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE),
+                Map.of(ROLE, "reader", PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, "another encrypted value"));
+
+        passwordEncryption.deletePassword(database, Role.ADMIN.toString());
+
+        assertFalse(adminProperties(database).containsKey(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
+        assertTrue(ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(), "reader")
+                .containsKey(PasswordEncryption.ENCRYPTED_PASSWORD_FIELD));
+        verifyNoInteractions(passwordCipher);
+    }
+
+    @Test
+    void testEncryptPassword_shouldReplaceAdapterPasswordWithEncryptedValue() {
+        PhysicalDatabaseRegistryRequestV3 registryRequest = new PhysicalDatabaseRegistryRequestV3();
+        registryRequest.setHttpBasicCredentials(new HttpBasicCredentials("adapter-user", PLAIN_VALUE));
+        when(passwordCipher.encrypt(PLAIN_VALUE)).thenReturn(ENCRYPTED_VALUE);
+
+        passwordEncryption.encryptPassword(registryRequest);
+
+        assertEquals(ENCRYPTED_VALUE, registryRequest.getHttpBasicCredentials().getPassword());
+    }
+
+    @Test
+    void testGetDecryptedPasswordForBackup_shouldReturnPassword_whenTheValueDecrypts() {
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
+                PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE));
+        when(passwordCipher.decrypt(ENCRYPTED_VALUE)).thenReturn(PLAIN_VALUE);
+
+        assertEquals(PLAIN_VALUE, passwordEncryption.getDecryptedPasswordForBackup(database, Role.ADMIN.toString()));
+    }
+
+    @Test
+    void testGetDecryptedPasswordForBackup_shouldFailWithIllegalArgument_whenEncryptedPasswordIsAbsent() {
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(), "username", "username"));
+        when(passwordCipher.decrypt(null)).thenThrow(new NullPointerException());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> passwordEncryption.getDecryptedPasswordForBackup(database, Role.ADMIN.toString()));
+    }
+
+    @Test
+    void testGetDecryptedPasswordForBackup_shouldFailWithIllegalArgument_whenEncryptedPasswordIsNotText() {
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
+                PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, 42));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> passwordEncryption.getDecryptedPasswordForBackup(database, Role.ADMIN.toString()));
+        verifyNoInteractions(passwordCipher);
+    }
+
+    @Test
+    void testGetDecryptedPasswordForBackup_shouldFailWithDecryptException_whenCipherCannotDecrypt() {
+        Database database = databaseWith(Map.of(ROLE, Role.ADMIN.toString(),
+                PasswordEncryption.ENCRYPTED_PASSWORD_FIELD, ENCRYPTED_VALUE));
+        when(passwordCipher.decrypt(ENCRYPTED_VALUE)).thenThrow(new IllegalStateException(MISSING_KEY_FAILURE));
+
+        DecryptException thrown = assertThrows(DecryptException.class,
+                () -> passwordEncryption.getDecryptedPasswordForBackup(database, Role.ADMIN.toString()));
+        assertInstanceOf(IllegalStateException.class, thrown.getCause());
+        assertEquals(MISSING_KEY_FAILURE, thrown.getCause().getMessage());
+    }
+
+    @SafeVarargs
+    private static Database databaseWith(Map<String, Object>... connectionProperties) {
+        List<Map<String, Object>> properties = new ArrayList<>();
+        for (Map<String, Object> property : connectionProperties) {
+            properties.add(new HashMap<>(property));
+        }
+        return new DatabaseBuilder().connectionProperties(properties).build();
+    }
+
+    private static Map<String, Object> adminProperties(Database database) {
+        return ConnectionPropertiesUtils.getConnectionProperties(database.getConnectionProperties(),
+                Role.ADMIN.toString());
     }
 }

@@ -1,0 +1,157 @@
+package com.netcracker.cloud.dbaas.service;
+
+import com.netcracker.cloud.dbaas.exceptions.DecryptException;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.apache.commons.codec.binary.Base64;
+
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+/**
+ * Encrypts the secrets DBaaS keeps in its registry.
+ *
+ * <p>Encrypted values carry the algorithm, the key alias and, where the algorithm uses one, the initialization vector
+ * they were produced with, in the envelope
+ * {@code {v2c}{algorithm}{keyAlias}{iv}{base64(encrypted data)}}. Reading those parts back from the value lets a value
+ * written by an older release, or by a key that is no longer the default, still be decrypted.
+ *
+ * <p>Keys are the {@code KS_*} files the aggregator reads under {@code /etc/secrets/pod-secrets}, where the alias is
+ * the file name after the prefix. When {@code SYM_KEY} sits in the same directory, every {@code KS_*} value is itself
+ * encrypted with it and is unwrapped before use.
+ */
+@ApplicationScoped
+public class PasswordCipher {
+
+    private static final String AES = "AES";
+    private static final String DEFAULT_KEY_ALIAS = "DEFAULT_KEY";
+    private static final String KEY_PREFIX = "KS_";
+    private static final String MASTER_KEY_NAME = "SYM_KEY";
+    private static final String POD_SECRETS_PATH = "/etc/secrets/pod-secrets";
+
+    private static final Pattern ENVELOPE = Pattern.compile(
+            "^\\{v2c\\}(\\{(?<algorithm>[^\\{\\}]*)\\}){1}(\\{(?<keyAlias>[^\\{\\}]*)\\}){1}"
+                    + "(\\{(?<iv>[a-zA-Z0-9\\=\\/\\+]+)\\}){0,1}(\\{(?<cryptData>[a-zA-Z0-9\\=\\/\\+]+)\\}){1}$");
+
+    private final Map<String, String> keyMaterial;
+    private final SecretKey masterKey;
+
+    @Inject
+    public PasswordCipher() {
+        this(readKeyMaterial(Path.of(POD_SECRETS_PATH)), readMasterKey(Path.of(POD_SECRETS_PATH)));
+    }
+
+    PasswordCipher(Map<String, String> keyMaterial, SecretKey masterKey) {
+        this.keyMaterial = Map.copyOf(keyMaterial);
+        this.masterKey = masterKey;
+    }
+
+    public String encrypt(String plainText) {
+        try {
+            Cipher cipher = Cipher.getInstance(AES);
+            cipher.init(Cipher.ENCRYPT_MODE, key(DEFAULT_KEY_ALIAS));
+            byte[] encrypted = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder result = new StringBuilder("{v2c}{").append(AES).append("}{").append(DEFAULT_KEY_ALIAS).append('}');
+            if (cipher.getIV() != null) {
+                result.append('{').append(Base64.encodeBase64String(cipher.getIV())).append('}');
+            }
+            return result.append('{').append(Base64.encodeBase64String(encrypted)).append('}').toString();
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Unable to encrypt value with alias " + DEFAULT_KEY_ALIAS, e);
+        }
+    }
+
+    public String decrypt(String encryptedText) {
+        Matcher matcher = ENVELOPE.matcher(encryptedText);
+        if (!matcher.find()) {
+            throw new DecryptException("Value is not in the encrypted format written by DBaaS");
+        }
+        byte[] iv = decodeBase64(matcher.group("iv"));
+        try {
+            Cipher cipher = Cipher.getInstance(matcher.group("algorithm"));
+            SecretKey key = key(matcher.group("keyAlias"));
+            if (iv != null) {
+                cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
+            } else {
+                cipher.init(Cipher.DECRYPT_MODE, key);
+            }
+            return new String(cipher.doFinal(decodeBase64(matcher.group("cryptData"))), StandardCharsets.UTF_8);
+        } catch (GeneralSecurityException e) {
+            throw new DecryptException("Unable to decrypt value with alias " + matcher.group("keyAlias"), e);
+        }
+    }
+
+    public boolean isEncrypted(String value) {
+        return value != null && ENVELOPE.matcher(value).find();
+    }
+
+    private SecretKey key(String alias) {
+        String material = keyMaterial.get(alias);
+        if (material == null) {
+            throw new IllegalStateException("No encryption key is configured for alias " + alias);
+        }
+        try {
+            byte[] decoded = java.util.Base64.getDecoder().decode(material);
+            if (masterKey == null) {
+                return new SecretKeySpec(decoded, AES);
+            }
+            Cipher unwrapper = Cipher.getInstance(AES);
+            unwrapper.init(Cipher.DECRYPT_MODE, masterKey);
+            return new SecretKeySpec(unwrapper.doFinal(decoded), AES);
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw new IllegalStateException("Unable to restore the encryption key configured for alias " + alias, e);
+        }
+    }
+
+    static Map<String, String> readKeyMaterial(Path secretsDir) {
+        Map<String, String> material = new HashMap<>();
+        if (!Files.isDirectory(secretsDir)) {
+            return Map.copyOf(material);
+        }
+        try (Stream<Path> files = Files.list(secretsDir)) {
+            files.filter(file -> file.getFileName().toString().startsWith(KEY_PREFIX)).forEach(file -> {
+                String value = readSecretFile(file);
+                if (value != null) {
+                    material.put(file.getFileName().toString().substring(KEY_PREFIX.length()), value);
+                }
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read encryption keys from " + secretsDir, e);
+        }
+        return Map.copyOf(material);
+    }
+
+    static SecretKey readMasterKey(Path secretsDir) {
+        String value = readSecretFile(secretsDir.resolve(MASTER_KEY_NAME));
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return new SecretKeySpec(java.util.Base64.getDecoder().decode(value), AES);
+    }
+
+    private static String readSecretFile(Path file) {
+        try {
+            return Files.readString(file).strip();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** The commons-codec decoder earlier releases read values by, which takes input the strict JDK decoder refuses. */
+    private static byte[] decodeBase64(String value) {
+        return value == null ? null : Base64.decodeBase64(value);
+    }
+}
