@@ -1266,9 +1266,9 @@ public class DbBackupV2Service {
                         return Failsafe.with(retryPolicy)
                                 .get(() -> {
                                     EnsuredUser ensuredUser = adapter.ensureUser(null, null, dbName, user.getRole());
-                                    user.setName(ensuredUser.getName());
+                                    user.setName((String) ensuredUser.getConnectionProperties().get(USERNAME));
                                     log.info("User ensured for database=[{}], user=[name:{}, connectionProperties:{}]",
-                                            dbId, ensuredUser.getName(), ensuredUser.getConnectionProperties());
+                                            dbId, user.getName(), ensuredUser.getConnectionProperties());
                                     return ensuredUser;
                                 });
                     } catch (Exception e) {
