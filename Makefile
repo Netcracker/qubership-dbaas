@@ -71,39 +71,14 @@ JAVA_TEST_MODULES ?= $(shell find $(REPO_ROOT) -name pom.xml -not -path '*/targe
 
 .PHONY: verify test test-go test-python test-java
 
-verify:
-	@lint_failed=0; test_failed=0; \
-	echo "=== Running lint ==="; \
-	$(MAKE) --no-print-directory lint || { echo "[verify] lint failed"; lint_failed=1; }; \
-	echo ""; \
-	echo "=== Running tests ==="; \
-	$(MAKE) --no-print-directory test || { echo "[verify] test failed"; test_failed=1; }; \
-	echo ""; \
-	if [ "$$lint_failed" -eq 1 ] || [ "$$test_failed" -eq 1 ]; then \
-		echo "[verify] FAILED"; \
-		exit 1; \
-	fi; \
-	echo "[verify] SUCCESS"
+verify: lint test
 
-test:
-	@go_failed=0; py_failed=0; java_failed=0; \
-	echo "=== Running Go tests ==="; \
-	$(MAKE) --no-print-directory test-go || go_failed=1; \
-	echo ""; \
-	echo "=== Running Python tests ==="; \
-	$(MAKE) --no-print-directory test-python || py_failed=1; \
-	echo ""; \
-	echo "=== Running Java tests ==="; \
-	$(MAKE) --no-print-directory test-java || java_failed=1; \
-	echo ""; \
-	if [ "$$go_failed" -eq 1 ] || [ "$$py_failed" -eq 1 ] || [ "$$java_failed" -eq 1 ]; then \
-		echo "[test] FAILED"; \
-		exit 1; \
-	fi; \
-	echo "[test] SUCCESS"
+test: test-go test-python test-java
 
 test-go:
-	@repo_root="$(REPO_ROOT)"; \
+	@echo ""; \
+	echo "=== Running Go tests ==="; \
+	repo_root="$(REPO_ROOT)"; \
 	repo_root="$${repo_root%/}"; \
 	base_branch="$(DEFAULT_BRANCH)"; \
 	base_ref="$$base_branch"; \
@@ -141,7 +116,9 @@ test-go:
 	done
 
 test-python:
-	@repo_root="$(REPO_ROOT)"; \
+	@echo ""; \
+	echo "=== Running Python tests ==="; \
+	repo_root="$(REPO_ROOT)"; \
 	repo_root="$${repo_root%/}"; \
 	base_branch="$(DEFAULT_BRANCH)"; \
 	base_ref="$$base_branch"; \
@@ -164,7 +141,6 @@ test-python:
 	else \
 		echo "[test-python] Default branch $$base_branch (or origin/$$base_branch) not found; running Python tests"; \
 	fi; \
-	echo "=== Running Python tests ==="; \
 	echo "[test-python] Running PY_BUILD: $(PY_BUILD)"; \
 	py_build_cmd="$(PY_BUILD)"; \
 	if [ -n "$$py_build_cmd" ]; then \
@@ -179,7 +155,9 @@ test-python:
 	$(PYTHON_TEST_CMD); test_rc=$$?; if [ $$test_rc -eq 5 ]; then echo "[test-python] pytest exit code 5 (no tests collected) treated as success"; test_rc=0; fi; exit $$test_rc
 
 test-java:
-	@repo_root="$(REPO_ROOT)"; \
+	@echo ""; \
+	echo "=== Running Java tests ==="; \
+	repo_root="$(REPO_ROOT)"; \
 	repo_root="$${repo_root%/}"; \
 	base_branch="$(DEFAULT_BRANCH)"; \
 	base_ref="$$base_branch"; \
@@ -224,25 +202,13 @@ prepare-ci-workspace:
 		ln -s "$(REPO_ROOT)" /tmp/lint; \
 	fi
 
-lint: prepare-ci-workspace
+lint: lint-super-linter skill-validate
 lint-super-linter: prepare-ci-workspace
 skill-validate: prepare-ci-workspace
 
-lint:
-	@super_linter_failed=0; skill_failed=0; \
-	echo "=== Running Super-Linter ==="; \
-	$(MAKE) --no-print-directory lint-super-linter || super_linter_failed=1; \
-	echo ""; \
-	echo "=== Running skill validation ==="; \
-	$(MAKE) --no-print-directory skill-validate || skill_failed=1; \
-	echo ""; \
-	if [ "$$super_linter_failed" -eq 1 ] || [ "$$skill_failed" -eq 1 ]; then \
-		echo "[lint] FAILED"; \
-		exit 1; \
-	fi; \
-	echo "[lint] SUCCESS"
-
 lint-super-linter:
+	@echo ""
+	@echo "=== Running Super-Linter ==="
 	/usr/local/bin/run.sh super-linter
 
 skill-validate:
@@ -250,6 +216,8 @@ skill-validate:
 		echo "[skill-validate] SKILLCHECK_PATTERNS not set; skipping"; \
 		exit 0; \
 	fi; \
+	echo ""; \
+	echo "=== Running skill validation ==="; \
 	/usr/local/bin/run.sh skillcheck
 
 lint-fix:
@@ -271,21 +239,11 @@ ensure-linter-image:
 		docker pull $(LINTER_IMAGE_FULL); \
 	fi
 
-lint:
-	@super_linter_failed=0; skill_failed=0; \
-	echo "=== Running Super-Linter ==="; \
-	$(MAKE) --no-print-directory lint-super-linter || super_linter_failed=1; \
-	echo ""; \
-	echo "=== Running skill validation ==="; \
-	$(MAKE) --no-print-directory skill-validate || skill_failed=1; \
-	echo ""; \
-	if [ "$$super_linter_failed" -eq 1 ] || [ "$$skill_failed" -eq 1 ]; then \
-		echo "[lint] FAILED"; \
-		exit 1; \
-	fi; \
-	echo "[lint] SUCCESS"
+lint: lint-super-linter skill-validate
 
 lint-super-linter: ensure-linter-image
+	@echo ""
+	@echo "=== Running Super-Linter ==="
 	$(LINTER_RUN) super-linter
 
 skill-validate: ensure-linter-image
@@ -293,6 +251,8 @@ skill-validate: ensure-linter-image
 		echo "[skill-validate] SKILLCHECK_PATTERNS not set; skipping"; \
 		exit 0; \
 	fi; \
+	echo ""; \
+	echo "=== Running skill validation ==="; \
 	$(LINTER_RUN) skillcheck
 
 lint-fix: ensure-linter-image

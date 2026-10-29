@@ -1,6 +1,5 @@
 """Tests for the mounted-secret migration writer (scripts/apply_migration.py)."""
 
-
 from __future__ import annotations
 
 import hashlib
