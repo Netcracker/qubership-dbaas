@@ -34,8 +34,8 @@ import (
 var log = logging.GetLogger("dbaas-rotation-poller")
 
 // PatchClaimsForRotation lists every DatabaseSecretClaim matching (classifier,
-// dbType) in the given namespace via the ClassifierTypeIndex and patches each
-// claim assigned to operatorNamespace with triggerValue under
+// dbType) across the operator's watched namespaces via the ClassifierTypeIndex
+// and patches each claim assigned to operatorNamespace with triggerValue under
 // AnnotationRotationTrigger, waking its reconcile. A fresh triggerValue (the
 // event's lastRotatedAt) guarantees the annotation changes so the controller
 // predicate fires even when the CR is otherwise unchanged.
@@ -46,7 +46,7 @@ var log = logging.GetLogger("dbaas-rotation-poller")
 func PatchClaimsForRotation(
 	ctx context.Context,
 	c client.Client,
-	namespace string,
+	databaseNamespace string,
 	classifier map[string]any,
 	dbType, operatorNamespace, triggerValue string,
 ) (matched, patched int, err error) {
@@ -58,9 +58,8 @@ func PatchClaimsForRotation(
 
 	list := &dbaasv1.DatabaseSecretClaimList{}
 	if err := c.List(ctx, list,
-		client.InNamespace(namespace),
 		client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
-		return 0, 0, fmt.Errorf("list DatabaseSecretClaim in %s: %w", namespace, err)
+		return 0, 0, fmt.Errorf("list DatabaseSecretClaim for database namespace %s: %w", databaseNamespace, err)
 	}
 	patchBytes, err := json.Marshal(map[string]any{
 		"metadata": map[string]any{

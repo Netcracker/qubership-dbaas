@@ -148,7 +148,7 @@ func (p *RotationPoller) pollOnce(ctx context.Context, cursor *aggregatorclient.
 				it.Namespace, it.Type, perr)
 		}
 		// Items are ordered by (lastRotatedAt, id) ascending; advance the cursor
-		// unconditionally so a per-namespace list error (logged above) does not
+		// unconditionally so a fan-out list error (logged above) does not
 		// stall it — the safety-net reconcile heals any skipped fan-out.
 		advanced = &aggregatorclient.ChangeCursor{LastRotatedAt: it.LastRotatedAt, ID: it.ID}
 	}

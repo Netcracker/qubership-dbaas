@@ -83,6 +83,55 @@ func TestPatchClaimsForRotation_PatchesMatchingClaim(t *testing.T) {
 	}
 }
 
+func TestPatchClaimsForRotation_PatchesClaimsInConsumerNamespaces(t *testing.T) {
+	const databaseNamespace = "database-owner"
+	claims := []*dbaasv1.DatabaseSecretClaim{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "claim-a", Namespace: "consumer-a"},
+			Spec: dbaasv1.DatabaseSecretClaimSpec{
+				OperatorNamespace: testOperatorNamespace,
+				Classifier: dbaasv1.Classifier{
+					MicroserviceName: "orders", Scope: "service", Namespace: databaseNamespace,
+				},
+				Type: "postgresql",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "claim-b", Namespace: "consumer-b"},
+			Spec: dbaasv1.DatabaseSecretClaimSpec{
+				OperatorNamespace: testOperatorNamespace,
+				Classifier: dbaasv1.Classifier{
+					MicroserviceName: "orders", Scope: "service", Namespace: databaseNamespace,
+				},
+				Type: "postgresql",
+			},
+		},
+	}
+	cl := newFakeClient(claims[0], claims[1])
+	classifier := map[string]any{
+		"microserviceName": "orders", "scope": "service", "namespace": databaseNamespace,
+	}
+
+	matched, patched, err := PatchClaimsForRotation(
+		context.Background(), cl, databaseNamespace, classifier, "postgresql", testOperatorNamespace, "rotated")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if matched != 2 || patched != 2 {
+		t.Fatalf("matched=%d patched=%d, want 2/2 across consumer namespaces", matched, patched)
+	}
+
+	for _, claim := range claims {
+		var got dbaasv1.DatabaseSecretClaim
+		if err := cl.Get(context.Background(), client.ObjectKeyFromObject(claim), &got); err != nil {
+			t.Fatalf("get patched claim %s/%s: %v", claim.Namespace, claim.Name, err)
+		}
+		if value := got.Annotations[dbaasv1.AnnotationRotationTrigger]; value != "rotated" {
+			t.Errorf("rotation-trigger on %s/%s = %q, want rotated", claim.Namespace, claim.Name, value)
+		}
+	}
+}
+
 // A classifier carrying an extra top-level field (spec.classifier.extraKeys,
 // flattened on the wire) must match the DatabaseSecretClaim indexed with the
 // same extraKeys — the poller routes unknown top-level keys back into ExtraKeys

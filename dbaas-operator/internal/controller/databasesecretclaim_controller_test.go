@@ -311,6 +311,62 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 		})
 	})
 
+	Context("classifier.namespace identifies a database owned by another namespace", func() {
+		It("requests that database and writes the Secret in the claim's consumer namespace", func() {
+			const ownerNamespace = "database-owner"
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+
+			spec := baseSpec()
+			spec.Classifier.Namespace = ownerNamespace
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "reporting-service"},
+				},
+				Spec: spec,
+			})).To(Succeed())
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(fixture.capturedPath).To(Equal(
+				fmt.Sprintf("/api/v3/dbaas/%s/databases/get-by-classifier/%s", ns, "postgresql"),
+			), "the URL namespace remains the credential consumer namespace")
+
+			var sent struct {
+				Classifier    map[string]any `json:"classifier"`
+				OriginService string         `json:"originService"`
+			}
+			Expect(json.Unmarshal(fixture.capturedBody, &sent)).To(Succeed())
+			Expect(sent.Classifier).To(HaveKeyWithValue("namespace", ownerNamespace))
+			Expect(sent.OriginService).To(Equal("reporting-service"))
+
+			secret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret)).To(Succeed())
+			var meta map[string]any
+			Expect(json.Unmarshal(secret.Data["metadata.json"], &meta)).To(Succeed())
+			metaClassifier, ok := meta["classifier"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(metaClassifier).To(HaveKeyWithValue("namespace", ownerNamespace))
+
+			indexKey := dbaasv1.ClassifierIndexKey(spec.Classifier, spec.Type)
+			Eventually(func() ([]string, error) {
+				list := &dbaasv1.DatabaseSecretClaimList{}
+				if err := cacheClient.List(ctx, list,
+					client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
+					return nil, err
+				}
+				names := make([]string, 0, len(list.Items))
+				for i := range list.Items {
+					names = append(names, list.Items[i].Name)
+				}
+				return names, nil
+			}).Should(ConsistOf(resourceName))
+		})
+	})
+
 	Context("HTTP 200 — Secret already owned by this CR, content unchanged", func() {
 		It("is a no-op: Phase=Succeeded, no event, LastRotatedAt stays nil", func() {
 			fixture.statusCode = http.StatusOK

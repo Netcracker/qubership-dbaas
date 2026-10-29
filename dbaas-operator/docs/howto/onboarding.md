@@ -164,6 +164,31 @@ describes, and `userRole` selects which role's credentials are written — one c
 holds `connectionProperties.json` with the adapter-specific connection details, and `metadata.json`
 describing the database, so a client can match the Secret to a request without calling the aggregator.
 
+For cross-namespace access, keep the database declaration and its `DatabaseAccessPolicy` in the owner namespace, and
+place the `DatabaseSecretClaim` in the consumer's workload namespace. Set the claim's
+`spec.classifier.namespace` explicitly to the owner namespace and its `app.kubernetes.io/name` label to the consuming
+service name. The operator creates the Secret beside the claim; dbaas-aggregator remains responsible for checking that
+the consuming service is granted the requested role by the access policy. For example:
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: orders-db-reader
+  namespace: reporting
+  labels:
+    app.kubernetes.io/name: reporting-service
+spec:
+  operatorNamespace: dbaas-system
+  classifier:
+    microserviceName: orders-service
+    scope: service
+    namespace: orders
+  type: postgresql
+  userRole: ro
+  secretName: orders-db-reader-secret
+```
+
 Ordering does not have to be managed: a claim whose database does not exist yet receives
 `DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. After ten minutes
 the `Ready` reason changes to `DatabaseNotFoundTimeout` and one Warning event is emitted, but polling

@@ -166,8 +166,8 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // preflightValidate runs all spec-level and pre-aggregator validations:
-// classifier.namespace consistency, the required app.kubernetes.io/name label,
-// ownership of any pre-existing target Secret, and the sibling-CR tiebreak that
+// the required app.kubernetes.io/name label, ownership of any pre-existing
+// target Secret, and the sibling-CR tiebreak that
 // resolves spec.secretName collisions deterministically (older claimant wins).
 // It returns stop=true when a terminal state has been set on the CR and the
 // caller must return res/err immediately; stop=false means validation passed
@@ -176,15 +176,6 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
 ) (ctrl.Result, bool, error) {
-	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
-		r.pollBackoff.forgetObject(s)
-		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
-			r.Recorder, s,
-			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q",
-				ns, s.Namespace))
-		return res, true, err
-	}
-
 	// extraKeys must not shadow the typed classifier fields — a collision is a
 	// spec mistake (the typed field would win and the extraKey be dropped).
 	if reserved := dbaasv1.ReservedExtraKeys(s.Spec.Classifier); len(reserved) > 0 {

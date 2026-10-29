@@ -1883,6 +1883,11 @@ materialized Secret.
 > `InvalidConfiguration`/`InvalidSpec` and the aggregator is never called. The check is enforced at the controller level
 > (CEL validation of `metadata.labels` is not supported by controller-gen at the root schema).
 
+`metadata.namespace` is the credential consumer namespace: the generated Secret and the namespace segment of the
+get-by-classifier request stay there. `spec.classifier.namespace` identifies the database owner's namespace and may be
+different. This does not grant access by itself: dbaas-aggregator still authorizes the label-derived `originService`
+against the database's `DatabaseAccessPolicy` and resolves the permitted role.
+
 #### DatabaseSecretClaim Resource Fields
 
 ```yaml
@@ -1909,8 +1914,9 @@ spec:
   secretName: my-app-db-secret     # required; name of the Secret to create/update
 ```
 
-**`spec.classifier`** — identifies the database in dbaas-aggregator. Same structure and semantics as
-[InternalDatabase](#internaldatabase-resource-fields).
+**`spec.classifier`** — identifies the database in dbaas-aggregator. It has the same structure as
+[InternalDatabase](#internaldatabase-resource-fields), except that an explicit `classifier.namespace` may identify a
+database owned outside this claim's namespace. When omitted, it defaults to `metadata.namespace`.
 
 **Top-level spec fields:**
 
@@ -1929,7 +1935,8 @@ The materialized Secret is of type `Opaque` and stores two keys:
   that lets a consumer match the Secret to a database request without calling the aggregator (used by dbaas-client when
   it reads connection properties from a mounted Secret instead of REST). The `classifier`, `type`, and `userRole` form
   the **match key**: `classifier` is the same canonical flat map the operator sends to the aggregator (`namespace`
-  defaulted to `metadata.namespace`, empty optional fields omitted); `userRole` mirrors `spec.userRole` (the *requested*
+  defaulted to `metadata.namespace` only when omitted, with an explicit owner namespace preserved and empty optional
+  fields omitted); `userRole` mirrors `spec.userRole` (the *requested*
   role, not the role the aggregator resolved at runtime) and is omitted when empty. The `id`, `name`, `namespace`, and
   `settings` fields mirror the aggregator's `DatabaseResponseV3SingleCP` so the client can reconstruct a full
   `LogicalDb` from the mounted Secret; they are descriptive only (not part of the match key) and omitted when empty.
@@ -1962,7 +1969,6 @@ CR created / spec changed / rotation-trigger annotation changed
         │
         ▼
   Pre-flight validation (controller-side)
-    classifier.namespace ≠ metadata.namespace?            ─▶ InvalidConfiguration (InvalidSpec)
     app.kubernetes.io/name label missing?                 ─▶ InvalidConfiguration (InvalidSpec)
     target Secret exists, owned by another resource?      ─▶ InvalidConfiguration (SecretConflict)
     another DatabaseSecretClaim claims the same secretName?    ─▶ InvalidConfiguration (SecretConflict)
@@ -2026,7 +2032,7 @@ Flow:
         ▼
    for each changed database in the returned page:
      resolve DatabaseSecretClaim CRs by (classifier, type) via the cache field index,
-     scoped to classifier.namespace
+     across the operator's watched namespaces
         │
      patch dbaas.netcracker.com/rotation-trigger on each match
         │
@@ -2122,14 +2128,14 @@ the initial creation do **not** advance it.
 | `DatabaseNotFound` | `Ready=False`, `Stalled=False` | Aggregator returned `404`/`CORE-DBAAS-4006` — the database is not yet registered; retried |
 | `DatabaseNotFoundTimeout` | `Ready=False`, `Stalled=False` | The `DatabaseNotFound` streak exceeded the timeout (≈10 min) — polling continues but the per-cycle Warning events stop; likely a wrong classifier |
 
-For this kind `InvalidSpec` covers a `classifier.namespace` mismatch or a missing `app.kubernetes.io/name`
-label, and `AggregatorError` also covers a `404` without a TMF body (blue-green: no active namespace).
+For this kind `InvalidSpec` covers a missing `app.kubernetes.io/name` label or reserved names in
+`classifier.extraKeys`, and `AggregatorError` also covers a `404` without a TMF body (blue-green: no active namespace).
 
 **Full state matrix:**
 
 | Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
 |----------|---------|:-------:|----------|:---------:|
-| Missing label / classifier.namespace mismatch | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| Missing label / reserved classifier.extraKeys | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
 | Target Secret owned by another resource | `InvalidConfiguration` | `False` | `SecretConflict` | `True` |
 | Sibling claims same secretName (younger loses) | `InvalidConfiguration` | `False` | `SecretConflict` | `True` |
 | get-by-classifier → 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
