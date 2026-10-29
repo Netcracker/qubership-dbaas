@@ -3,5 +3,3 @@ kind: TestStep
 commands:
   - command: sleep 65
     timeout: 75
-apply:
-  - ../../../dbaas-availability-probe/manifests/operator-check-policy-post-transition.yaml

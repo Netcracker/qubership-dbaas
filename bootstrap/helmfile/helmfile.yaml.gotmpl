@@ -52,6 +52,7 @@ releases:
     labels:
       component: aggregator
 
+{{ if eq (env "DBAAS_OPERATOR_ENABLED" | default "false") "true" }}
   - name: dbaas-operator
     namespace: {{ $dbaasNamespace }}
     chart: {{ requiredEnv "OPERATOR_CHART_DIR" }}/dbaas-operator/helm-templates/dbaas-operator
@@ -63,6 +64,7 @@ releases:
       - {{ $dbaasNamespace }}/dbaas-aggregator
     labels:
       component: operator
+{{ end }}
 
   - name: patroni-services
     namespace: {{ $pgNamespace }}

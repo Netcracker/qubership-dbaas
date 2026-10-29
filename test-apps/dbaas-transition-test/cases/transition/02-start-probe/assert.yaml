@@ -7,22 +7,9 @@ resourceRefs:
     namespace: ${DBAAS_NAMESPACE}
     name: dbaas-availability-probe
     ref: probe
-  - apiVersion: dbaas.netcracker.com/v1
-    kind: DatabaseAccessPolicy
-    namespace: ${DBAAS_NAMESPACE}
-    name: dbaas-transition-operator-check
-    ref: operatorPolicy
 collectors:
   - type: pod
     selector: app.kubernetes.io/name=dbaas-availability-probe
     namespace: ${DBAAS_NAMESPACE}
-  - type: command
-    command: kubectl -n ${DBAAS_NAMESPACE} get databaseaccesspolicy dbaas-transition-operator-check -o yaml
 assertAll:
   - celExpr: "probe.status.readyReplicas == 1"
-  - celExpr: "operatorPolicy.status.observedGeneration == operatorPolicy.metadata.generation"
-  - celExpr: >-
-      operatorPolicy.status.conditions.exists(condition,
-        condition.type == 'Ready' && condition.status == 'True' &&
-        condition.reason == 'PolicyApplied' &&
-        condition.observedGeneration == operatorPolicy.metadata.generation)

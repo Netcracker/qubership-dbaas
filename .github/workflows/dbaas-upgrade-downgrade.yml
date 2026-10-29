@@ -4,7 +4,7 @@ run-name: >
   DBaaS stack ${{ github.event.inputs.direction }}
   ${{ github.event.inputs.older-version }} <-> ${{ github.event.inputs.newer-version }}
 
-# Each direction runs in a separate Kind cluster and transitions the Aggregator and Operator together.
+# Each direction runs in a separate Kind cluster and can transition the Aggregator and Operator together.
 # Job-level concurrency lets upgrade and downgrade run in parallel while serializing repeated runs.
 
 on:
@@ -29,6 +29,11 @@ on:
           - both
           - upgrade
           - downgrade
+      operator-enabled:
+        description: Deploy and test the DBaaS Operator. Uncheck for transitions with incompatible Operator changes.
+        required: false
+        default: true
+        type: boolean
 
 permissions: {}
 
@@ -92,6 +97,7 @@ jobs:
       direction: upgrade
       initial-version: ${{ needs.resolve-versions.outputs.older-version }}
       target-version: ${{ needs.resolve-versions.outputs.newer-version }}
+      operator-enabled: ${{ github.event.inputs['operator-enabled'] == 'true' }}
 
   downgrade:
     name: Downgrade ${{ needs.resolve-versions.outputs.newer-version }} -> ${{ needs.resolve-versions.outputs.older-version }}
@@ -104,6 +110,7 @@ jobs:
       direction: downgrade
       initial-version: ${{ needs.resolve-versions.outputs.newer-version }}
       target-version: ${{ needs.resolve-versions.outputs.older-version }}
+      operator-enabled: ${{ github.event.inputs['operator-enabled'] == 'true' }}
 
   # Keep one branch-protection check name for all direction selections.
   gate:

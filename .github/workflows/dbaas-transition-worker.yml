@@ -8,13 +8,18 @@ on:
         required: true
         type: string
       initial-version:
-        description: DBaaS version used for the initial Aggregator and Operator releases (for example, 6.14.1 or main).
+        description: DBaaS version used for the initial Aggregator and optional Operator releases.
         required: true
         type: string
       target-version:
-        description: DBaaS version used for the target Aggregator and Operator releases (for example, 6.15.0 or main).
+        description: DBaaS version used for the target Aggregator and optional Operator releases.
         required: true
         type: string
+      operator-enabled:
+        description: Deploy and test the DBaaS Operator.
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -39,6 +44,7 @@ jobs:
       AGGREGATOR_REPLICAS: "2"
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
+      DBAAS_OPERATOR_ENABLED: ${{ inputs.operator-enabled }}
       INITIAL_REF: ${{ inputs.initial-version == 'main' && 'main' || format('v{0}', inputs.initial-version) }}
       TARGET_REF: ${{ inputs.target-version == 'main' && 'main' || format('v{0}', inputs.target-version) }}
       INITIAL_TAG: ${{ inputs.initial-version == 'main' && 'latest' || format('v{0}', inputs.initial-version) }}
@@ -111,6 +117,12 @@ jobs:
           docker build -t dbaas-availability-probe:it harness/test-apps/dbaas-availability-probe
           kind load docker-image dbaas-availability-probe:it --name "$KIND_CLUSTER"
 
+      - name: Enable operator transition checks
+        if: ${{ inputs.operator-enabled }}
+        run: >-
+          cp -R "$HARNESS_DIR/test-apps/dbaas-transition-test/operator-enabled/."
+          "$HARNESS_DIR/test-apps/dbaas-transition-test/cases/transition/"
+
       - name: Render test manifests
         run: |
           set -euo pipefail
@@ -149,10 +161,12 @@ jobs:
           helm -n "$DBAAS_NAMESPACE" history dbaas-aggregator > "$OUT_DIR/helm-history-dbaas-aggregator.txt" 2>&1 || true
           helm -n "$DBAAS_NAMESPACE" get values dbaas-aggregator -o yaml \
             > "$OUT_DIR/helm-values-dbaas-aggregator.yaml" 2>&1 || true
-          helm -n "$DBAAS_NAMESPACE" status dbaas-operator > "$OUT_DIR/helm-status-dbaas-operator.txt" 2>&1 || true
-          helm -n "$DBAAS_NAMESPACE" history dbaas-operator > "$OUT_DIR/helm-history-dbaas-operator.txt" 2>&1 || true
-          helm -n "$DBAAS_NAMESPACE" get values dbaas-operator -o yaml \
-            > "$OUT_DIR/helm-values-dbaas-operator.yaml" 2>&1 || true
+          if [[ "$DBAAS_OPERATOR_ENABLED" == "true" ]]; then
+            helm -n "$DBAAS_NAMESPACE" status dbaas-operator > "$OUT_DIR/helm-status-dbaas-operator.txt" 2>&1 || true
+            helm -n "$DBAAS_NAMESPACE" history dbaas-operator > "$OUT_DIR/helm-history-dbaas-operator.txt" 2>&1 || true
+            helm -n "$DBAAS_NAMESPACE" get values dbaas-operator -o yaml \
+              > "$OUT_DIR/helm-values-dbaas-operator.yaml" 2>&1 || true
+          fi
           cp /tmp/dbaas-transition-*.txt /tmp/dbaas-transition-probe.jsonl "$OUT_DIR/" 2>/dev/null || true
 
       - name: Upload diagnostics
