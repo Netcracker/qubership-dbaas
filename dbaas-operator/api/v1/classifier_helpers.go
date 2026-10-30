@@ -46,8 +46,8 @@ const ClassifierTypeIndex = "spec.classifier+type"
 // dbaas-aggregator requires classifier.namespace (its isValidClassifierV3 rejects
 // a classifier without it). InternalDatabase and ExternalDatabase validate that
 // an explicit classifier namespace equals the CR's metadata.namespace;
-// DatabaseSecretClaim may preserve an explicit database-owner namespace that is
-// different from its own consumer namespace. Callers must apply this before
+// DatabaseSecretClaim may preserve an explicit database-owner namespace from the
+// same composite structure as its own consumer namespace. Callers must apply this before
 // serializing the classifier for an aggregator request or computing its cache
 // index key, otherwise a CR that omits the optional namespace would be rejected
 // by the aggregator and would index under a key that the (always-namespaced)

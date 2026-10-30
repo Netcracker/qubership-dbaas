@@ -64,14 +64,26 @@ type aggregatorSyncFixture struct {
 	body         string
 	capturedBody []byte
 	capturedPath string
-	server       *httptest.Server
-	recorder     *record.FakeRecorder
+	// compositeStatusCode and compositeBody answer the composite structures endpoint,
+	// so a test can configure it separately from the call under test.
+	compositeStatusCode int
+	compositeBody       string
+	compositeCalls      int
+	server              *httptest.Server
+	recorder            *record.FakeRecorder
 }
 
 func newAggregatorSyncFixture() *aggregatorSyncFixture {
 	f := &aggregatorSyncFixture{}
 	f.reset()
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/composite/v1/structures" {
+			f.compositeCalls++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(f.compositeStatusCode)
+			_, _ = w.Write([]byte(f.compositeBody))
+			return
+		}
 		f.capturedBody, _ = io.ReadAll(r.Body)
 		f.capturedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
@@ -89,6 +101,9 @@ func (f *aggregatorSyncFixture) reset() {
 	f.body = ""
 	f.capturedBody = nil
 	f.capturedPath = ""
+	f.compositeStatusCode = http.StatusOK
+	f.compositeBody = "[]"
+	f.compositeCalls = 0
 }
 
 func (f *aggregatorSyncFixture) close() {

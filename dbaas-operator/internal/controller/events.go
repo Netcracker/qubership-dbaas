@@ -133,4 +133,11 @@ const (
 	// Surfaces a single alertable signal that an operator's classifier may be wrong.
 	// Type: Warning.
 	EventReasonDatabaseNotFoundTimeout = "DatabaseNotFoundTimeout"
+
+	// EventReasonNamespaceNotInComposite is emitted when a DatabaseSecretClaim names a
+	// classifier namespace outside its own composite structure. The controller keeps
+	// polling (Phase remains BackingOff, Stalled remains False) because the composite
+	// may be registered after the claim is applied.
+	// Type: Warning.
+	EventReasonNamespaceNotInComposite = "NamespaceNotInComposite"
 )

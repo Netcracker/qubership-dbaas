@@ -1885,8 +1885,18 @@ materialized Secret.
 
 `metadata.namespace` is the credential consumer namespace: the generated Secret and the namespace segment of the
 get-by-classifier request stay there. `spec.classifier.namespace` identifies the database owner's namespace and may be
-different. This does not grant access by itself: dbaas-aggregator still authorizes the label-derived `originService`
-against the database's `DatabaseAccessPolicy` and resolves the permitted role.
+different only when both namespaces belong to the same composite structure.
+
+The operator enforces that boundary itself, because dbaas-aggregator skips its namespace check for the operator's
+identity. Before calling get-by-classifier, the operator fetches the composite structures from dbaas-aggregator. A claim
+outside the owner's composite stays in `BackingOff` with reason `NamespaceNotInComposite` and retries, so the composite
+can be registered after the claim. If a namespace later leaves the composite, the claim moves back to that state, but
+the existing Secret and its credentials stay in place.
+
+dbaas-aggregator then resolves the role by matching the label-derived `originService` against the database's
+`DatabaseAccessPolicy`. The label isn't a verified identity, so a cross-namespace claim whose label equals
+`classifier.microserviceName` is rejected with `InvalidSpec`. Any namespace in the composite can still set the label to
+another service that the policy allows.
 
 #### DatabaseSecretClaim Resource Fields
 
@@ -1916,7 +1926,8 @@ spec:
 
 **`spec.classifier`** — identifies the database in dbaas-aggregator. It has the same structure as
 [InternalDatabase](#internaldatabase-resource-fields), except that an explicit `classifier.namespace` may identify a
-database owned outside this claim's namespace. When omitted, it defaults to `metadata.namespace`.
+database owned by another namespace in this claim's composite structure. When omitted, it defaults to
+`metadata.namespace`.
 
 **Top-level spec fields:**
 
@@ -1969,6 +1980,10 @@ CR created / spec changed / rotation-trigger annotation changed
         │
         ▼
   Pre-flight validation (controller-side)
+    classifier.namespace ≠ metadata.namespace?
+      label equals classifier.microserviceName?           ─▶ InvalidConfiguration (InvalidSpec)
+      fetch composite structures; lookup failed?          ─▶ BackingOff (AggregatorError), retried
+      namespaces not in one composite?                    ─▶ BackingOff (NamespaceNotInComposite), polled
     app.kubernetes.io/name label missing?                 ─▶ InvalidConfiguration (InvalidSpec)
     target Secret exists, owned by another resource?      ─▶ InvalidConfiguration (SecretConflict)
     another DatabaseSecretClaim claims the same secretName?    ─▶ InvalidConfiguration (SecretConflict)
@@ -2103,7 +2118,7 @@ current. Two phase behaviors are specific to this kind:
 
 | Phase | Kind-specific behavior |
 |-------|------------------------|
-| `BackingOff` | `Unauthorized` and `AggregatorError` use the [workqueue rate limiter](#reconcile-backoff); `DatabaseNotFound`, `DatabaseNotFoundTimeout`, and `EmptyConnectionProperties` use the [exponential poll backoff](#exponential-poll-backoff). |
+| `BackingOff` | `Unauthorized` and `AggregatorError` use the [workqueue rate limiter](#reconcile-backoff); `DatabaseNotFound`, `DatabaseNotFoundTimeout`, `EmptyConnectionProperties`, and `NamespaceNotInComposite` use the [exponential poll backoff](#exponential-poll-backoff). |
 | `Processing` (stuck) | A Kubernetes API error while reading or writing the target Secret — including `forbidden` from missing [namespaced Secret RBAC](#secret-access-namespaced) — returns before any condition is written. The CR keeps `phase: Processing` with no `Ready` condition and no event; the reconcile is retried with exponential backoff. Check the operator log. |
 
 **`status.firstNotFoundAt`** — timestamp of the first `DatabaseNotFound` (404) response in the current streak. Set on
@@ -2127,15 +2142,18 @@ the initial creation do **not** advance it.
 | `EmptyConnectionProperties` | `Ready=False`, `Stalled=False` | Aggregator returned `200` with an empty `connectionProperties` map — treated as transient and retried |
 | `DatabaseNotFound` | `Ready=False`, `Stalled=False` | Aggregator returned `404`/`CORE-DBAAS-4006` — the database is not yet registered; retried |
 | `DatabaseNotFoundTimeout` | `Ready=False`, `Stalled=False` | The `DatabaseNotFound` streak exceeded the timeout (≈10 min) — polling continues but the per-cycle Warning events stop; likely a wrong classifier |
+| `NamespaceNotInComposite` | `Ready=False`, `Stalled=False` | `classifier.namespace` differs from `metadata.namespace` and no composite structure contains both; retried |
 
-For this kind `InvalidSpec` covers a missing `app.kubernetes.io/name` label or reserved names in
-`classifier.extraKeys`, and `AggregatorError` also covers a `404` without a TMF body (blue-green: no active namespace).
+For this kind `InvalidSpec` covers a missing `app.kubernetes.io/name` label, reserved names in
+`classifier.extraKeys`, or a cross-namespace claim whose label equals `classifier.microserviceName`, and
+`AggregatorError` also covers a `404` without a TMF body (blue-green: no active namespace).
 
 **Full state matrix:**
 
 | Scenario | `phase` | `Ready` | `Reason` | `Stalled` |
 |----------|---------|:-------:|----------|:---------:|
-| Missing label / reserved classifier.extraKeys | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| Missing label / reserved classifier.extraKeys / cross-namespace label equals microserviceName | `InvalidConfiguration` | `False` | `InvalidSpec` | `True` |
+| Cross-namespace claim outside the owner's composite | `BackingOff` | `False` | `NamespaceNotInComposite` | `False` |
 | Target Secret owned by another resource | `InvalidConfiguration` | `False` | `SecretConflict` | `True` |
 | Sibling claims same secretName (younger loses) | `InvalidConfiguration` | `False` | `SecretConflict` | `True` |
 | get-by-classifier → 401 | `BackingOff` | `False` | `Unauthorized` | `False` |
@@ -2241,6 +2259,7 @@ use no-op recorders and omit both Event RBAC rules; none of the events below the
 | `EmptyConnectionProperties` | The aggregator returned `200 OK` with an empty connection-properties map. |
 | `DatabaseNotFound` | The aggregator returned `404` with `CORE-DBAAS-4006`; emitted once per poll cycle. |
 | `DatabaseNotFoundTimeout` | Emitted once, when a `DatabaseNotFound` streak crosses 10 minutes. |
+| `NamespaceNotInComposite` | A cross-namespace `DatabaseSecretClaim` isn't in the owner's composite structure; emitted once per poll cycle. |
 
 **Condition-only reasons** — these appear in `status.conditions` but are never emitted as events:
 `Succeeded` and `SecretUpToDate`.

@@ -164,11 +164,13 @@ describes, and `userRole` selects which role's credentials are written — one c
 holds `connectionProperties.json` with the adapter-specific connection details, and `metadata.json`
 describing the database, so a client can match the Secret to a request without calling the aggregator.
 
-For cross-namespace access, keep the database declaration and its `DatabaseAccessPolicy` in the owner namespace, and
-place the `DatabaseSecretClaim` in the consumer's workload namespace. Set the claim's
-`spec.classifier.namespace` explicitly to the owner namespace and its `app.kubernetes.io/name` label to the consuming
-service name. The operator creates the Secret beside the claim; dbaas-aggregator remains responsible for checking that
-the consuming service is granted the requested role by the access policy. For example:
+For cross-namespace access, both namespaces must belong to the same composite structure. Keep the database declaration
+and its `DatabaseAccessPolicy` in the owner namespace, and place the `DatabaseSecretClaim` in the consumer's workload
+namespace. Set the claim's `spec.classifier.namespace` explicitly to the owner namespace and its
+`app.kubernetes.io/name` label to the consuming service name, which must differ from `classifier.microserviceName`. The
+operator creates the Secret beside the claim, and dbaas-aggregator resolves the role from the access policy. A claim
+outside the owner's composite stays in `BackingOff` with reason `NamespaceNotInComposite` until the composite is
+registered. For example:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1

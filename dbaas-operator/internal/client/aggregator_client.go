@@ -339,6 +339,23 @@ func (c *AggregatorClient) GetDatabaseByClassifier(
 	return decodeInto[DatabaseResponseSingleCP](resp.Body(), "get-by-classifier", false, false)
 }
 
+// ListCompositeStructures fetches every composite structure registered in the
+// aggregator. GET /api/composite/v1/structures
+// The aggregator has no lookup by member namespace, and fetching by id only finds
+// a composite by its baseline, so membership checks need the full list.
+// Returns *AggregatorError on non-2xx.
+func (c *AggregatorClient) ListCompositeStructures(ctx context.Context) ([]CompositeStructure, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/composite/v1/structures", nil, nil, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	structures, err := decodeInto[[]CompositeStructure](resp.Body(), "composite structures", false, false)
+	if err != nil {
+		return nil, err
+	}
+	return *structures, nil
+}
+
 // GetChangedSince fetches databases whose credentials changed (password rotation
 // or restore) strictly after the given keyset cursor, ordered by (lastRotatedAt,
 // id). GET /api/v3/dbaas/databases/changed?sinceTs={iso}&sinceId={uuid}&limit={n}

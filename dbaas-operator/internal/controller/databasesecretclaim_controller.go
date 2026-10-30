@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -121,7 +122,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	s.Status.Phase = dbaasv1.PhaseProcessing
 
-	if res, stop, err := r.preflightValidate(ctx, s); stop {
+	if res, stop, err := r.preflightValidate(ctx, s, requestID); stop {
 		return res, err
 	}
 
@@ -166,16 +167,50 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // preflightValidate runs all spec-level and pre-aggregator validations:
-// the required app.kubernetes.io/name label, ownership of any pre-existing
-// target Secret, and the sibling-CR tiebreak that
-// resolves spec.secretName collisions deterministically (older claimant wins).
-// It returns stop=true when a terminal state has been set on the CR and the
-// caller must return res/err immediately; stop=false means validation passed
-// and the reconcile may proceed to the aggregator call.
+// composite membership of a cross-namespace classifier, the required
+// app.kubernetes.io/name label, ownership of any pre-existing target Secret, and
+// the sibling-CR tiebreak that resolves spec.secretName collisions
+// deterministically (older claimant wins).
+// It returns stop=true when the CR's state has been set and the caller must
+// return res/err immediately; stop=false means validation passed and the
+// reconcile may proceed to the aggregator call.
 func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
+	requestID string,
 ) (ctrl.Result, bool, error) {
+	// The aggregator skips its namespace check for the operator's identity, so this
+	// is the only place that stops a claim from reading another composite's database.
+	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
+		// originService comes from the label unverified. Matching the owner would
+		// grant the owner's access, which a policy can leave at admin.
+		if s.Labels["app.kubernetes.io/name"] == s.Spec.Classifier.MicroserviceName {
+			r.pollBackoff.forgetObject(s)
+			res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
+				r.Recorder, s,
+				fmt.Sprintf("label app.kubernetes.io/name %q must differ from spec.classifier.microserviceName on a cross-namespace claim; set it to the consuming service name",
+					s.Spec.Classifier.MicroserviceName))
+			return res, true, err
+		}
+
+		sameComposite, err := r.inSameComposite(ctx, ns, s.Namespace)
+		if err != nil {
+			res, err := r.handleAggregatorErr(ctx, s, err, requestID)
+			return res, true, err
+		}
+		if !sameComposite {
+			msg := fmt.Sprintf("spec.classifier.namespace %q and metadata.namespace %q are not in the same composite structure; register both in one composite or correct the classifier",
+				ns, s.Namespace)
+			// Keep polling: the composite may be registered after the claim is applied.
+			s.Status.FirstNotFoundAt = nil
+			markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+				EventReasonNamespaceNotInComposite, msg)
+			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite,
+				"%s (requestId=%s)", msg, requestID)
+			return r.pollBackoff.schedule(s), true, nil
+		}
+	}
+
 	// extraKeys must not shadow the typed classifier fields — a collision is a
 	// spec mistake (the typed field would win and the extraKey be dropped).
 	if reserved := dbaasv1.ReservedExtraKeys(s.Spec.Classifier); len(reserved) > 0 {
@@ -237,6 +272,22 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	}
 
 	return ctrl.Result{}, false, nil
+}
+
+// inSameComposite reports whether one composite structure contains both namespaces.
+func (r *DatabaseSecretClaimReconciler) inSameComposite(ctx context.Context, namespace0, namespace1 string) (bool, error) {
+	aggStart := time.Now()
+	structures, err := r.Aggregator.ListCompositeStructures(ctx)
+	recordAggregatorCall(controllerDSC, operationListComposites, aggStart, err)
+	if err != nil {
+		return false, err
+	}
+	for i := range structures {
+		if slices.Contains(structures[i].Namespaces, namespace0) && slices.Contains(structures[i].Namespaces, namespace1) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // writeSecret converges the target Secret in four steps:

@@ -254,7 +254,8 @@ appears first and is expanded by default; all detailed rows are collapsed until 
 
 **`operation`** (which aggregator call):
 `register_external_database`, `apply_config`, `poll_status`, `get_database_by_classifier`,
-`create_database`, `apply_microservice_balancing_rule`, `cleanup_microservice_balancing_rule`,
+`create_database`, `list_composite_structures`, `apply_microservice_balancing_rule`,
+`cleanup_microservice_balancing_rule`,
 `apply_namespace_balancing_rule`, `delete_namespace_balancing_rule`,
 `apply_permanent_balancing_rule`, `delete_permanent_balancing_rule`.
 

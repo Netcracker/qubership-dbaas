@@ -67,6 +67,7 @@ const (
 	operationPollStatus     = "poll_status"
 	operationGetDatabase    = "get_database_by_classifier"
 	operationCreateDatabase = "create_database"
+	operationListComposites = "list_composite_structures"
 
 	operationApplyMicroserviceRule   = "apply_microservice_balancing_rule"
 	operationCleanupMicroserviceRule = "cleanup_microservice_balancing_rule"

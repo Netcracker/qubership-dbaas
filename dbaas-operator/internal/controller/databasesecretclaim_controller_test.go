@@ -28,6 +28,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -311,11 +312,127 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 		})
 	})
 
-	Context("classifier.namespace identifies a database owned by another namespace", func() {
-		It("requests that database and writes the Secret in the claim's consumer namespace", func() {
-			const ownerNamespace = "database-owner"
+	Context("classifier.namespace differs from metadata.namespace", func() {
+		const ownerNamespace = "database-owner"
+
+		createCrossNamespaceClaim := func(originService string) {
+			GinkgoHelper()
+			spec := baseSpec()
+			spec.Classifier.Namespace = ownerNamespace
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": originService},
+				},
+				Spec: spec,
+			})).To(Succeed())
+		}
+
+		expectWaitingForComposite := func(ds *dbaasv1.DatabaseSecretClaim, result reconcile.Result) {
+			GinkgoHelper()
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0), "polling continues")
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonNamespaceNotInComposite))
+
+			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
+				EventReasonNamespaceNotInComposite, ownerNamespace)
+
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})
+			Expect(apierrors.IsNotFound(err)).To(BeTrue(), "no credentials are written")
+		}
+
+		It("skips the composite lookup when the namespaces are equal", func() {
+			fixture.body = successBody()
+			spec := baseSpec()
+			spec.Classifier.Namespace = ns
+			Expect(k8sClient.Create(ctx, &dbaasv1.DatabaseSecretClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: ns,
+					Labels:    map[string]string{"app.kubernetes.io/name": "test-service"},
+				},
+				Spec: spec,
+			})).To(Succeed())
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(fixture.compositeCalls).To(BeZero())
+		})
+
+		It("keeps polling when no composite structure is registered", func() {
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectWaitingForComposite(ds, result)
+		})
+
+		It("keeps polling when each namespace belongs to a different composite structure", func() {
+			fixture.compositeBody = `[{"id":"other","namespaces":["other","` + ns + `"]},` +
+				`{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectWaitingForComposite(ds, result)
+		})
+
+		It("recovers once the composite structure is registered", func() {
+			fixture.body = successBody()
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectWaitingForComposite(ds, result)
+
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
+			ds, _, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed())
+		})
+
+		It("blocks the claim and retries when the composite lookup fails", func() {
+			fixture.compositeStatusCode = http.StatusInternalServerError
+			fixture.compositeBody = `{"message":"boom"}`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).To(HaveOccurred(), "the rate limiter retries a transient failure")
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+		})
+
+		It("rejects a label that equals the classifier's microserviceName without a composite lookup", func() {
+			createCrossNamespaceClaim("test-service")
+
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseInvalidConfiguration))
+			Expect(fixture.compositeCalls).To(BeZero())
+			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonInvalidSpec))
+		})
+
+		It("requests the database and writes the Secret in the claim's namespace when both share a composite", func() {
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
 
 			spec := baseSpec()
 			spec.Classifier.Namespace = ownerNamespace

@@ -172,6 +172,52 @@ func TestAggregatorClient_RejectsMissingRequestID(t *testing.T) {
 	}
 }
 
+// ── ListCompositeStructures ───────────────────────────────────────────────────
+
+func TestListCompositeStructures_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`[{"id":"base","namespaces":["base","satellite"]}]`))
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	got, err := c.ListCompositeStructures(requestContext())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotMethod != http.MethodGet {
+		t.Errorf("method: got %q, want GET", gotMethod)
+	}
+	if want := "/api/composite/v1/structures"; gotPath != want {
+		t.Errorf("path: got %q, want %q", gotPath, want)
+	}
+	if len(got) != 1 || got[0].ID != "base" || len(got[0].Namespaces) != 2 {
+		t.Errorf("structures: got %+v", got)
+	}
+}
+
+func TestListCompositeStructures_ReturnsAggregatorError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, staticToken("test-token"))
+	_, err := c.ListCompositeStructures(requestContext())
+	var aggErr *AggregatorError
+	if !errors.As(err, &aggErr) || aggErr.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("error: got %v, want *AggregatorError with status 500", err)
+	}
+}
+
 // ── RegisterExternalDatabase ──────────────────────────────────────────────────
 
 func TestRegisterExternalDatabase_UsesCorrectURLAndMethod(t *testing.T) {
