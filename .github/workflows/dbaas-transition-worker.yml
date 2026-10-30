@@ -41,10 +41,10 @@ jobs:
       TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
       PG_NAMESPACE: postgres
       DBAAS_NAMESPACE: dbaas
-      AGGREGATOR_REPLICAS: "2"
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
       DBAAS_OPERATOR_ENABLED: ${{ inputs.operator-enabled }}
+      M2M_AUTH_MODE: hybrid
       INITIAL_REF: ${{ inputs.initial-version == 'main' && 'main' || format('v{0}', inputs.initial-version) }}
       TARGET_REF: ${{ inputs.target-version == 'main' && 'main' || format('v{0}', inputs.target-version) }}
       INITIAL_TAG: ${{ inputs.initial-version == 'main' && 'latest' || format('v{0}', inputs.initial-version) }}
@@ -73,18 +73,10 @@ jobs:
           path: repos/qubership-dbaas-target
           persist-credentials: false
 
-      - name: Set up Kind
-        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+      - name: Set up kind cluster
+        uses: ./harness/.github/actions/setup-kind-cluster
         with:
-          version: v0.33.0
-          cluster_name: kind
-          config: harness/bootstrap/helmfile/kind.yaml
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
-
-      - name: Set up Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+          kind-config: harness/bootstrap/helmfile/kind.yaml
 
       - name: Install KUTTL (pinned release, checksum-verified)
         run: |
@@ -97,20 +89,6 @@ jobs:
           install -m 0755 -D "${KUTTL_BINARY}" "$RUNNER_TEMP/kuttl-bin/kubectl-kuttl"
           echo "$RUNNER_TEMP/kuttl-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/kuttl-bin/kubectl-kuttl" version
-
-      - name: Install Helmfile (pinned release, checksum-verified)
-        run: |
-          set -euo pipefail
-          HELMFILE_VERSION=1.8.0
-          HELMFILE_ARCHIVE=helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz
-          HELMFILE_SHA256=35d5d39fc608342b23fc7ce1dd0c3bf0c96cc07ec3796507ab6894a5d172bf20
-          curl -sSLO "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/${HELMFILE_ARCHIVE}"
-          echo "${HELMFILE_SHA256}  ${HELMFILE_ARCHIVE}" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/helmfile-bin"
-          tar -xzf "${HELMFILE_ARCHIVE}" -C "$RUNNER_TEMP/helmfile-bin" helmfile
-          chmod 0755 "$RUNNER_TEMP/helmfile-bin/helmfile"
-          echo "$RUNNER_TEMP/helmfile-bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/helmfile-bin/helmfile" version
 
       - name: Build dbaas-availability-probe image and load into kind
         run: |

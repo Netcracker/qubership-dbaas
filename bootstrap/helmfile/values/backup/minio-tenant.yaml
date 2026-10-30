@@ -1,0 +1,18 @@
+tenant:
+  name: test-minio
+  image:
+    repository: ghcr.io/netcracker/qubership-minio
+    tag: RELEASE.2026-04-03-T08-21-58Z
+  configSecret:
+    name: minio-env
+    accessKey: minio
+    secretKey: minio123
+  certificate:
+    requestAutoCert: false
+  buckets:
+    - name: dbaas-backup-restore-test
+  pools:
+    - servers: 1
+      name: pool-0
+      volumesPerServer: 1
+      size: 2Gi
