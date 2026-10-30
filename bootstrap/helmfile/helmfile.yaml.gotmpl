@@ -1,6 +1,20 @@
+missingFileHandler: Warn
+
+values:
+  - backup:
+      enabled: false
+
+environments:
+  default:
+  ci:
+
+---
+
 {{- $dbaasNamespace := env "DBAAS_NAMESPACE" | default "dbaas" }}
 {{- $pgNamespace := env "PG_NAMESPACE" | default "postgres" }}
 {{- $pgskipperRef := env "PGSKIPPER_REF" | default "main" }}
+{{- $aggregatorChartDir := env "AGGREGATOR_CHART_DIR" | default "../.." }}
+{{- $operatorChartDir := env "OPERATOR_CHART_DIR" | default "../.." }}
 
 helmDefaults:
   wait: true
@@ -11,6 +25,37 @@ helmDefaults:
   cleanupOnFail: false
 
 releases:
+  - name: minio-operator
+    namespace: minio-operator
+    chart: git::https://github.com/minio/operator.git@helm/operator?ref=v7.1.1
+    forceGoGetter: true
+    installed: {{ .Values.backup.enabled | toYaml }}
+    labels:
+      component: minio
+
+  - name: minio-tenant
+    namespace: minio
+    chart: git::https://github.com/minio/operator.git@helm/tenant?ref=v7.1.1
+    forceGoGetter: true
+    installed: {{ .Values.backup.enabled | toYaml }}
+    needs:
+      - minio-operator/minio-operator
+    values:
+      - values/backup/minio-tenant.yaml
+    hooks:
+      - events: ["postsync"]
+        name: "wait-minio-tenant-ready"
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "--namespace=minio"
+          - "wait"
+          - "--for=jsonpath={.status.currentState}=Ready"
+          - "tenant/test-minio"
+          - "--timeout=600s"
+    labels:
+      component: minio
+
   - name: dbaas-prerequisites
     namespace: {{ $dbaasNamespace }}
     chart: ./charts/dbaas-prerequisites
@@ -25,6 +70,7 @@ releases:
     wait: false
     values:
       - values/patroni-core.yaml.gotmpl
+      - values/{{ .Environment.Name }}/patroni-core.yaml.gotmpl
     hooks:
       - events: ["postsync"]
         showlogs: true
@@ -43,50 +89,105 @@ releases:
 
   - name: dbaas-aggregator
     namespace: {{ $dbaasNamespace }}
-    chart: {{ requiredEnv "AGGREGATOR_CHART_DIR" }}/helm-templates/dbaas-aggregator
+    chart: {{ $aggregatorChartDir }}/helm-templates/dbaas-aggregator
     values:
       - values/dbaas.yaml.gotmpl
+      - values/{{ .Environment.Name }}/dbaas-aggregator.yaml.gotmpl
     needs:
       - {{ $dbaasNamespace }}/dbaas-prerequisites
       - {{ $pgNamespace }}/patroni-core
     labels:
       component: aggregator
 
-{{ if eq (env "DBAAS_OPERATOR_ENABLED" | default "false") "true" }}
   - name: dbaas-operator
     namespace: {{ $dbaasNamespace }}
-    chart: {{ requiredEnv "OPERATOR_CHART_DIR" }}/dbaas-operator/helm-templates/dbaas-operator
+    chart: {{ $operatorChartDir }}/dbaas-operator/helm-templates/dbaas-operator
     values:
       - values/operator.yaml.gotmpl
-      - {{ requiredEnv "OPERATOR_CHART_DIR" }}/dbaas-operator/helm-templates/dbaas-operator/resource-profiles/dev.yaml
+      - {{ $operatorChartDir }}/dbaas-operator/helm-templates/dbaas-operator/resource-profiles/dev.yaml
+      - values/{{ .Environment.Name }}/dbaas-operator.yaml.gotmpl
     needs:
       - {{ $pgNamespace }}/patroni-core
       - {{ $dbaasNamespace }}/dbaas-aggregator
     labels:
       component: operator
-{{ end }}
 
   - name: patroni-services
     namespace: {{ $pgNamespace }}
     chart: git::https://github.com/Netcracker/pgskipper-operator.git@operator/charts/patroni-services?ref={{ $pgskipperRef }}
     forceGoGetter: true
-    # Helm cannot wait for PatroniServices, so wait for the adapter Deployment.
+    # Helm cannot wait for PatroniServices, so the postsync hooks below do.
     wait: false
     values:
       - values/patroni-services.yaml.gotmpl
+{{- if .Values.backup.enabled }}
+      - values/backup/patroni-services.yaml
+{{- end }}
+      - values/{{ .Environment.Name }}/patroni-services.yaml.gotmpl
     needs:
       - {{ $pgNamespace }}/patroni-core
       - {{ $dbaasNamespace }}/dbaas-aggregator
+      - {{ $dbaasNamespace }}/dbaas-operator
     hooks:
       - events: ["postsync"]
+        name: "wait-patroniservices-reconciled"
         showlogs: true
         command: "kubectl"
         args:
           - "wait"
           - "--namespace={{ $pgNamespace }}"
-          - "deployment/dbaas-postgres-adapter"
-          - "--for=create"
-          - "--for=condition=Available"
+          - "patroniservices/patroni-services"
+          - "--for=jsonpath={.status.conditions[0].type}=Successful"
           - "--timeout=600s"
+      # The reconcile stamps checksum/secret0 into the adapter pod template, which starts one more rollout, so wait it out as well.
+      - events: ["postsync"]
+        name: "wait-adapter-rolled-out"
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "--namespace={{ $pgNamespace }}"
+          - "rollout"
+          - "status"
+          - "deployment/dbaas-postgres-adapter"
+          - "--timeout=600s"
+      - events: ["postsync"]
+        name: "wait-adapter-registration"
+        showlogs: true
+        command: "bash"
+        args:
+          - "-c"
+          - |-
+            physical_db=physicaldatabases.dbaas.netcracker.com/patroni-services-physical-db
+            if kubectl --namespace={{ $pgNamespace }} get "$physical_db" >/dev/null 2>&1; then
+              for attempt in $(seq 1 60); do
+                ready=$(kubectl --namespace={{ $pgNamespace }} get "$physical_db" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
+                [ "$ready" = "True" ] && exit 0
+                stalled=$(kubectl --namespace={{ $pgNamespace }} get "$physical_db" -o jsonpath='{.status.conditions[?(@.type=="Stalled")].status}')
+                [ "$stalled" = "True" ] && break
+                sleep 5
+              done
+              echo "PhysicalDatabase $physical_db did not reach Ready"
+              kubectl --namespace={{ $pgNamespace }} get "$physical_db" -o jsonpath='{.status.conditions}'
+              exit 1
+            fi
+            for attempt in $(seq 1 60); do
+              kubectl --namespace={{ $pgNamespace }} logs -l app=dbaas-postgres-adapter --tail=200 2>/dev/null | grep -q "Registration finished" && exit 0
+              sleep 5
+            done
+            echo "dbaas-postgres-adapter did not register itself in the aggregator"
+            kubectl --namespace={{ $pgNamespace }} logs -l app=dbaas-postgres-adapter --tail=100
+            exit 1
+{{- if .Values.backup.enabled }}
+      - events: ["postsync"]
+        name: "wait-backup-daemon-rolled-out"
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "--namespace={{ $pgNamespace }}"
+          - "rollout"
+          - "status"
+          - "deployment/postgres-backup-daemon"
+          - "--timeout=600s"
+{{- end }}
     labels:
       component: patroni-services
