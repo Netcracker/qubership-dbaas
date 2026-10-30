@@ -8,6 +8,7 @@
 #   EXTRA_DEPLOYMENTS      space-separated "deployment:namespace" pairs to collect as well
 #   AGGREGATOR_LOG_MODE    "full" (default) or "health-only"; health-only keeps only aggregator
 #                          health warnings because full logs can contain encrypted credentials
+#                          (registration lines are always kept in both modes)
 set -uo pipefail
 
 OUT_DIR="${OUT_DIR:-./logs}"
@@ -18,12 +19,18 @@ AGGREGATOR_LOG_MODE="${AGGREGATOR_LOG_MODE:-full}"
 mkdir -p "$OUT_DIR"
 
 AGGREGATOR_HEALTH_PATTERN='\[class=AdapterHealthCheck\] [A-Za-z0-9_-]+ [A-Za-z0-9_.:-]+ has problem\. Status: (PROBLEM|UNKNOWN|DOWN)$|\[class=AbstractDbaasAdapterRESTClient\] Failed to get health of adapter of type [A-Za-z0-9_-]+$|\[class=DbaasPostgresConnectHealthCheck\] Postgres connection is lost$'
+# Physical database registration is what PatroniServices waits for, and with more than one
+# aggregator replica it is not obvious which replica served which request.
+AGGREGATOR_REGISTRATION_PATTERN='regist|physical database|PhysicalDatabase|handshake|Sending GET request to|conflicts with already saved address|periodic h2 synchronization'
+AGGREGATOR_SECRET_PATTERN='password|passwd|secret|token|credential'
 
 DEPLOY_NS_PAIRS=(
   "dbaas-aggregator:${DBAAS_NAMESPACE}"
   "dbaas-operator:${DBAAS_NAMESPACE}"
   "dbaas-postgres-adapter:${PG_NAMESPACE}"
   "postgres-backup-daemon:${PG_NAMESPACE}"
+  "postgres-operator:${PG_NAMESPACE}"
+  "patroni-core-operator:${PG_NAMESPACE}"
 )
 for pair in $EXTRA_DEPLOYMENTS; do
   DEPLOY_NS_PAIRS+=("$pair")
@@ -57,6 +64,12 @@ for pair in "${DEPLOY_NS_PAIRS[@]}"; do
   for pod in $pods; do
     pod_name=${pod#pod/}
     echo "--- ${pod} ---"
+    if [[ "$deploy" == "dbaas-aggregator" ]]; then
+      kubectl logs "$pod" -n "$ns" --all-containers=true 2>/dev/null \
+        | grep -Ei "$AGGREGATOR_REGISTRATION_PATTERN" \
+        | grep -Eiv "$AGGREGATOR_SECRET_PATTERN" \
+        > "$OUT_DIR/${pod_name}.registration.log" || true
+    fi
     if [[ "$deploy" == "dbaas-aggregator" && "$AGGREGATOR_LOG_MODE" == "health-only" ]]; then
       { kubectl logs "$pod" -n "$ns" --all-containers=true 2>/dev/null | grep -E "$AGGREGATOR_HEALTH_PATTERN"; } \
         > "$OUT_DIR/${pod_name}.health.log" || true
@@ -73,3 +86,16 @@ done
 for ns in $(printf '%s\n' "$DBAAS_NAMESPACE" "$PG_NAMESPACE" "${DEPLOY_NS_PAIRS[@]##*:}" | sort -u); do
   kubectl -n "$ns" get events --sort-by=.lastTimestamp > "$OUT_DIR/events-${ns}.txt" 2>&1 || true
 done
+
+# PatroniServices and PhysicalDatabase conditions say what the Patroni stack is still waiting for.
+{
+  kubectl -n "$PG_NAMESPACE" get patroniservices -o yaml
+  kubectl -n "$PG_NAMESPACE" get physicaldatabases -o yaml
+} > "$OUT_DIR/pg-cr-status.yaml" 2>&1 || true
+
+# How many aggregator replicas were serving the registration endpoint when the waits expired.
+{
+  kubectl -n "$DBAAS_NAMESPACE" get deploy dbaas-aggregator \
+    -o jsonpath='desired={.spec.replicas} ready={.status.readyReplicas}{"\n"}'
+  kubectl -n "$DBAAS_NAMESPACE" get endpointslices -l kubernetes.io/service-name=dbaas-aggregator -o wide
+} > "$OUT_DIR/aggregator-endpoints.txt" 2>&1 || true
