@@ -32,10 +32,12 @@ public abstract class AbstractDbResource implements Serializable {
     protected UUID id;
 
     @Schema(required = true, description = "The kind of resource. For example database or user")
+    @io.swagger.v3.oas.annotations.media.Schema(required = true, description = "The kind of resource. For example database or user")
     @NonNull
     protected String kind;
 
     @Schema(required = true, description = "Name of the resource.")
+    @io.swagger.v3.oas.annotations.media.Schema(required = true, description = "Name of the resource.")
     @NonNull
     protected String name;
 }

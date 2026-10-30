@@ -1,6 +1,7 @@
 package com.netcracker.cloud.dbaas.dto;
 
 import com.netcracker.cloud.dbaas.service.PasswordEncryption;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -16,6 +17,7 @@ import static com.netcracker.cloud.dbaas.dto.ConnectionDescription.FieldTypeEnum
 @AllArgsConstructor
 @EqualsAndHashCode
 @NoArgsConstructor
+@Schema(description = "Describes the fields of connection properties, for example which of them are protected")
 public class ConnectionDescription implements Serializable {
     public static final ConnectionDescription DEFAULT_CONNECTION_DESCRIPTION = new ConnectionDescription(
             new HashMap<String, FieldDescription>() {{
@@ -23,6 +25,7 @@ public class ConnectionDescription implements Serializable {
             }}
     );
 
+    @Schema(description = "Fields of the connection properties")
     Map<String, FieldDescription> fields;
 
     @Data
@@ -30,6 +33,7 @@ public class ConnectionDescription implements Serializable {
     @AllArgsConstructor
     @EqualsAndHashCode
     public static class FieldDescription implements Serializable {
+        @Schema(description = "Type of the field")
         FieldTypeEnum type;
     }
 

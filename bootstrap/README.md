@@ -179,7 +179,8 @@ This is required as there is no public repo for helm packages downloading
 
 ### Stage 7: Wait for Patroni Services Registration
 - Waits for Patroni services registration to complete (timeout: 5 minutes)
-- Monitors logs for "Registration finished" message
+- Primary signal: `Ready=True` condition on the `patroni-services-physical-db` PhysicalDatabase CR (declarative registration, status owned by dbaas-operator); fails fast with the operator's message when the `Stalled` condition is `True`
+- Fallback (clusters without the PhysicalDatabase CRD): adapter log contains "Registration finished" (self-registration mode)
 
 ## Uninstallation Process
 

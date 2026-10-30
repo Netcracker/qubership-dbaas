@@ -35,7 +35,7 @@ Is stored in internal registry DB.
 The existing guides cover only cases when client uses DBaaS Aggregator / DBaaS Agent to obtain credentials and doesn't
 store them in any persistent storage.
 
-[Change passwords of logical databases](../rest-api.md#change-user-password)
+[Change passwords of logical databases](../api/rest-api.md#change-user-password)
 
 Please note that you need to invoke the password-changing API for each type of database.
 
@@ -240,7 +240,7 @@ These parameters are passed to DBaaS Agent via secret, not as a direct Env varia
    specific physical DB documentation. The username and password must match `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` /
    `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD` from the first step. Please take note that you need to update all physical
    databases used in the DBaaS Aggregator. List of all registered physical databases can be obtained by
-   this [API](../rest-api.md#list-registered-physical-databases) (type must be `all`).
+   this [API](../api/rest-api.md#list-registered-physical-databases) (type must be `all`).
 5) Redeploy physical databases with updated parameters.
 6) Call DBaaS Aggregator health API. Go to pod terminal and run curl `localhost:8080/health`. Status must be `UP`.
 7) Go to parameters registry for each project utilizing Cloud Core that also uses the DBaaS Aggregator password you are

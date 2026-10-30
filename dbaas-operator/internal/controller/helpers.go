@@ -141,11 +141,63 @@ func invalidSpec[P ~string](
 	return ctrl.Result{}, nil
 }
 
-// handleAggregatorError maps an aggregator failure to status, event, and retry behavior:
-//   - invalid request context -> InvalidConfiguration (permanent, no retry)
-//   - 401 → BackingOff (transient, retry)
-//   - 400/403/409/410/422 → InvalidConfiguration (permanent, no retry)
-//   - 5xx/network → BackingOff (transient, retry)
+// remoteError is implemented by the typed HTTP errors of every remote service
+// the operator calls (*AggregatorError, *AdapterError). Both classify a status
+// code the same way, so handleRemoteError produces the same phase, Stalled
+// condition, and retry behavior whichever service answered.
+type remoteError interface {
+	error
+	IsAuthError() bool
+	IsSpecRejection() bool
+	UserMessage() string
+}
+
+// remoteService describes how failures of one remote service appear in the
+// status and in events. Only the names differ between services; the
+// classification is shared.
+type remoteService struct {
+	// name opens every event message, e.g. "dbaas-aggregator".
+	name string
+	// credentials names whose credentials a 401 rejected.
+	credentials string
+	// rejectedReason is the reason for 400/403/409/410/422.
+	rejectedReason string
+	// errorReason is the reason for 5xx, other 4xx, and transport failures.
+	errorReason string
+	// as extracts the service's typed error from err.
+	as func(err error) (remoteError, bool)
+}
+
+var aggregatorService = remoteService{
+	name:           "dbaas-aggregator",
+	credentials:    "operator credentials",
+	rejectedReason: EventReasonAggregatorRejected,
+	errorReason:    EventReasonAggregatorError,
+	as: func(err error) (remoteError, bool) {
+		var aggErr *aggregatorclient.AggregatorError
+		if errors.As(err, &aggErr) {
+			return aggErr, true
+		}
+		return nil, false
+	},
+}
+
+var adapterService = remoteService{
+	name:           "dbaas adapter",
+	credentials:    "the credentials from the referenced Secret",
+	rejectedReason: EventReasonAdapterRejected,
+	errorReason:    EventReasonAdapterError,
+	as: func(err error) (remoteError, bool) {
+		var adapterErr *aggregatorclient.AdapterError
+		if errors.As(err, &adapterErr) {
+			return adapterErr, true
+		}
+		return nil, false
+	},
+}
+
+// handleAggregatorError maps an aggregator failure to status, event, and retry
+// behavior; see handleRemoteError for the classification.
 func handleAggregatorError[P ~string](
 	phase *P,
 	conditions *[]metav1.Condition,
@@ -154,6 +206,38 @@ func handleAggregatorError[P ~string](
 	obj runtime.Object,
 	err error,
 	requestID string,
+) (ctrl.Result, error) {
+	return handleRemoteError(phase, conditions, generation, recorder, obj, err, requestID, aggregatorService)
+}
+
+// handleAdapterError maps a dbaas adapter failure to status, event, and retry
+// behavior exactly like handleAggregatorError, with adapter reasons.
+func handleAdapterError[P ~string](
+	phase *P,
+	conditions *[]metav1.Condition,
+	generation int64,
+	recorder record.EventRecorder,
+	obj runtime.Object,
+	err error,
+	requestID string,
+) (ctrl.Result, error) {
+	return handleRemoteError(phase, conditions, generation, recorder, obj, err, requestID, adapterService)
+}
+
+// handleRemoteError maps a remote service failure to status, event, and retry behavior:
+//   - invalid request context -> InvalidConfiguration (permanent, no retry)
+//   - 401 → BackingOff with Unauthorized (transient, retry)
+//   - 400/403/409/410/422 → InvalidConfiguration with svc.rejectedReason (permanent, no retry)
+//   - 5xx/other 4xx/network → BackingOff with svc.errorReason (transient, retry)
+func handleRemoteError[P ~string](
+	phase *P,
+	conditions *[]metav1.Condition,
+	generation int64,
+	recorder record.EventRecorder,
+	obj runtime.Object,
+	err error,
+	requestID string,
+	svc remoteService,
 ) (ctrl.Result, error) {
 	var requestContextErr *aggregatorclient.RequestContextError
 	if errors.As(err, &requestContextErr) {
@@ -165,40 +249,55 @@ func handleAggregatorError[P ~string](
 		return ctrl.Result{}, nil
 	}
 
-	var aggErr *aggregatorclient.AggregatorError
-	if errors.As(err, &aggErr) {
+	remoteErr, ok := svc.as(err)
+	if ok {
 		switch {
-		case aggErr.IsAuthError():
+		case remoteErr.IsAuthError():
 			// 401 — credentials misconfigured; retry.
 			markTransientFailure(phase, conditions, generation,
-				EventReasonUnauthorized, aggErr.UserMessage())
+				EventReasonUnauthorized, remoteErr.UserMessage())
 			recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonUnauthorized,
-				"dbaas-aggregator rejected operator credentials (HTTP 401): %s (requestId=%s)",
-				aggErr.UserMessage(), requestID)
+				"%s rejected %s (HTTP 401): %s (requestId=%s)",
+				svc.name, svc.credentials, remoteErr.UserMessage(), requestID)
 			return ctrl.Result{}, err
 
-		case aggErr.IsSpecRejection():
-			// 400/403/409/410/422 — aggregator explicitly rejected the spec.
+		case remoteErr.IsSpecRejection():
+			// 400/403/409/410/422 — the service explicitly rejected the request.
 			// Retrying the same payload will not help; wait for a spec change.
 			markPermanentFailure(phase, conditions, generation,
-				EventReasonAggregatorRejected, aggErr.UserMessage())
-			recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonAggregatorRejected,
-				"dbaas-aggregator rejected request: %s (requestId=%s)",
-				aggErr.UserMessage(), requestID)
+				svc.rejectedReason, remoteErr.UserMessage())
+			recorder.Eventf(obj, corev1.EventTypeWarning, svc.rejectedReason,
+				"%s rejected request: %s (requestId=%s)",
+				svc.name, remoteErr.UserMessage(), requestID)
 			return ctrl.Result{}, nil
 		}
 	}
 
-	// 5xx / network — transient; retry with backoff.
+	// 5xx / other 4xx / network — transient; retry with backoff.
 	errMsg := err.Error()
-	if aggErr != nil {
-		errMsg = aggErr.UserMessage()
+	if ok {
+		errMsg = remoteErr.UserMessage()
 	}
-	markTransientFailure(phase, conditions, generation,
-		EventReasonAggregatorError, errMsg)
-	recorder.Eventf(obj, corev1.EventTypeWarning, EventReasonAggregatorError,
-		"dbaas-aggregator error: %s (requestId=%s)", errMsg, requestID)
+	markTransientFailure(phase, conditions, generation, svc.errorReason, errMsg)
+	recorder.Eventf(obj, corev1.EventTypeWarning, svc.errorReason,
+		"%s error: %s (requestId=%s)", svc.name, errMsg, requestID)
 	return ctrl.Result{}, err
+}
+
+// isOlderClaimant returns true when a was created strictly before b. On equal
+// creationTimestamps it falls back to lexical UID comparison so the result is
+// stable across both peers (otherwise a tie would leave both CRs as "younger"
+// and neither would lose). Controllers use it to resolve a claim that two CRs
+// make on the same resource: the older claimant wins.
+func isOlderClaimant(a, b metav1.Object) bool {
+	aCreated, bCreated := a.GetCreationTimestamp(), b.GetCreationTimestamp()
+	if aCreated.Before(&bCreated) {
+		return true
+	}
+	if bCreated.Before(&aCreated) {
+		return false
+	}
+	return string(a.GetUID()) < string(b.GetUID())
 }
 
 func markPermanentFailure[P ~string](

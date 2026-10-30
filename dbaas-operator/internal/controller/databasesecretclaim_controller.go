@@ -576,20 +576,6 @@ func buildSecretData(s *dbaasv1.DatabaseSecretClaim, dbResp *aggregatorclient.Da
 	}, nil
 }
 
-// isOlderClaimant returns true when a was created strictly before b. On equal
-// creationTimestamps it falls back to lexical UID comparison so the result is
-// stable across both peers (otherwise a tie would leave both CRs as "younger"
-// and neither would lose).
-func isOlderClaimant(a, b *dbaasv1.DatabaseSecretClaim) bool {
-	if a.CreationTimestamp.Before(&b.CreationTimestamp) {
-		return true
-	}
-	if b.CreationTimestamp.Before(&a.CreationTimestamp) {
-		return false
-	}
-	return string(a.UID) < string(b.UID)
-}
-
 // specOrRotationTriggerPredicate fires a reconcile on (a) a spec change
 // (generation bump) or (b) a change to the rotation-trigger annotation that
 // the rotation poller patches when dbaas-aggregator reports a credentials
