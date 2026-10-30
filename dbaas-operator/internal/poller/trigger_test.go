@@ -30,6 +30,7 @@ import (
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 )
 
+// testOperatorNamespace is the operator namespace these unit tests assign to claims.
 const testOperatorNamespace = "operator-ns"
 
 // claimIndexFn mirrors the production field indexer registered in

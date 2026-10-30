@@ -18,6 +18,7 @@ try:
 except ImportError:  # pragma: no cover - PyYAML is a pinned test dependency
     yaml = None
 
+# Resolve from this file so the tests run from any working directory.
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "dbaas-mounted-secret-migration" / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
