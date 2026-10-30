@@ -159,7 +159,7 @@ releases:
           - "wait"
           - "--namespace={{ $pgNamespace }}"
           - "patroniservices/patroni-services"
-          - "--for=jsonpath={.status.conditions[0].type}=Successful"
+          - '--for=jsonpath={.status.conditions[?(@.type=="Successful")].status}=True'
           - "--timeout=600s"
       # The reconcile stamps checksum/secret0 into the adapter pod template, which starts one more rollout, so wait it out as well.
       - events: ["postsync"]
@@ -179,19 +179,6 @@ releases:
         args:
           - "-c"
           - |-
-            physical_db=physicaldatabases.dbaas.netcracker.com/patroni-services-physical-db
-            if kubectl --namespace={{ $pgNamespace }} get "$physical_db" >/dev/null 2>&1; then
-              for attempt in $(seq 1 60); do
-                ready=$(kubectl --namespace={{ $pgNamespace }} get "$physical_db" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
-                [ "$ready" = "True" ] && exit 0
-                stalled=$(kubectl --namespace={{ $pgNamespace }} get "$physical_db" -o jsonpath='{.status.conditions[?(@.type=="Stalled")].status}')
-                [ "$stalled" = "True" ] && break
-                sleep 5
-              done
-              echo "PhysicalDatabase $physical_db did not reach Ready"
-              kubectl --namespace={{ $pgNamespace }} get "$physical_db" -o jsonpath='{.status.conditions}'
-              exit 1
-            fi
             for attempt in $(seq 1 60); do
               kubectl --namespace={{ $pgNamespace }} logs -l app=dbaas-postgres-adapter --tail=200 2>/dev/null | grep -q "Registration finished" && exit 0
               sleep 5

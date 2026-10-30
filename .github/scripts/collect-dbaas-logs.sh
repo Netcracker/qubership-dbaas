@@ -87,10 +87,11 @@ for ns in $(printf '%s\n' "$DBAAS_NAMESPACE" "$PG_NAMESPACE" "${DEPLOY_NS_PAIRS[
   kubectl -n "$ns" get events --sort-by=.lastTimestamp > "$OUT_DIR/events-${ns}.txt" 2>&1 || true
 done
 
-# PatroniServices and PhysicalDatabase conditions say what the Patroni stack is still waiting for.
+# PatroniServices conditions and CRD creation times show what the Patroni stack is waiting for.
 {
+  kubectl get crd patronicores.netcracker.com patroniservices.netcracker.com \
+    -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp
   kubectl -n "$PG_NAMESPACE" get patroniservices -o yaml
-  kubectl -n "$PG_NAMESPACE" get physicaldatabases -o yaml
 } > "$OUT_DIR/pg-cr-status.yaml" 2>&1 || true
 
 # How many aggregator replicas were serving the registration endpoint when the waits expired.
