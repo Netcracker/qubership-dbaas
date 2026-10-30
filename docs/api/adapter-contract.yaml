@@ -132,8 +132,8 @@ paths:
               items:
                 type: string
             example:
-              - postgres-logical-database
-              - arango-logical-database
+            - postgres-logical-database
+            - arango-logical-database
         required: true
       responses:
         "202":
@@ -198,7 +198,7 @@ paths:
               dbName: postgres-database
               settings:
                 pgExtension:
-                  - extension
+                - extension
         required: true
       responses:
         "201":
@@ -633,8 +633,8 @@ paths:
               items:
                 type: string
             example:
-              - postgres-logical-database
-              - arango-logical-database
+            - postgres-logical-database
+            - arango-logical-database
       responses:
         "202":
           description: Restore requested
@@ -1288,10 +1288,10 @@ components:
       description: The response to obtain physical database information
     Spec:
       required:
-        - major
-        - minor
-        - specRootUrl
-        - supportedMajors
+      - major
+      - minor
+      - specRootUrl
+      - supportedMajors
       type: object
       properties:
         specRootUrl:
