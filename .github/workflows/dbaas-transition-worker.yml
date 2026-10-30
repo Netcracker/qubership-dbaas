@@ -75,7 +75,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up kind cluster
-        uses: ./.github/actions/setup-kind-cluster
+        uses: ./harness/.github/actions/setup-kind-cluster
         with:
           kind-config: harness/bootstrap/helmfile/kind.yaml
 
