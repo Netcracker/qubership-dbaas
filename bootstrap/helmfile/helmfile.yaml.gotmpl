@@ -44,13 +44,13 @@ releases:
       - values/backup/minio-tenant.yaml
     hooks:
       - events: ["postsync"]
-        name: "wait-minio-tenant-ready"
+        name: "wait-minio-tenant-provisioned"
         showlogs: true
         command: "kubectl"
         args:
           - "--namespace=minio"
           - "wait"
-          - "--for=jsonpath={.status.currentState}=Ready"
+          - "--for=jsonpath={.status.provisionedBuckets}=true"
           - "tenant/test-minio"
           - "--timeout=600s"
     labels:
