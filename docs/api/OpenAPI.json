@@ -25,39 +25,6 @@
           }
         }
       },
-      "AdapterDatabaseCreateRequest": {
-        "type": "object",
-        "description": "The request to create database for REST dbaas adapter",
-        "properties": {
-          "metadata": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "namePrefix": {
-            "type": "string"
-          },
-          "settings": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "initScriptIdentifiers": {
-            "type": "array",
-            "deprecated": true,
-            "items": {
-              "type": "string"
-            }
-          },
-          "password": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          },
-          "dbName": {
-            "type": "string"
-          }
-        }
-      },
       "AdditionalRoles": {
         "type": "object",
         "required": [
@@ -96,13 +63,17 @@
       },
       "ApiVersion": {
         "type": "object",
+        "required": [
+          "specs"
+        ],
+        "description": "The adapter API version",
         "properties": {
           "specs": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Spec"
             },
-            "description": "The root URL part for that API version"
+            "description": "List of supported API version specification"
           }
         }
       },
@@ -1918,6 +1889,7 @@
         "description": "V3 Response model for starting the migration procedure",
         "properties": {
           "id": {
+            "$ref": "#/components/schemas/UUID",
             "type": "string",
             "description": "Current instruction Id"
           },
@@ -3634,6 +3606,13 @@
       },
       "Spec": {
         "type": "object",
+        "required": [
+          "specRootUrl",
+          "major",
+          "minor",
+          "supportedMajors"
+        ],
+        "description": "The adapter API version spec",
         "properties": {
           "specRootUrl": {
             "type": "string",
@@ -9305,6 +9284,14 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Enable logical database role migration. Uses only for declarative physical database registration",
+            "name": "internalMigration",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],

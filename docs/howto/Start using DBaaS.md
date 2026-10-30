@@ -21,4 +21,4 @@ Each module contains readme where is described how to use a library.
 
 ## Manual operations
 
-Please refer to [rest-api.md](../rest-api.md) spec to get list of available operations.
+Please refer to [rest-api.md](../api/rest-api.md) spec to get list of available operations.

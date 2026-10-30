@@ -2,28 +2,24 @@ package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.netcracker.cloud.dbaas.dto.InstructionType;
 import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
-import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
-import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabaseInstruction;
-import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
-import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
-import com.netcracker.cloud.dbaas.service.InstructionService;
 import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.ws.rs.core.MediaType;
-
+import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.util.*;
 
+import static com.netcracker.cloud.dbaas.DbaasApiPath.DBAAS_PATH_V3;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static org.hamcrest.Matchers.is;
@@ -36,28 +32,26 @@ class PhysicalDatabaseRegistrationControllerV3Test {
 
     private final String TEST_TYPE = "testtype";
     private final UUID PHYDBID = UUID.randomUUID();
-    private final String TEST_PHYDBIDENTIFIER = "test-phydbidentifier";
-    private final String INSTRUCTION_ID = "acde070d-8c4c-4f0d-9d8a-162843c10333";
+    private final UUID INSTRUCTION_ID = UUID.fromString("acde070d-8c4c-4f0d-9d8a-162843c10333");
     private final UUID DATABASE_ID = UUID.randomUUID();
 
     @InjectMock
     PhysicalDatabasesService physicalDatabasesService;
-    @InjectMock
-    InstructionService instructionService;
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void testRegister() throws JsonProcessingException {
         final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
-        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        List<Database> logicalDatabases = Collections.singletonList(new Database());
         Instruction instruction = getInstructionSample();
         Map<String, Object> response = new HashMap<>();
         response.put("instruction", instruction);
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenReturn(Optional.empty());
-        when(physicalDatabasesService.isDbActual(any(), any())).thenReturn(false);
+
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenReturn(
+                        Response.created(URI.create(DBAAS_PATH_V3 + "/" + TEST_TYPE + "/physical_databases/" + PHYDBID)
+                        ).build());
+
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -66,11 +60,11 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(CREATED.getStatusCode());
 
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenReturn(Optional.of(physicalDatabase));
-        when(instructionService.isRolesDifferent(eq(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()), any())).thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenReturn(
+                        Response.ok().build()
+                );
+
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -78,19 +72,11 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .when().put("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(OK.getStatusCode());
-        verify(instructionService).isRolesDifferent(
-                eq(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()), eq(physicalDatabase.getRoles()));
 
-        when(instructionService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles())).
-                thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
-                .thenReturn(logicalDatabases);
-        when(instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier()))
-                .thenReturn(null);
-        when(instructionService.buildInstructionForAdditionalRoles(logicalDatabases))
-                .thenReturn(instruction);
-        when(instructionService.saveInstruction(physicalDatabase, instruction, physicalDatabaseRegistryRequest)).thenReturn(response);
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenReturn(
+                        Response.accepted().entity(response).build()
+                );
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -100,8 +86,10 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .statusCode(ACCEPTED.getStatusCode())
                 .body(is(objectMapper.writeValueAsString(response)));
 
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenThrow(new PhysicalDatabaseRegistrationConflictException("test"));
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenReturn(
+                        Response.status(CONFLICT).build()
+                );
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -110,9 +98,10 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(CONFLICT.getStatusCode());
 
-        reset(physicalDatabasesService);
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenThrow(new AdapterUnavailableException(404));
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenReturn(
+                        Response.status(BAD_GATEWAY).build()
+                );
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -121,8 +110,10 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(BAD_GATEWAY.getStatusCode());
 
-        reset(physicalDatabasesService);
-        physicalDatabaseRegistryRequest.setAdapterAddress("String");
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenReturn(
+                        Response.status(BAD_REQUEST).build()
+                );
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -133,148 +124,37 @@ class PhysicalDatabaseRegistrationControllerV3Test {
     }
 
     @Test
-    void testRegisterWithExistingInstruction() throws JsonProcessingException {
-        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
-        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        List<Database> logicalDatabases = Collections.singletonList(new Database());
-        Instruction instruction = getInstructionSample();
-        PhysicalDatabaseInstruction physicalDatabaseInstruction = getPhysicalDatabaseInstructionSample();
-        Map<String, Object> response = new HashMap<>();
-        response.put("instruction", instruction);
-        when(physicalDatabasesService.isDbActual(any(), any())).thenReturn(false);
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenReturn(Optional.empty());
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
-                .when().put("/{phydbid}", PHYDBID)
-                .then()
-                .statusCode(CREATED.getStatusCode());
-
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenReturn(Optional.of(physicalDatabase));
-        when(instructionService.isRolesDifferent(eq(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()), any())).thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
-                .when().put("/{phydbid}", PHYDBID)
-                .then()
-                .statusCode(OK.getStatusCode());
-        verify(instructionService, times(1)).isRolesDifferent(
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles());
-
-        when(instructionService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles())).
-                thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
-                .thenReturn(logicalDatabases);
-        when(instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier()))
-                .thenReturn(physicalDatabaseInstruction);
-        when(instructionService.findPortion(INSTRUCTION_ID)).thenReturn(instruction);
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
-                .when().put("/{phydbid}", PHYDBID)
-                .then()
-                .statusCode(ACCEPTED.getStatusCode())
-                .body(is(objectMapper.writeValueAsString(response)));
-    }
-
-    @Test
-    void testRegisterWithExistingInstructionWithNullPortion() throws JsonProcessingException {
-        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
-        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        List<Database> logicalDatabases = Collections.singletonList(new Database());
-        Instruction instruction = getInstructionSample();
-        PhysicalDatabaseInstruction physicalDatabaseInstruction = getPhysicalDatabaseInstructionSample();
-        Map<String, Object> response = new HashMap<>();
-        response.put("instruction", instruction);
-        when(physicalDatabasesService.isDbActual(any(), any())).thenReturn(false);
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenReturn(Optional.empty());
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
-                .when().put("/{phydbid}", PHYDBID)
-                .then()
-                .statusCode(CREATED.getStatusCode());
-
-        when(physicalDatabasesService.foundPhysicalDatabase(PHYDBID.toString(), TEST_TYPE, physicalDatabaseRegistryRequest))
-                .thenReturn(Optional.of(physicalDatabase));
-        when(instructionService.isRolesDifferent(eq(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()), any())).thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles())).thenReturn(Collections.emptyList());
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
-                .when().put("/{phydbid}", PHYDBID)
-                .then()
-                .statusCode(OK.getStatusCode());
-        verify(instructionService, times(1)).isRolesDifferent(
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles());
-
-        when(instructionService.isRolesDifferent(physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles(), physicalDatabase.getRoles())).
-                thenReturn(true);
-        when(instructionService.getLogicalDatabasesForMigration(PHYDBID.toString(), TEST_TYPE,
-                physicalDatabaseRegistryRequest.getMetadata().getSupportedRoles()))
-                .thenReturn(logicalDatabases);
-        when(instructionService.findInstructionByPhyDbId(physicalDatabase.getPhysicalDatabaseIdentifier()))
-                .thenReturn(physicalDatabaseInstruction);
-        Instruction portionedInstruction = null;
-        when(instructionService.findPortion(INSTRUCTION_ID)).thenReturn(portionedInstruction);
-        when(instructionService.buildInstructionForAdditionalRoles(logicalDatabases))
-                .thenReturn(instruction);
-        when(instructionService.saveInstruction(physicalDatabase, instruction, physicalDatabaseRegistryRequest)).thenReturn(response);
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
-                .when().put("/{phydbid}", PHYDBID)
-                .then()
-                .statusCode(ACCEPTED.getStatusCode())
-                .body(is(objectMapper.writeValueAsString(response)));
-    }
-
-    @Test
     void testRegister_featuresWithoutMultiusersKeyFailsWithNullPointerException() throws JsonProcessingException {
-        PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
         // The OpenAPI contract requires `features` but does not declare a `multiusers` key, so this request is valid.
-        physicalDatabaseRegistryRequest.getMetadata().setFeatures(new HashMap<>(Map.of("tls", true)));
-        PhysicalDatabase physicalDatabase = getPhysicalDatabaseSample();
-        when(physicalDatabasesService.foundPhysicalDatabase(eq(PHYDBID.toString()), eq(TEST_TYPE), any()))
-                .thenReturn(Optional.of(physicalDatabase));
-        when(instructionService.isRolesDifferent(any(), any())).thenReturn(true);
-        when(physicalDatabasesService.isDbActual(any(), any())).thenReturn(true);
+        PhysicalDatabaseRegistryRequestV3 missingMultiusersRequest = getPhysicalDatabaseRegistryRequestV3Sample();
+        missingMultiusersRequest.getMetadata().setFeatures(new HashMap<>(Map.of("tls", true)));
+
+        // The service fails with NullPointerException (PhysicalDatabasesService#isMigrationRequired reads features.get("multiusers"))
+        doThrow(new NullPointerException("multiusers key is missing in features"))
+                .when(physicalDatabasesService)
+                .registerPhysicalDatabase(missingMultiusersRequest, TEST_TYPE, PHYDBID.toString(), false);
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .body(objectMapper.writeValueAsString(missingMultiusersRequest))
                 .when().put("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
                 .body("code", is("CORE-DBAAS-2000"));
-        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
-        verify(physicalDatabasesService, never()).isDbActual(any(), any());
 
         // An explicit `multiusers: false` skips the migration branch, so only the missing key causes the failure.
-        physicalDatabaseRegistryRequest.getMetadata().getFeatures().put("multiusers", false);
+        PhysicalDatabaseRegistryRequestV3 multiusersDisabledRequest = getPhysicalDatabaseRegistryRequestV3Sample();
+        multiusersDisabledRequest.getMetadata().getFeatures().put("multiusers", false);
+        when(physicalDatabasesService.registerPhysicalDatabase(multiusersDisabledRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenReturn(Response.ok().build());
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .body(objectMapper.writeValueAsString(multiusersDisabledRequest))
                 .when().put("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(OK.getStatusCode());
-        verify(instructionService, never()).getLogicalDatabasesForMigration(any(), any(), any());
-        verify(physicalDatabasesService).isDbActual(any(), any());
     }
 
     @Test
@@ -282,6 +162,10 @@ class PhysicalDatabaseRegistrationControllerV3Test {
         PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
         physicalDatabaseRegistryRequest.setAdapterAddress(null);
 
+        doThrow(new NullPointerException("adapterAddress is null"))
+                .when(physicalDatabasesService)
+                .registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false);
+
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -290,39 +174,16 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(INTERNAL_SERVER_ERROR.getStatusCode())
                 .body("code", is("CORE-DBAAS-2000"));
-        verify(physicalDatabasesService, never()).foundPhysicalDatabase(any(), any(), any());
-        verify(physicalDatabasesService, never()).physicalDatabaseRegistration(any(), any(), any());
     }
 
     @Test
-    void testSuccessfulInstruction() throws JsonProcessingException {
+    void testRegister_failureWhileSavingConnectionProperties() throws JsonProcessingException {
         InstructionRequestV3 successfulInstructionRequest = getSuccessfulInstructionRequestV3Sample();
-        Instruction instruction = getInstructionSample();
 
-        when(instructionService.findInstructionById(INSTRUCTION_ID)).thenReturn(instruction);
-        when(instructionService.findNextAdditionalRoles(INSTRUCTION_ID))
-                .thenReturn(null);
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(successfulInstructionRequest))
-                .when().post("/{phydbid}/instruction/{instructionid}/additional-roles", PHYDBID, INSTRUCTION_ID)
-                .then()
-                .statusCode(OK.getStatusCode());
-
-        when(instructionService.findInstructionById(INSTRUCTION_ID)).thenReturn(instruction);
-        when(instructionService.findNextAdditionalRoles(INSTRUCTION_ID))
-                .thenReturn(new ArrayList<AdditionalRoles>());
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(successfulInstructionRequest))
-                .when().post("/{phydbid}/instruction/{instructionid}/additional-roles", PHYDBID, INSTRUCTION_ID)
-                .then()
-                .statusCode(ACCEPTED.getStatusCode());
-
-        when(instructionService.findInstructionById(INSTRUCTION_ID)).thenReturn(instruction);
-        doThrow(new RuntimeException("test")).when(instructionService).saveConnectionPropertiesAfterRolesRegistration(successfulInstructionRequest.getSuccess());
+        // Failure while saving connection properties after roles registration -> 500
+        doThrow(new RuntimeException("test"))
+                .when(physicalDatabasesService)
+                .handleInstruction(INSTRUCTION_ID, successfulInstructionRequest);
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -335,7 +196,10 @@ class PhysicalDatabaseRegistrationControllerV3Test {
     @Test
     void testInstruction_shouldReturnNotFoundForUnknownInstructionId() throws JsonProcessingException {
         InstructionRequestV3 successfulInstructionRequest = getSuccessfulInstructionRequestV3Sample();
-        when(instructionService.findInstructionById(INSTRUCTION_ID)).thenReturn(null);
+        when(physicalDatabasesService.handleInstruction(INSTRUCTION_ID, successfulInstructionRequest))
+                .thenReturn(Response.status(NOT_FOUND)
+                        .entity(String.format("Instruction with Id = %s not found", INSTRUCTION_ID))
+                        .build());
 
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
@@ -345,30 +209,11 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .then()
                 .statusCode(NOT_FOUND.getStatusCode())
                 .body(is(String.format("Instruction with Id = %s not found", INSTRUCTION_ID)));
-
-        verify(instructionService, never()).saveConnectionPropertiesAfterRolesRegistration(any());
-        verify(instructionService, never()).updateInstructionWithContext(any(), any());
-        verify(instructionService, never()).deleteInstruction(any());
-        verify(instructionService, never()).findNextAdditionalRoles(any());
-        verify(instructionService, never()).completeMigrationProcedure(any(), any(), any());
-    }
-
-
-    @Test
-    void testFailureInstruction() throws JsonProcessingException {
-        InstructionRequestV3 failureInstructionRequest = getFailureInstructionRequestV3Sample();
-        when(instructionService.findInstructionById(INSTRUCTION_ID)).thenReturn(new Instruction());
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .pathParam("type", TEST_TYPE)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsString(failureInstructionRequest))
-                .when().post("/{phydbid}/instruction/{instructionid}/additional-roles", PHYDBID, INSTRUCTION_ID)
-                .then()
-                .statusCode(INTERNAL_SERVER_ERROR.getStatusCode());
     }
 
     @Test
     void testGetRegisteredDatabases() {
+        when(physicalDatabasesService.getRegisteredDatabases(TEST_TYPE)).thenReturn(Collections.emptyList());
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
                 .pathParam("type", TEST_TYPE)
                 .when().get()
@@ -523,27 +368,8 @@ class PhysicalDatabaseRegistrationControllerV3Test {
         return instructionRequest;
     }
 
-    private InstructionRequestV3 getFailureInstructionRequestV3Sample() {
-        final InstructionRequestV3 instructionRequest = new InstructionRequestV3();
-        instructionRequest.setFailure(new FailureRegistrationV3("1", "error"));
-        return instructionRequest;
-    }
-
     private Instruction getInstructionSample() {
         return new Instruction(INSTRUCTION_ID, Collections.singletonList(new AdditionalRoles()));
-    }
-
-    private PhysicalDatabaseInstruction getPhysicalDatabaseInstructionSample() throws JsonProcessingException {
-        PhysicalDatabaseInstruction physicalDatabaseInstruction = new PhysicalDatabaseInstruction();
-        physicalDatabaseInstruction.setId(UUID.fromString(INSTRUCTION_ID));
-        physicalDatabaseInstruction.setInstructionType(InstructionType.MULTIUSERS_MIGRATION);
-        physicalDatabaseInstruction.setPhysicalDatabaseId(TEST_PHYDBIDENTIFIER);
-        physicalDatabaseInstruction.setContext(instructionService.listToString(getInstructionSample().getAdditionalRoles()));
-        physicalDatabaseInstruction.setPhysicalDbRegRequest(getPhysicalDatabaseRegistryRequestV3Sample());
-        Date timeDbInstructionCreation = new Date();
-        physicalDatabaseInstruction.setTimeCreation(timeDbInstructionCreation);
-        return physicalDatabaseInstruction;
-
     }
 
     private RegisteredPhysicalDatabasesDTO getRegisteredPhysicalDatabasesDTOSample() {

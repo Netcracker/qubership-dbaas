@@ -150,7 +150,7 @@ Creates new database and returns it with connection information, or returns the 
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD` 
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type      | Name                              | Description                                                                                                                              | Schema                                          |
@@ -238,7 +238,7 @@ Returns the list of all databases.
   not required
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type      | Name                              | Description                                         | Schema  | Default   |
@@ -313,7 +313,7 @@ Returns the list of databases by logical database name.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type      | Name                                     | Description                               | Schema | Default |
@@ -496,7 +496,7 @@ Returns connection to an already created database using classifier to search.
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                  | Description                                                                                         | Schema                                                    |
@@ -576,7 +576,7 @@ Deletes database by classifier in the specific namespace.
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type      | Name                                  | Description                                                                       | Schema                                                    |
@@ -633,7 +633,7 @@ Returns list of databases with marked for drop state related to requested namesp
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `namespace_cleaner` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                           | Description                                                               | Schema       |
@@ -703,7 +703,7 @@ Housekeeping operation which drops all databases with marked for drop state (orp
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `namespace_cleaner` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                        | Description                             | Schema                                                      |
@@ -778,7 +778,7 @@ An existing database stays as a ghost if it was not registered in DBaaS.
   not required
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                  | Description                                                              | Schema                                                    |
@@ -871,7 +871,7 @@ This API supports registration in DbaaS for any external logical database.
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                        | Description                                          | Schema                                              |
@@ -964,7 +964,7 @@ If classifier is not passed then all passwords of databases in the namespace and
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                      | Description                                                                         | Schema                                          |
@@ -1045,7 +1045,7 @@ The previous database is not deleted but is marked as archived.
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dbaas-db-editor` role. Specified as `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` and `DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
 * **Request body:**
 
 | Type     | Name                                          | Description                                                                                                                                                                   | Schema                                                        |
@@ -1142,9 +1142,9 @@ The API allows to update existing database classifier
   `Content-Type: application/json`
 * **Authorization:**
   - Basic type with credentials with `dbaas-db-editor` role. Specified as `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` and `DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
   - Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                        | Description                                                                    | Schema                                              |
@@ -1211,7 +1211,7 @@ ensuring that existing logical databases are updated efficiently.
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                   | Description                                                                                                                                                                                                                               | Schema                                        | Default |
@@ -1302,7 +1302,7 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/Update+Connection
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dbaas-db-editor` role. Specified as `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` and `DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
 * **Request body:**
 
 | Type     | Name                                                  | Description                                                                    | Schema                                                                  |
@@ -1393,7 +1393,7 @@ This action will create additional classifiers for required databases in the tar
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dbaas-db-editor` role. Specified as `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` and `DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
 * **Request body:**
 
 | Type     | Name                                     | Description                                       | Schema                                        |
@@ -1487,7 +1487,7 @@ Related page: https://perch.qubership.org/display/CLOUDCORE/How+to+configure+nam
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                          | Description                                                                                                                                                                 | Schema                                              |
@@ -1545,7 +1545,7 @@ Deletes a namespace balancing rule by name. The rule is deleted only if it belon
   Not required
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                          | Description                            | Schema |
@@ -1595,9 +1595,9 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/Physical+DB+perma
   `Content-Type: application/json`
 * **Authorization:**
   - Basic type with credentials with `dbaas-db-editor` role. Specified as `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` and `DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
   - Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                        | Description                                                 | Schema                                                                  |
@@ -1677,9 +1677,9 @@ Get list of applied permanent balancing rules.
   Not required
 * **Authorization:**
   - Basic type with credentials with `dbaas-db-editor` role. Specified as `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` and `DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
   - Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type      | Name                          | Description                                    | Schema |
@@ -1739,9 +1739,9 @@ Delete all permanent balancing rules on namespace.
   `Content-Type: application/json`
 * **Authorization:**
   - Basic type with credentials with `dbaas-db-editor` role. Specified as `DBAAS_DB_EDITOR_CREDENTIALS_USERNAME` and `DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_db_editor_credentials_username-dbaas_db_editor_credentials_password).
   - Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-    [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+    [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                              | Description                                                                                                                          | Schema                                                                              |
@@ -1792,7 +1792,7 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/On+Microservice+p
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                          | Description                                                                                                                                                                 | Schema                                                            |
@@ -1888,7 +1888,7 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/On+microservice+b
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                          | Description                                                                                                                                                                           | Schema                                                            |
@@ -1963,7 +1963,7 @@ a list of labels for the assigned physical database to help analyze which rule w
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                          | Description                                                                                                                                                                           | Schema                                                            |
@@ -2051,7 +2051,7 @@ a list of labels for the assigned physical database to help analyze which rule w
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                              | Description                                                                                                                                                                           | Schema                                                            |
@@ -2133,7 +2133,7 @@ Moves the 'global' flag to the specified existing physical database
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                        | Description                                                                      | Schema |
@@ -2174,7 +2174,7 @@ Get on microservice physical database balancing rules.
   Not required
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type       | Name                          | Description                                                                                                                                                            | Schema |
@@ -2235,7 +2235,7 @@ Creates new physical database and returns path to it with physical database iden
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                           | Description                                                                      | Schema                                                              |
@@ -2304,7 +2304,7 @@ then all registered physical databases for all types will be shown.
   Not required
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                     | Description                                                                                                                | Schema |
@@ -2382,7 +2382,7 @@ Deletes physical database by database type and physical database id
   Not required
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                        | Description                                                                      | Schema |
@@ -2428,7 +2428,7 @@ Lists all backups prepared for specified namespace
   Not required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type     | Name                          | Description | Schema |
@@ -2463,7 +2463,7 @@ Restores database within the initial namespace which was used during backup or t
   Not required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type      | Name                                | Description                                                                                                                                 | Schema        |
@@ -2506,7 +2506,7 @@ Validates backup of the specified namespace
   Not required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type     | Name                          | Description                     | Schema        |
@@ -2547,7 +2547,7 @@ Returns restoration info
   Not required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type     | Name                              | Description                     | Schema        |
@@ -2588,7 +2588,7 @@ Returns restoration info
   Not required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type     | Name                          | Description                     | Schema        |
@@ -2628,7 +2628,7 @@ Adds new backup info to specific backup id
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type     | Name                          | Description                              | Schema                                    |
@@ -2675,7 +2675,7 @@ Start backup collection process for specified namespace
   Not Required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type      | Name                                             | Description                                                                                               | Schema  | Default   |
@@ -2718,7 +2718,7 @@ Start backup collection process for specified namespace
   Not Required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type     | Name                          | Description                              | Schema        |
@@ -2787,7 +2787,7 @@ Start backup collection process for specified namespace
   Not Required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type      | Name                                | Description                                                                                                                                        | Schema        |
@@ -2829,7 +2829,7 @@ Returns restoration info
   Not Required
 * **Authorization:**
   Basic type with credentials with `backup-daemon` role. Specified as `BACKUP_DAEMON_DBAAS_ACCESS_USERNAME` and `BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
+  [deployment parameters](../installation/parameters.md#backup_daemon_dbaas_access_username-backup_daemon_dbaas_access_password).
 * **Request body:**
 
 | Type     | Name                              | Description                   | Schema        |
@@ -3693,7 +3693,7 @@ Related article:[https://perch.qubership.org/display/CLOUDCORE/Register+logical+
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `migration-client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                    | Description         | Schema                                                        |
@@ -3778,7 +3778,7 @@ Related article:[https://perch.qubership.org/display/CLOUDCORE/Register+logical+
   `Content-Type: application/json`
 * **Authorization:**
   Basic type with credentials with `migration-client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                    | Description         | Schema                                                                                        |
@@ -3839,7 +3839,7 @@ The API allows to get or create specific user for database.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                       | Description                                       | Schema                                            |
@@ -3911,7 +3911,7 @@ The API allows to delete specific user for database.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                     | Description                   | Schema                                        |
@@ -3959,7 +3959,7 @@ The API allows to rotate password for specific user.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                     | Description                   | Schema                                        |
@@ -4018,7 +4018,7 @@ The API allows to restore used for one database or for databases in namespace
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                                    | Description                   | Schema                                      |
@@ -4102,7 +4102,7 @@ The API allows to get actual access grants of microservice databases.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                            | Description                                                                         | Schema |
@@ -4169,7 +4169,7 @@ The API allows to get list of databases with ORPHAN status. In non-PROD mode suc
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                           | Description                                        | Schema       |
@@ -4256,7 +4256,7 @@ list of databases ready for deletion.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                        | Description                             | Schema                                        |
@@ -4344,7 +4344,7 @@ The API allows to get an extended info about process status for troubleshooting 
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                           | Description           | Schema        |
@@ -4433,7 +4433,7 @@ Save or update composite structure in DBaaS.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type     | Name                        | Description                                     | Schema                                    |
@@ -4481,7 +4481,7 @@ Get list of all registered composite structures in DBaaS.
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 
 * **Success Response:**
 
@@ -4535,7 +4535,7 @@ Get composite structure by id
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 
 * **Request body:**
 
@@ -4586,7 +4586,7 @@ This API removes registration of composite structure by Id in DBaaS
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 
 * **Request body:**
 
@@ -4637,7 +4637,7 @@ However, it is possible to get response body in JSON format instead of file.
 > *If 'Accept' header is skipped in request then server handles request as it does for 'Accept' header with 'application/octet-stream' value.*
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
   Not required
 * **Success Response:**
@@ -4741,7 +4741,7 @@ Returns the list of lost databases (databases that registered in DBaaS, but not 
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
   No
 * **Success Response:**
@@ -4838,7 +4838,7 @@ Returns the list of ghost databases (databases that exists in adapter, but not r
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
   No
 * **Success Response:**
@@ -4904,7 +4904,7 @@ Get DBaaS overall status. Status contains information about number of logical da
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME`
   and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 
 * **Request body:**
   Not required
@@ -4966,7 +4966,7 @@ Operation supports filters in 'filter' query parameter in style of RESTful Servi
     Not required
 * **Authorization:**
   Basic type with credentials with `dba_client` role. Specified as `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` and `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`
-  [deployment parameters](./installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
+  [deployment parameters](../installation/parameters.md#dbaas_cluster_dba_credentials_username-dbaas_cluster_dba_credentials_password).
 * **Request body:**
 
 | Type      | Name                       | Description                                                                                                                                                   | Schema        |

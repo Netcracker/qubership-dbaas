@@ -62,9 +62,11 @@ const (
 	// ConnectionProperties.credentialsSecretRef cannot be read. Type: Warning.
 	EventReasonSecretError = "SecretError"
 
-	// EventReasonUnauthorized is emitted when dbaas-aggregator returns HTTP 401.
-	// Indicates the operator's credentials or role binding are misconfigured;
-	// the CR spec is not at fault. Type: Warning.
+	// EventReasonUnauthorized is emitted when dbaas-aggregator or a dbaas adapter
+	// returns HTTP 401. From the aggregator it means the operator's credentials or
+	// role binding are misconfigured; from an adapter, that the credentials in the
+	// Secret referenced by a PhysicalDatabase are wrong. The controller
+	// retries, so a fixed Secret is picked up without a spec change. Type: Warning.
 	EventReasonUnauthorized = "Unauthorized"
 
 	// EventReasonAggregatorRejected is emitted when dbaas-aggregator returns a
@@ -133,4 +135,31 @@ const (
 	// Surfaces a single alertable signal that an operator's classifier may be wrong.
 	// Type: Warning.
 	EventReasonDatabaseNotFoundTimeout = "DatabaseNotFoundTimeout"
+
+	// EventReasonPhysicalDatabaseRegistered is emitted when dbaas-aggregator
+	// answers 200 or 201 to a PhysicalDatabase: it holds what the adapter reported.
+	// Type: Normal.
+	EventReasonPhysicalDatabaseRegistered = "PhysicalDatabaseRegistered"
+
+	// EventReasonAdapterRejected is emitted when a dbaas adapter answers the probe
+	// with 400, 403, 409, 410, or 422 — the adapter counterpart of
+	// AggregatorRejected. Retrying the same request will not help. Type: Warning.
+	EventReasonAdapterRejected = "AdapterRejected"
+
+	// EventReasonAdapterError is emitted when the adapter probe fails with a 5xx,
+	// another non-rejection status, an answer without a required field, or a
+	// network error — the adapter counterpart of AggregatorError. The controller
+	// retries with backoff. Type: Warning.
+	EventReasonAdapterError = "AdapterError"
+
+	// EventReasonRegistrationConflict is emitted when an older PhysicalDatabase
+	// of the same operator claims the same spec.adapterAddress or reports the
+	// same status.physicalDatabaseId. Type: Warning.
+	EventReasonRegistrationConflict = "RegistrationConflict"
+
+	// ReasonRoleMigrationStarted is the Ready condition reason when dbaas-aggregator
+	// answers 202 to a PhysicalDatabase: the new supported roles need a role
+	// migration of existing logical databases, and the registration request is
+	// parked until the migration completes. Condition-only; no event is emitted.
+	ReasonRoleMigrationStarted = "RoleMigrationStarted"
 )

@@ -319,11 +319,22 @@ wait-patroni-services-registration:
 		CURRENT_TIME=$$(date +%s); \
 		ELAPSED_TIME=$$((CURRENT_TIME - START_TIME)); \
 		if [ $$ELAPSED_TIME -ge $$TIMEOUT ]; then \
-			echo "$(RED)Error: Timeout reached after 5 minutes. Registration message not found in logs.$(NC)"; \
+			echo "$(RED)Error: Timeout reached after 5 minutes. Registration not completed.$(NC)"; \
 			exit 1; \
 		fi; \
-		if kubectl logs -n $(PG_NAMESPACE) -l app=dbaas-postgres-adapter --tail=100 | grep -q "Registration finished"; then \
-			echo "$(GREEN)=== Patroni services registration completed$(NC)"; \
+		READY=$$(kubectl -n $(PG_NAMESPACE) get physicaldatabase patroni-services-physical-db -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}' 2>/dev/null); \
+		MSG=$$(kubectl -n $(PG_NAMESPACE) get physicaldatabase patroni-services-physical-db -o go-template='{{range .status.conditions}}{{if eq .type "Ready"}}{{.message}}{{end}}{{end}}' 2>/dev/null); \
+		STALL=$$(kubectl -n $(PG_NAMESPACE) get physicaldatabase patroni-services-physical-db -o go-template='{{range .status.conditions}}{{if eq .type "Stalled"}}{{.status}}{{end}}{{end}}' 2>/dev/null); \
+		if [ "$$READY" = "True" ]; then \
+			echo "$(GREEN)=== Patroni services registration completed (PhysicalDatabase condition Ready=True)$(NC)"; \
+			break; \
+		fi; \
+		if [ "$$STALL" = "True" ]; then \
+			echo "$(RED)Error: PhysicalDatabase registration stalled (permanent error): $(NC)$$MSG"; \
+			exit 1; \
+		fi; \
+		if [ -z "$$READY" ] && kubectl logs -n $(PG_NAMESPACE) -l app=dbaas-postgres-adapter --tail=100 2>/dev/null | grep -q "Registration finished"; then \
+			echo "$(GREEN)=== Patroni services registration completed (adapter log: Registration finished, legacy mode)$(NC)"; \
 			break; \
 		fi; \
 		echo "Waiting for patroni services registration... - $$((TIMEOUT - ELAPSED_TIME))s remaining"; \

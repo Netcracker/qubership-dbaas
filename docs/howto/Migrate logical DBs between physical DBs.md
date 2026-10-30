@@ -27,7 +27,7 @@ name, username, password but will have the same settings and classifier as an or
 ## 1. Collect list of databases
 
 The first step, you should collect classifiers and types of logical databases which you want to recreate in another
-physDb. To do this, you can use a [List of all databases](../rest-api.md#list-of-all-databases) API to get list of
+physDb. To do this, you can use a [List of all databases](../api/rest-api.md#list-of-all-databases) API to get list of
 databases in a specific namespace. You have to use CLUSTER_DBA credentials for calling this API.
 
 After databases have been received, you should copy and save classifiers and connection properties of databases that
@@ -42,7 +42,7 @@ between databases.
 
 The next step is create an empty database in a new physical database. Also, new connections must be updated in DBaaS
 Aggregator. For these purposes you can use
-a [Recreate database with existing classifier](../rest-api.md#recreate-database-with-existing-classifier) API. This API
+a [Recreate database with existing classifier](../api/rest-api.md#recreate-database-with-existing-classifier) API. This API
 requires DB_EDITOR credentials and list of classifiers which were collected in the first step. Request body looks like
 this:
 
