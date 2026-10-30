@@ -119,7 +119,7 @@ The backup process returns a unique `backupName` (left side), which is then used
 
 ## Open API
 
-Open API: [`../OpenAPI.json`](../OpenAPI.json)
+Open API: [`../api`](../api/OpenAPI.json)
 
 ## Data Model
 

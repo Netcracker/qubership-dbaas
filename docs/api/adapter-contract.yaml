@@ -1,0 +1,1506 @@
+openapi: 3.0.1
+info:
+  title: DBaaS Adapter REST Client V2
+  description: REST API of Database as a Service Database Adapter component. DBaaS
+    Adapter should adapt database specific administration API to REST API supported
+    by DBaaS Aggregator.
+  version: "2.3"
+tags:
+- name: Backup & Restore
+  description: Database Specific DBaaS Backup Controller V 2
+- name: Common DBaaS adapter operations
+  description: Allows to manage database.
+- name: User & Resource management
+  description: Endpoints to manage resources and users.
+- name: Physical database manage
+  description: Endpoints to manage physical database
+- name: Support endpoints
+  description: Endpoints to check adapter health and supported features
+paths:
+  /api/v2/dbaas/adapter/{type}/backups/backup:
+    post:
+      tags:
+      - Backup & Restore
+      summary: Create logical backup. V2
+      description: Requests the adapter to create a logical backup for the databases
+        listed in the request
+      operationId: backupV2
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Request to create a logical backup
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupAdapterRequest"
+            example:
+              storageName: minio
+              blobPath: backups/inventory/2026-10-23T12-00-00
+              databases:
+              - databaseName: inventory
+              - databaseName: orders
+        required: true
+      responses:
+        "200":
+          description: "Logical backup requested, response contains the backup status"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalBackupAdapterResponse"
+        "500":
+          description: Unknown error
+  /api/v2/dbaas/adapter/{type}/databases/{dbName}/metadata:
+    put:
+      tags:
+      - Common DBaaS adapter operations
+      summary: Update database metadata. V2
+      description: Changes metadata saved in database
+      operationId: changeMetaData
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: dbName
+        in: path
+        description: Name of the database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Metadata to save in database
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: object
+            example:
+              classifier:
+                microserviceName: inventory-service
+                namespace: payments
+                scope: service
+              microserviceName: inventory-service
+        required: true
+      responses:
+        "200":
+          description: Update metadata successful
+          content:
+            '*/*':
+              schema:
+                type: object
+        "500":
+          description: Error occurred while update metadata.
+  /api/v2/dbaas/adapter/{type}/backups/collect:
+    post:
+      tags:
+      - Backup & Restore
+      summary: Collect backup. V2
+      description: Requests database backup daemon to collect backup for specified
+        databases
+      operationId: collectBackup
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: allowEviction
+        in: query
+        description: Allows to disable eviction on the adapter for the current backup
+        schema:
+          type: boolean
+      - name: keep
+        in: query
+        description: Retention period of the collected backup
+        schema:
+          type: string
+      requestBody:
+        description: List of databases to collect backup for
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+            example:
+              - postgres-logical-database
+              - arango-logical-database
+        required: true
+      responses:
+        "202":
+          description: Backup in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+        "500":
+          description: Unknown error
+  /api/v2/dbaas/adapter/{type}/databases:
+    get:
+      tags:
+      - Common DBaaS adapter operations
+      summary: List databases. V2
+      description: Returns list with names of databases
+      operationId: getDatabases
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Databases listed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        "500":
+          description: Error occurred while databases listing.
+    post:
+      tags:
+      - Common DBaaS adapter operations
+      summary: Create database. V2
+      description: Creates database and user with permissions to read and write to
+        the database. The operation returns connection parameters including credentials.
+      operationId: createDatabase
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Request to create database
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdapterDatabaseCreateRequest"
+            example:
+              metadata:
+                classifier:
+                  scope: service
+                  namespace: payments
+                microserviceName: postgres-database-service
+              dbName: postgres-database
+              settings:
+                pgExtension:
+                  - extension
+        required: true
+      responses:
+        "201":
+          description: Database created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedDatabaseV3"
+        "400":
+          description: Provided namePrefix does not meet the requirements
+  /api/v2/dbaas/adapter/{type}/backups/{backupId}:
+    delete:
+      tags:
+      - Backup & Restore
+      summary: Delete backup. V2
+      description: Returns deletion status
+      operationId: deleteBackup
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        description: Backup identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Successful delete
+          content:
+            '*/*':
+              schema:
+                type: string
+        "404":
+          description: Not found backup
+        "500":
+          description: Unknown error
+  /api/v2/dbaas/adapter/{type}/backups/backup/{backupId}:
+    get:
+      tags:
+      - Backup & Restore
+      summary: Track logical backup. V2
+      description: Returns the status of a logical backup
+      operationId: trackBackupV2
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        description: Logical backup name in the adapter
+        required: true
+        schema:
+          type: string
+      - name: storageName
+        in: query
+        description: Storage name of the backup
+        schema:
+          type: string
+      - name: blobPath
+        in: query
+        description: Path of the backup in the storage
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Logical backup status returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalBackupAdapterResponse"
+        "404":
+          description: Backup not found
+        "500":
+          description: Unknown error
+    delete:
+      tags:
+      - Backup & Restore
+      summary: Delete logical backup. V2
+      description: Deletes a logical backup
+      operationId: deleteBackupV2
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        description: Logical backup name in the adapter
+        required: true
+        schema:
+          type: string
+      - name: blobPath
+        in: query
+        description: Path of the backup in the storage
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Logical backup deleted
+        "404":
+          description: Backup not found
+        "500":
+          description: Unknown error
+  /api/v2/dbaas/adapter/{type}/describe/databases:
+    post:
+      tags:
+      - Common DBaaS adapter operations
+      summary: Describe databases. V2
+      description: "Returns info about requested databases, this is optional API"
+      operationId: describeDatabases
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: connectionProperties
+        in: query
+        description: If present - should return connection properties of each requested
+          database
+        schema:
+          type: boolean
+      - name: resources
+        in: query
+        description: If present - should return resources of each requested database
+        schema:
+          type: boolean
+      requestBody:
+        description: List of names of databases to describe
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+            example:
+            - inventory
+            - orders
+        required: true
+      responses:
+        "200":
+          description: Map databases names to description
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/DescribedDatabase"
+        "500":
+          description: Error occurred while databases describe.
+  /api/v2/dbaas/adapter/{type}/resources/bulk-drop:
+    post:
+      tags:
+      - User & Resource management
+      summary: Drop created resources. V2
+      description: Can drop any previously created resources such as user or database
+      operationId: dropResources
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: List of resources to drop
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/DbResource"
+            example:
+            - kind: database
+              name: postgres-databse
+            - kind: user
+              name: username
+        required: true
+      responses:
+        "200":
+          description: Drop successful
+  /api/v2/dbaas/adapter/{type}/users:
+    put:
+      tags:
+      - User & Resource management
+      summary: Create user. V2
+      description: "Creates new user for specified database and returns it with connection\
+        \ information, or returns already created user if it exists. Adapter should\
+        \ generate new username and create new user with it."
+      operationId: ensureUser
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Info about user to create
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/UserEnsureRequestV3"
+              - $ref: "#/components/schemas/GetOrCreateUserAdapterRequest"
+            example:
+              dbName: inventory
+              role: rw
+              userNamePrefix: svc_inventory_
+        required: true
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnsuredUser"
+        "500":
+          description: Error occurred while user creation.
+  /api/v2/dbaas/adapter/{type}/users/{username}:
+    put:
+      tags:
+      - User & Resource management
+      summary: Create user. V2
+      description: "Creates new user for specified database and returns it with connection\
+        \ information, or returns already created user if it exists."
+      operationId: ensureUser_1
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: username
+        in: path
+        description: The username for creating user to database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Info about user to ensure
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/UserEnsureRequest"
+              - $ref: "#/components/schemas/UserEnsureRequestV3"
+            example:
+              dbName: inventory
+              password: ChangeMe_123!
+              role: rw
+        required: true
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnsuredUser"
+        "500":
+          description: Error occurred while user creation.
+  /api/v2/dbaas/adapter/physical_database/force_registration:
+    get:
+      tags:
+      - Physical database manage
+      summary: Force physical database registration. V2
+      description: "Force this adapter to immediately register itself in DBaaS-aggregator.\
+        \ Adapter initiates background task that tries to register physical database\
+        \ in DBaaS-aggregator, and responds with status 202 before the background\
+        \ task finishes."
+      operationId: forceRegistration
+      responses:
+        "202":
+          description: if physical database registration process has been started
+            successfully.
+          content:
+            '*/*':
+              schema:
+                type: object
+  /health:
+    get:
+      tags:
+      - Support endpoints
+      summary: Health check
+      description: Returns health status of the adapter.
+      operationId: getHealth
+      responses:
+        "200":
+          description: Adapter health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdapterHealthStatus"
+  /api/v2/adapter/physical_database:
+    get:
+      tags:
+      - Physical database manage
+      summary: Get physical database information. V2
+      description: Returns the physical database descriptor from the adapter.
+      operationId: getPhysicalDatabaseInformation
+      responses:
+        "200":
+          description: Physical database descriptor returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhysicalDatabaseInformation"
+        "401":
+          description: Unauthorized.
+        "404":
+          description: "The adapter does not implement this endpoint. It returns 404\
+            \ for every request to this path, so a 404 reports a missing endpoint."
+        "503":
+          description: The adapter is temporarily unavailable.
+  /api/v2/dbaas/adapter/{type}/physical_database:
+    get:
+      tags:
+      - Physical database manage
+      summary: Physical database information. V2
+      description: Adapter belongs only one database cluster and sends own physical
+        database information.
+      operationId: handshake
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Own physical database information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPhysicalRequest"
+        "404":
+          description: Identifier is not specified
+  /api/v2/dbaas/adapter/{type}/backups/{backupId}/restoration:
+    post:
+      tags:
+      - Backup & Restore
+      summary: Restore backup. V2
+      description: Requests database backup daemon to restore specified backup with
+        specified databases info
+      operationId: restoreBackup
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        description: Backup identifier
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Request with the list of databases to restore
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreRequest"
+            example:
+              regenerateNames: true
+              databases:
+              - namespace: payments
+                microservice: inventory-service
+                name: inventory
+        required: true
+      responses:
+        "202":
+          description: Restore requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+        "500":
+          description: Unknown error
+        "501":
+          description: Cannot restore backup without explicitly specified list of
+            databases in it
+  /api/v2/dbaas/adapter/{type}/backups/{backupId}/restore:
+    post:
+      tags:
+      - Backup & Restore
+      summary: Restore backup. V2
+      description: "Requests database backup daemon to restore specified backup. Deprecated,\
+        \ please use /restoration endpoint instead"
+      operationId: restoreBackup_1
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        description: Backup identifier
+        required: true
+        schema:
+          type: string
+      - name: regenerateNames
+        in: query
+        description: "Defines if adapter should generate names for each restoring\
+          \ database, and restore databases under new names, which would effectively\
+          \ \"clone\" databases from backup. This action MUST NOT affect any of \"\
+          source\" databases whether they are present in cluster or not."
+        schema:
+          type: boolean
+      requestBody:
+        description: List of databases to restore
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+            example:
+              - postgres-logical-database
+              - arango-logical-database
+      responses:
+        "202":
+          description: Restore requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+        "500":
+          description: Unknown error
+        "501":
+          description: Cannot restore backup without explicitly specified list of
+            databases in it
+      deprecated: true
+  /api/v2/dbaas/adapter/{type}/users/restore-password:
+    post:
+      tags:
+      - User & Resource management
+      summary: Restore users passwords. V2
+      description: Starts passwords restoration process.
+      operationId: restorePassword
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Request to restore passwords
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestorePasswordsAdapterRequest"
+            example:
+              settings:
+                trackId: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+              connectionProperties:
+              - username: svc_inventory_ro
+                password: ChangeMe_Ro_123!
+              - username: svc_inventory_rw
+                password: ChangeMe_Rw_123!
+        required: true
+      responses:
+        "202":
+          description: Password restoration process has started
+          content:
+            application/json:
+              schema:
+                type: string
+  /api/v2/dbaas/adapter/{type}/backups/backup/{backupId}/restore:
+    post:
+      tags:
+      - Backup & Restore
+      summary: Restore logical backup. V2
+      description: Requests the adapter to restore a logical backup. With dryRun=true
+        the restore is validated without applying changes
+      operationId: restoreV2
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: backupId
+        in: path
+        description: Logical backup name in the adapter
+        required: true
+        schema:
+          type: string
+      - name: dryRun
+        in: query
+        description: Validate the restore without applying changes
+        schema:
+          type: boolean
+      requestBody:
+        description: Request to restore a logical backup
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreAdapterRequest"
+            example:
+              storageName: minio
+              blobPath: backups/inventory/2026-10-23T12-00-00
+              databases:
+              - microserviceName: inventory-service
+                databaseName: inventory
+                namespace: payments
+        required: true
+      responses:
+        "200":
+          description: "Restore requested, response contains the restore status"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalRestoreAdapterResponse"
+        "500":
+          description: Unknown error
+  /api/v2/dbaas/adapter/{type}/supports:
+    get:
+      tags:
+      - Support endpoints
+      summary: Support info. V2
+      description: This API describes what features are supported by the adapter.
+      operationId: supports
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "Adapter supports supporting endpoint, provided values would\
+            \ be used instead defaults"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: boolean
+  /api/v2/dbaas/adapter/{type}/backups/track/{action}/{trackId}:
+    get:
+      tags:
+      - Backup & Restore
+      summary: Track backup or restore. V2
+      description: Returns status of backup or restore task
+      operationId: trackBackup
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        description: "Type of action: backup or restore"
+        required: true
+        schema:
+          type: string
+      - name: trackId
+        in: path
+        description: Track identifier of the backup or restore task
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Task track returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedAction"
+        "404":
+          description: Not found backup or restore
+        "500":
+          description: Unknown error
+  /api/v2/dbaas/adapter/{type}/backups/restore/{restoreId}:
+    get:
+      tags:
+      - Backup & Restore
+      summary: Track logical restore. V2
+      description: Returns the status of a logical restore
+      operationId: trackRestoreV2
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: restoreId
+        in: path
+        description: Logical restore name in the adapter
+        required: true
+        schema:
+          type: string
+      - name: storageName
+        in: query
+        description: Storage name of the backup
+        schema:
+          type: string
+      - name: blobPath
+        in: query
+        description: Path of the backup in the storage
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Logical restore status returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogicalRestoreAdapterResponse"
+        "404":
+          description: Restore not found
+        "500":
+          description: Unknown error
+  /api/v2/dbaas/adapter/{type}/databases/{dbName}/settings:
+    put:
+      tags:
+      - Common DBaaS adapter operations
+      summary: Update database settings. V2
+      description: Returns information about update status.
+      operationId: updateSettings
+      parameters:
+      - name: type
+        in: path
+        description: Type of the database
+        required: true
+        schema:
+          type: string
+      - name: dbName
+        in: path
+        description: Name of the database
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: Contains current and new settings
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsAdapterRequest"
+            example:
+              currentSettings:
+                max_connections: 100
+                search_path:
+                - public
+              newSettings:
+                max_connections: 200
+                search_path:
+                - public
+                - inventory
+        required: true
+      responses:
+        "200":
+          description: Settings updated
+          content:
+            '*/*':
+              schema:
+                type: string
+        "404":
+          description: Old settings for db with provided dbName not found
+components:
+  schemas:
+    BackupDatabaseResponse:
+      type: object
+      properties:
+        databaseName:
+          type: string
+          description: Name of the database
+        status:
+          type: string
+          description: "Status of the database backup: notStarted, inProgress, completed\
+            \ or failed"
+        size:
+          type: integer
+          description: Size of the backup in bytes
+          format: int64
+        duration:
+          type: integer
+          description: Duration of the database backup
+          format: int64
+        path:
+          type: string
+          description: Path of the database backup
+        errorMessage:
+          type: string
+          description: Error message if the database backup failed
+        creationTime:
+          type: string
+          description: Creation time of the backup
+          format: date-time
+      description: Status of a backed up database
+    LogicalBackupAdapterResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Status of the backup: notStarted, inProgress, completed or\
+            \ failed"
+        errorMessage:
+          type: string
+          description: Error message if the backup failed
+        backupId:
+          type: string
+          description: Logical backup name in the adapter
+        creationTime:
+          type: string
+          description: Creation time of the backup
+          format: date-time
+        completionTime:
+          type: string
+          description: Completion time of the backup
+          format: date-time
+        storageName:
+          type: string
+          description: Storage name of the backup
+        blobPath:
+          type: string
+          description: Path of the backup in the storage
+        databases:
+          type: array
+          description: Status of each backed up database
+          items:
+            $ref: "#/components/schemas/BackupDatabaseResponse"
+      description: Status of a logical backup
+    BackupAdapterRequest:
+      type: object
+      properties:
+        storageName:
+          type: string
+          description: Storage name for the backup
+        blobPath:
+          type: string
+          description: Path of the backup in the storage
+        databases:
+          type: array
+          description: "List of databases to back up, each entry is a map with the\
+            \ database name under the databaseName key"
+          items:
+            type: object
+            additionalProperties:
+              type: string
+              description: "List of databases to back up, each entry is a map with\
+                \ the database name under the databaseName key"
+            description: "List of databases to back up, each entry is a map with the\
+              \ database name under the databaseName key"
+      description: Request to create a logical backup
+    TrackedAction:
+      type: object
+      properties:
+        trackId:
+          type: string
+          description: Track identifier
+        status:
+          type: string
+          description: Status of the action
+          enum:
+          - SUCCESS
+          - PROCEEDING
+          - FAIL
+        action:
+          type: string
+          description: "Type of the action: backup or restore"
+          enum:
+          - BACKUP
+          - RESTORE
+        adapterId:
+          type: string
+          description: Identifier of the adapter which performed the action
+        details:
+          type: object
+          additionalProperties:
+            type: object
+            description: Details of the action
+          description: Details of the action
+        changedNameDb:
+          type: object
+          additionalProperties:
+            type: string
+            description: Map of original database names to the names they were restored
+              under
+          description: Map of original database names to the names they were restored
+            under
+        trackPath:
+          type: string
+          description: "Path to the track log, used as track log instead of trackId\
+            \ when present"
+        finished:
+          type: boolean
+          description: Whether the action has finished
+        createdTimeMs:
+          type: integer
+          description: "Time when the action was created, in milliseconds since epoch"
+          format: int64
+        whenStarted:
+          type: string
+          description: Time when the action started
+          format: date-time
+        whenChecked:
+          type: string
+          description: Time when the action was last checked
+          format: date-time
+        whenFinished:
+          type: string
+          description: Time when the action finished
+          format: date-time
+        trackLog:
+          type: string
+          description: "Identifier of the track log: trackPath when present, otherwise\
+            \ trackId"
+      description: Status of a backup or restore action
+    ConnectionDescription:
+      type: object
+      properties:
+        fields:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/FieldDescription"
+          description: Fields of the connection properties
+      description: "Describes the fields of connection properties, for example which\
+        \ of them are protected"
+    CreatedDatabaseV3:
+      type: object
+      properties:
+        connectionProperties:
+          type: array
+          description: connection properties for connect to database
+          items:
+            type: object
+            additionalProperties:
+              type: object
+              description: connection properties for connect to database
+            description: connection properties for connect to database
+        resources:
+          type: array
+          description: List of resources is necessary for bulk drop resources operation
+          items:
+            $ref: "#/components/schemas/DbResource"
+        name:
+          type: string
+          description: name of the created database
+        adapterId:
+          type: string
+          description: Identifier of the adapter which created the database
+        connectionDescription:
+          $ref: "#/components/schemas/ConnectionDescription"
+      description: Returns properties of created database
+    DbResource:
+      required:
+      - kind
+      - name
+      type: object
+      properties:
+        kind:
+          type: string
+          description: The kind of resource. For example database or user
+        name:
+          type: string
+          description: Name of the resource.
+      description: Database resources. Used for bulk drop resources operation
+    FieldDescription:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Type of the field
+          enum:
+          - PASSWORD
+      description: Fields of the connection properties
+    AdapterDatabaseCreateRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: object
+            description: "Metadata is a json object with any information about database,\
+              \ adapter should save it inside database"
+          description: "Metadata is a json object with any information about database,\
+            \ adapter should save it inside database"
+        namePrefix:
+          type: string
+          description: "Database name should be started from name prefix. If not specified,\
+            \ should use default dbaas_"
+        settings:
+          type: object
+          additionalProperties:
+            type: object
+            description: Additional settings for creating database
+          description: Additional settings for creating database
+        initScriptIdentifiers:
+          type: array
+          description: "The list of identifiers of initial scripts which should be\
+            \ executed in the adapter. Deprecated in v1 and v2, will be removed in\
+            \ v3."
+          deprecated: true
+          items:
+            type: string
+            description: "The list of identifiers of initial scripts which should\
+              \ be executed in the adapter. Deprecated in v1 and v2, will be removed\
+              \ in v3."
+            deprecated: true
+        password:
+          type: string
+          description: Password for user. Will be generated by adapter if not specified
+        username:
+          type: string
+          description: Username user to create to connect to database. Will be generated
+            by adapter if not specified
+        dbName:
+          type: string
+          description: Database name to create. Will be generated by adapter with
+            namePrefix if dbName not specified
+      description: The request to create database for REST dbaas adapter
+    DescribedDatabase:
+      type: object
+      properties:
+        connectionProperties:
+          type: array
+          description: Connection properties describe how to connect to database
+          items:
+            type: object
+            additionalProperties:
+              type: object
+              description: Connection properties describe how to connect to database
+            description: Connection properties describe how to connect to database
+        resources:
+          type: array
+          description: List of resources attached to database
+          items:
+            $ref: "#/components/schemas/DbResource"
+      description: "Information about database - resources attached, connection info"
+    EnsuredUser:
+      type: object
+      properties:
+        name:
+          type: string
+          description: "Name of database which accessed by created or updated user,\
+            \ would be null if was not requested"
+        connectionProperties:
+          type: object
+          additionalProperties:
+            type: object
+            description: Connection properties could be used to connect to database
+              with created user. Also connection properties must be the same as when
+              creating DB
+          description: Connection properties could be used to connect to database
+            with created user. Also connection properties must be the same as when
+            creating DB
+        resources:
+          type: array
+          description: List of resources created during user creation
+          items:
+            $ref: "#/components/schemas/DbResource"
+        created:
+          type: boolean
+          description: Indicates whether the user was created by the request or already
+            existed
+      description: All information about created user or updated user
+    UserEnsureRequestV3:
+      required:
+      - dbName
+      - role
+      type: object
+      properties:
+        role:
+          type: string
+          description: "Database role name. For instance admin, rw or ro role."
+        dbName:
+          type: string
+          description: Database name to create user.
+        password:
+          type: string
+          description: It is password for user which will be used for it's creation
+            or would be changed to. If password is absent it'll be generated.
+      description: The request to ensure database user. Extends UserEnsureRequest
+        with a required role.
+    GetOrCreateUserAdapterRequest:
+      required:
+      - dbName
+      - role
+      type: object
+      properties:
+        dbName:
+          type: string
+          description: Database name to create user.
+        role:
+          type: string
+          description: "Database role name. For instance admin, rw or ro role."
+        userNamePrefix:
+          type: string
+          description: Prefix for username.
+      description: The request to create database user
+    UserEnsureRequest:
+      required:
+      - dbName
+      type: object
+      properties:
+        dbName:
+          type: string
+          description: Database name to create user.
+        password:
+          type: string
+          description: It is password for user which will be used for it's creation
+            or would be changed to. If password is absent it'll be generated.
+      description: The request to ensure database user
+    AdapterHealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Health status: UP, UNKNOWN or PROBLEM"
+      description: Health status of the adapter
+    ApiVersion:
+      required:
+      - specs
+      type: object
+      properties:
+        specs:
+          type: array
+          description: List of supported API version specification
+          items:
+            $ref: "#/components/schemas/Spec"
+      description: The adapter API version
+    PhysicalDatabaseInformation:
+      required:
+      - apiVersions
+      - features
+      - physicalDatabaseId
+      - supportedRoles
+      - type
+      type: object
+      properties:
+        physicalDatabaseId:
+          type: string
+          description: Physical database identifier. The value belongs to the specific
+            database cluster
+        type:
+          type: string
+          description: "Type of database. Example: MongoDB, PostgreSQL, etc."
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+            description: "Additional information about physical database. It may be\
+              \ a version of database cluster, any labels, and etc."
+          description: "Additional information about physical database. It may be\
+            \ a version of database cluster, any labels, and etc."
+        apiVersions:
+          $ref: "#/components/schemas/ApiVersion"
+        features:
+          type: object
+          additionalProperties:
+            type: boolean
+            description: Prohibition or permission of features.
+          description: Prohibition or permission of features.
+        supportedRoles:
+          type: array
+          description: list of supported roles.
+          items:
+            type: string
+            description: list of supported roles.
+        readOnlyHost:
+          type: string
+          description: Hostname of the read-only replica endpoint
+      description: The response to obtain physical database information
+    Spec:
+      required:
+        - major
+        - minor
+        - specRootUrl
+        - supportedMajors
+      type: object
+      properties:
+        specRootUrl:
+          type: string
+          description: The root URL part for that API version
+        major:
+          type: integer
+          description: The last adapter API major version
+          format: int32
+        minor:
+          type: integer
+          description: The last adapter API minor version
+          format: int32
+        supportedMajors:
+          type: array
+          description: Contains a list of supported adapter API major versions
+          items:
+            type: integer
+            description: Contains a list of supported adapter API major versions
+            format: int32
+      description: The adapter API version spec
+    RegistrationPhysicalRequest:
+      required:
+      - id
+      type: object
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+            description: Additional information that is sent when handshake process
+              is done.
+          description: Additional information that is sent when handshake process
+            is done.
+        id:
+          type: string
+          description: Physical database identifier. The parameter is permanent and
+            specified during deploy.
+    Database:
+      required:
+      - microservice
+      - name
+      - namespace
+      type: object
+      properties:
+        namespace:
+          type: string
+          description: Namespace name
+        microservice:
+          type: string
+          description: Microservice name
+        name:
+          type: string
+          description: Database name
+        prefix:
+          type: string
+      description: Info about database to restore
+    RestoreRequest:
+      required:
+      - databases
+      type: object
+      properties:
+        databases:
+          type: array
+          description: List of databases to restore
+          items:
+            $ref: "#/components/schemas/Database"
+        regenerateNames:
+          type: boolean
+          description: "Defines if adapter should generate names for each restoring\
+            \ database, and restore databases under new names, which would effectively\
+            \ \"clone\" databases from backup. This action MUST NOT affect any of\
+            \ \"source\" databases whether they are present in cluster or not."
+      description: Requests database backup daemon to restore specified backup with
+        specified databases info
+    RestorePasswordsAdapterRequest:
+      type: object
+      properties:
+        settings:
+          type: object
+          additionalProperties:
+            type: object
+            description: Settings with trackId
+          description: Settings with trackId
+        connectionProperties:
+          type: array
+          description: List with connection properties of all users which need restoration
+          items:
+            type: object
+            additionalProperties:
+              type: object
+              description: List with connection properties of all users which need
+                restoration
+            description: List with connection properties of all users which need restoration
+      description: Request for starting passwords restoration process
+    LogicalRestoreAdapterResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Status of the restore: notStarted, inProgress, completed or\
+            \ failed"
+        errorMessage:
+          type: string
+          description: Error message if the restore failed
+        restoreId:
+          type: string
+          description: Logical restore name in the adapter
+        creationTime:
+          type: string
+          description: Creation time of the restore
+          format: date-time
+        completionTime:
+          type: string
+          description: Completion time of the restore
+          format: date-time
+        storageName:
+          type: string
+          description: Storage name of the backup
+        blobPath:
+          type: string
+          description: Path of the backup in the storage
+        databases:
+          type: array
+          description: Status of each restored database
+          items:
+            $ref: "#/components/schemas/RestoreDatabaseResponse"
+      description: Status of a logical restore
+    RestoreDatabaseResponse:
+      type: object
+      properties:
+        previousDatabaseName:
+          type: string
+          description: Name of the database in the backup
+        databaseName:
+          type: string
+          description: Name of the restored database
+        status:
+          type: string
+          description: "Status of the database restore: notStarted, inProgress, completed\
+            \ or failed"
+        path:
+          type: string
+          description: Path of the restored database
+        microserviceName:
+          type: string
+          description: Name of the microservice
+        namespace:
+          type: string
+          description: Name of the namespace
+        prefix:
+          type: string
+          description: Prefix of the database
+        duration:
+          type: integer
+          description: Duration of the database restore
+          format: int64
+        errorMessage:
+          type: string
+          description: Error message if the database restore failed
+        creationTime:
+          type: string
+          description: Creation time of the restore
+          format: date-time
+      description: Status of a restored database
+    RestoreAdapterRequest:
+      type: object
+      properties:
+        storageName:
+          type: string
+          description: Storage name of the backup
+        blobPath:
+          type: string
+          description: Path of the backup in the storage
+        databases:
+          type: array
+          description: "List of databases to restore, each entry is a map with the\
+            \ database name under the databaseName key"
+          items:
+            type: object
+            additionalProperties:
+              type: string
+              description: "List of databases to restore, each entry is a map with\
+                \ the database name under the databaseName key"
+            description: "List of databases to restore, each entry is a map with the\
+              \ database name under the databaseName key"
+      description: Request to restore a logical backup
+    UpdateSettingsAdapterRequest:
+      required:
+      - currentSettings
+      - newSettings
+      type: object
+      properties:
+        currentSettings:
+          type: object
+          additionalProperties:
+            type: object
+            description: All current database settings already applied to the target
+              database.
+          description: All current database settings already applied to the target
+            database.
+        newSettings:
+          type: object
+          additionalProperties:
+            type: object
+            description: New version of all database settings to apply to the database.
+              Must consist of all settings the target database must incorporate after
+              this update request will be executed.
+          description: New version of all database settings to apply to the database.
+            Must consist of all settings the target database must incorporate after
+            this update request will be executed.
+      description: Contains current and new settings

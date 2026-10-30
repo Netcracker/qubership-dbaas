@@ -25,39 +25,6 @@
           }
         }
       },
-      "AdapterDatabaseCreateRequest": {
-        "type": "object",
-        "description": "The request to create database for REST dbaas adapter",
-        "properties": {
-          "metadata": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "namePrefix": {
-            "type": "string"
-          },
-          "settings": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "initScriptIdentifiers": {
-            "type": "array",
-            "deprecated": true,
-            "items": {
-              "type": "string"
-            }
-          },
-          "password": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          },
-          "dbName": {
-            "type": "string"
-          }
-        }
-      },
       "AdditionalRoles": {
         "type": "object",
         "required": [
@@ -96,13 +63,17 @@
       },
       "ApiVersion": {
         "type": "object",
+        "required": [
+          "specs"
+        ],
+        "description": "The adapter API version",
         "properties": {
           "specs": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Spec"
             },
-            "description": "The root URL part for that API version"
+            "description": "List of supported API version specification"
           }
         }
       },
@@ -3635,6 +3606,13 @@
       },
       "Spec": {
         "type": "object",
+        "required": [
+          "specRootUrl",
+          "major",
+          "minor",
+          "supportedMajors"
+        ],
+        "description": "The adapter API version spec",
         "properties": {
           "specRootUrl": {
             "type": "string",
