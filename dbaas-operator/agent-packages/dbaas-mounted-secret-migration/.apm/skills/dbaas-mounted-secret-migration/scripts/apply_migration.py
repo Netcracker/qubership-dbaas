@@ -402,15 +402,14 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             raise bad_input(f"{where}.operatorNamespace must be a valid RFC-1123 namespace label")
         if not is_templated(entry["workloadNamespace"]) and not is_dns_label(entry["workloadNamespace"]):
             raise bad_input(f"{where}.workloadNamespace must be a valid RFC-1123 namespace label")
-        # capabilityGuard is optional (issue #776): omitting it preserves the
-        # existing operator-only behavior exactly. When present, every
-        # generated resource and inserted volume/mount is wrapped in the
-        # CoreTPL DBaaS-operator guard, and a superseded declaration
-        # is preserved (guarded to the operator-absent branch) instead of
-        # deleted -- see build_resources/apply_workload_patches/verify_superseded.
-        capability_guard = entry.get("capabilityGuard")
+        capability_guard = entry.get(
+            "capabilityGuard", _DBAAS_CAPABILITY if entry["kind"] == "helm" else None
+        )
+        if entry["kind"] == "helm" and capability_guard is None:
+            raise bad_input(f"{where}.capabilityGuard cannot be null for a helm root")
         if capability_guard is not None and capability_guard != _DBAAS_CAPABILITY:
             raise bad_input(f"{where}.capabilityGuard must be {_DBAAS_CAPABILITY!r}")
+        entry["capabilityGuard"] = capability_guard
         operator_mode_environment = entry.get("operatorModeEnvironment")
         if operator_mode_environment is not None:
             if capability_guard is None:
@@ -961,9 +960,7 @@ def check_collisions(databases: dict[str, Any], claims: dict[str, Any]) -> None:
 
 
 def _capability_guard_open(capability_guard: str) -> str:
-    # The plan value still drives Helm's --api-versions validation render.
-    # CoreTPL owns the actual capability lookup in generated templates.
-    return '{{- if include "coretpl.dbaasOperatorEnabled" $ }}\n'
+    return '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
 
 
 _CAPABILITY_GUARD_CLOSE = "{{- end }}\n"
@@ -976,10 +973,7 @@ def render_resources(bodies: list[dict[str, Any]], capability_guard: str | None 
     content = "".join(chunks)
     if capability_guard:
         # issue #776: every generated InternalDatabase/DatabaseSecretClaim only
-        # renders when the target cluster's dbaas-operator CRDs are present --
-        # the operator is never assumed to be installed. Omitting
-        # capabilityGuard on the plan preserves the unwrapped, operator-only
-        # output exactly as before.
+        # renders when the target cluster's dbaas-operator CRDs are present.
         content = _capability_guard_open(capability_guard) + content + _CAPABILITY_GUARD_CLOSE
     return content
 
@@ -1899,9 +1893,7 @@ def _identity_overlaps_known(items: list[Any], known: dict[tuple[str, str], dict
 
 
 def _negated_guard_open(capability_guard: str) -> str:
-    # The plan value still drives Helm's --api-versions validation render.
-    # CoreTPL owns the actual capability lookup in generated templates.
-    return '{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}\n'
+    return '{{- if not (.Capabilities.APIVersions.Has "' + capability_guard + '") }}\n'
 
 
 def _wrap_in_negated_guard(capability_guard: str, span: str) -> str:

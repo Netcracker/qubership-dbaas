@@ -31,26 +31,24 @@ Old generic YAML CR:
 
 ## Capability guard (issue #776)
 
-A mixed cluster may not have the dbaas-operator CRDs installed. The plan's optional root-level
-`capabilityGuard` field (set it to `"dbaas.netcracker.com/v1"`) makes the
-generated resource conditional on that capability being present, instead of assuming the operator
-is always installed:
+A mixed cluster may not have the dbaas-operator CRDs installed. Helm roots default the plan's
+root-level `capabilityGuard` field to `"dbaas.netcracker.com/v1"`. The generated resource is
+conditional on that capability being present:
 
 ```gotemplate
-{{- if include "coretpl.dbaasOperatorEnabled" $ }}
+{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" }}
 ... InternalDatabase / DatabaseAccessPolicy ...
 {{- end }}
 ```
 
 nested inside any pre-existing whole-document guard the legacy source already carried (both
-conditions apply). Omitting `capabilityGuard` preserves the unwrapped, operator-only output exactly
-as before.
+conditions apply). The guard is mandatory for Helm roots. Plain roots do not use it.
 
 When it is set, the legacy source is preserved -- its original bytes, comments and labels included
 -- instead of deleted, guarded to the operator-absent (negated) branch in place:
 
 ```gotemplate
-{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}
+{{- if not (.Capabilities.APIVersions.Has "dbaas.netcracker.com/v1") }}
 ... original legacy declaration bytes, verbatim ...
 {{- end }}
 ```

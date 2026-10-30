@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import sys
@@ -25,13 +26,11 @@ VALIDATOR = SCRIPTS / "validate_generated.py"
 CHART_YAML = "apiVersion: v2\nname: orders\nversion: 0.1.0\n"
 VALUES = "NAMESPACE: orders-ns\nSERVICE_NAME: orders\n"
 CORETPL_HELPER_STUBS = r'''{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}
-
-{{- define "coretpl.dbaasOperatorEnabled" -}}
-{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
-{{- end -}}
 '''
-CORETPL_OPERATOR_GUARD = '{{- if include "coretpl.dbaasOperatorEnabled" $ }}'
-CORETPL_OPERATOR_FALLBACK_GUARD = '{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}'
+CAPABILITY_GUARD_OPEN = '{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" }}'
+CAPABILITY_FALLBACK_GUARD_OPEN = (
+    '{{- if not (.Capabilities.APIVersions.Has "dbaas.netcracker.com/v1") }}'
+)
 SCHEMA = json.dumps(
     {
         "$schema": "https://json-schema.org/draft-07/schema#",
@@ -59,6 +58,18 @@ DEPLOYMENT = (
     "          configMap:\n"
     "            name: orders-config\n"
 )
+
+
+def load_generated_documents(path: Path) -> list[dict]:
+    """Parse generated resources after removing their outer Helm guard."""
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    guard_index = next(i for i, line in enumerate(lines) if line.strip() == CAPABILITY_GUARD_OPEN)
+    del lines[guard_index]
+    end_index = next(i for i in range(len(lines) - 1, -1, -1) if lines[i].strip() == "{{- end }}")
+    del lines[end_index]
+    return [document for document in yaml.safe_load_all("".join(lines)) if document]
+
+
 PLAIN_DEPLOYMENT = (
     "apiVersion: apps/v1\n"
     "kind: Deployment\n"
@@ -185,14 +196,21 @@ def run_migration(repo: Path, the_plan: dict, mode: str, tmp: Path) -> tuple[int
     return result.returncode, parsed
 
 
+def apply_legacy_unguarded(repo: Path, the_plan: dict, tmp: Path) -> None:
+    """Seed output produced by a writer version from before mandatory guards."""
+    plan_path = tmp / "legacy-plan.json"
+    plan_path.write_text(json.dumps(the_plan, indent=2), encoding="utf-8")
+    writer = runpy.run_path(str(RUNNER))
+    normalized_plan = writer["load_plan"](plan_path, repo)
+    for root in normalized_plan["roots"]:
+        root["capabilityGuard"] = None
+    changes = writer["build_changes"](repo, normalized_plan)
+    writer["commit"](repo, changes)
+
+
 @unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
 class CapabilityGuardTest(unittest.TestCase):
-    """Issue #776 phase 4: the optional capabilityGuard/operatorModeEnvironment
-    plan fields wrap every generated resource, inserted volume/mount, and
-    operator-mode env var in the CoreTPL DBaaS-operator guard, and
-    preserve a superseded legacy declaration under the negated (operator-
-    absent) branch instead of deleting it. Omitting capabilityGuard preserves
-    the existing operator-only behavior exactly."""
+    """Issue #776 phase 4: Helm migrations use the capability guard by default."""
 
     GUARD = "dbaas.netcracker.com/v1"
     LEGACY_DECLARATION = {
@@ -220,16 +238,25 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(code, 2, report.get("__stderr"))
             self.assertTrue(any("dbaas.netcracker.com/v1" in item for item in report.get("blocking", [])))
 
-    def test_omitting_capability_guard_preserves_existing_behavior(self) -> None:
+    def test_omitting_capability_guard_enables_it_for_helm(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
-            code, report = run_migration(repo, plan(repo), "apply", tmp)
+            the_plan = plan(repo)
+            code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
             output = (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")
-            self.assertNotIn("coretpl.dbaasOperatorEnabled", output)
+            self.assertIn(CAPABILITY_GUARD_OPEN, output)
             names = {entry["name"] for entry in report["validation"]}
-            self.assertNotIn("validate-operator-absent-fallback", names)
+            self.assertIn("validate-operator-absent-fallback", names)
+
+    def test_null_capability_guard_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            code, report = run_migration(repo, plan(repo, capabilityGuard=None), "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertTrue(any("capabilityGuard cannot be null" in e for e in report.get("blocking", [])))
 
     def test_generated_resources_new_mounts_and_env_are_guarded(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -252,13 +279,13 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(names["validate-operator-absent-fallback"]["status"], "passed")
 
             output = (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")
-            self.assertTrue(output.startswith(f"{CORETPL_OPERATOR_GUARD}\n"))
+            self.assertTrue(output.startswith(f"{CAPABILITY_GUARD_OPEN}\n"))
             self.assertIn("kind: InternalDatabase", output)
             self.assertIn("kind: DatabaseSecretClaim", output)
             self.assertTrue(output.rstrip("\n").endswith("{{- end }}"))
 
             deployment = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
-            self.assertIn(CORETPL_OPERATOR_GUARD, deployment)
+            self.assertIn(CAPABILITY_GUARD_OPEN, deployment)
             self.assertIn("name: orders-postgresql-service-default-secret", deployment)
             self.assertIn("name: DBAAS_OPERATOR_ENABLED", deployment)
             self.assertIn("value: 'true'", deployment)
@@ -268,7 +295,7 @@ class CapabilityGuardTest(unittest.TestCase):
             # since it is the original bytes verbatim.
             self.assertTrue(declaration_path.exists())
             preserved = declaration_path.read_text(encoding="utf-8")
-            self.assertIn(CORETPL_OPERATOR_FALLBACK_GUARD, preserved)
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN, preserved)
             self.assertIn(json.dumps(self.LEGACY_DECLARATION), preserved)
             self.assertIn("{{- end }}", preserved)
 
@@ -295,11 +322,9 @@ class CapabilityGuardTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
-            first_plan = plan(repo)
-            code, report = run_migration(repo, first_plan, "apply", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
+            apply_legacy_unguarded(repo, plan(repo), tmp)
             deployment_before = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
-            self.assertNotIn("coretpl.dbaasOperatorEnabled", deployment_before)
+            self.assertNotIn(".Capabilities.APIVersions.Has", deployment_before)
 
             second_plan = plan(
                 repo,
@@ -316,7 +341,7 @@ class CapabilityGuardTest(unittest.TestCase):
             # The pre-existing mount, volume, and (newly added) env are each
             # individually wrapped -- not merely present somewhere in a file
             # that also happens to contain the guard string elsewhere.
-            guard_open = CORETPL_OPERATOR_GUARD
+            guard_open = CAPABILITY_GUARD_OPEN
             self.assertIn(
                 f"{guard_open}\n            - name: orders-postgresql-service-default-secret\n"
                 "              mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials\n"
@@ -353,10 +378,7 @@ class CapabilityGuardTest(unittest.TestCase):
             ]
             claims = [claim(), claim(datasourceId="orders-mongodb-service")]
 
-            code, report = run_migration(
-                repo, plan(repo, datasources=datasources, claims=claims), "apply", tmp
-            )
-            self.assertEqual(code, 0, report.get("__stderr"))
+            apply_legacy_unguarded(repo, plan(repo, datasources=datasources, claims=claims), tmp)
 
             guarded_plan = plan(
                 repo,
@@ -372,7 +394,7 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(names["validate-operator-absent-fallback"]["status"], "passed")
 
             deployment_after = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
-            guard_open = CORETPL_OPERATOR_GUARD
+            guard_open = CAPABILITY_GUARD_OPEN
             # One guard wraps both adjacent mounts, one wraps both adjacent
             # volumes, and one wraps the operator-mode environment entry.
             self.assertEqual(deployment_after.count(guard_open), 3)
@@ -390,16 +412,6 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(
                 (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8"), deployment_after
             )
-
-    def test_operator_mode_environment_requires_capability_guard(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            tmp = Path(directory)
-            repo = scaffold(tmp)
-            the_plan = plan(repo, operatorModeEnvironment={"name": "DBAAS_OPERATOR_ENABLED", "value": "true"})
-            code, report = run_migration(repo, the_plan, "check", tmp)
-            self.assertEqual(code, 2, report.get("__stderr"))
-            self.assertTrue(any("capabilityGuard" in e for e in report.get("blocking", [])))
-
 
 class GeneratedManifestValidationTest(unittest.TestCase):
     def run_validator(self, value: str) -> subprocess.CompletedProcess[str]:
@@ -507,7 +519,7 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(report["status"], "changed")
 
             output = repo / "chart/templates/dbaas-mounted-secret-resources.yaml"
-            docs = [d for d in yaml.safe_load_all(output.read_text(encoding="utf-8")) if d]
+            docs = load_generated_documents(output)
             kinds = sorted(d["kind"] for d in docs)
             self.assertEqual(kinds, ["DatabaseSecretClaim", "InternalDatabase"])
             for doc in docs:
@@ -527,6 +539,11 @@ class HelmApplyTest(unittest.TestCase):
             resolved_text = deployment_text.replace(
                 "{{ .Values.NAMESPACE }}", "orders-ns"
             ).replace("{{ .Values.replicaCount }}", "1")
+            resolved_text = "".join(
+                line
+                for line in resolved_text.splitlines(keepends=True)
+                if line.strip() not in {CAPABILITY_GUARD_OPEN, "{{- end }}"}
+            )
             deployment = yaml.safe_load(resolved_text)
             pod = deployment["spec"]["template"]["spec"]
             self.assertEqual(len(pod["volumes"]), 2)  # pre-existing "config" + the new one
@@ -571,7 +588,7 @@ class HelmApplyTest(unittest.TestCase):
             )
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            docs = [d for d in yaml.safe_load_all((repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")) if d]
+            docs = load_generated_documents(repo / "chart/templates/dbaas-mounted-secret-resources.yaml")
             self.assertEqual(sum(d["kind"] == "InternalDatabase" for d in docs), 1)
             self.assertEqual(sum(d["kind"] == "DatabaseSecretClaim" for d in docs), 2)
 
@@ -586,7 +603,7 @@ class HelmApplyTest(unittest.TestCase):
             )
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            docs = [d for d in yaml.safe_load_all((repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")) if d]
+            docs = load_generated_documents(repo / "chart/templates/dbaas-mounted-secret-resources.yaml")
             claim_doc = next(d for d in docs if d["kind"] == "DatabaseSecretClaim")
             self.assertEqual(claim_doc["spec"]["userRole"], "admin")
 
@@ -600,7 +617,7 @@ class HelmApplyTest(unittest.TestCase):
             )
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            docs = [d for d in yaml.safe_load_all((repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")) if d]
+            docs = load_generated_documents(repo / "chart/templates/dbaas-mounted-secret-resources.yaml")
             internal = next(d for d in docs if d["kind"] == "InternalDatabase")
             self.assertRegex(internal["metadata"]["name"], r"orders-postgresql-service-[0-9a-f]{8}-db")
             self.assertEqual(internal["spec"]["classifier"]["extraKeys"], {"region": "eu"})
@@ -767,8 +784,8 @@ class HelmApplyTest(unittest.TestCase):
             the_plan = {"roots": roots}
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            doc_a = [d for d in yaml.safe_load_all((repo / "chart-a/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")) if d]
-            doc_b = [d for d in yaml.safe_load_all((repo / "chart-b/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")) if d]
+            doc_a = load_generated_documents(repo / "chart-a/templates/dbaas-mounted-secret-resources.yaml")
+            doc_b = load_generated_documents(repo / "chart-b/templates/dbaas-mounted-secret-resources.yaml")
             self.assertEqual(
                 {d["metadata"]["name"] for d in doc_a}, {d["metadata"]["name"] for d in doc_b}
             )
@@ -938,12 +955,11 @@ class HelmApplyTest(unittest.TestCase):
             self.assertIn("{{- end }}", patched)
             self.assertIn("mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials", patched)
 
-    def test_conditional_volume_entry_alongside_an_unconditional_new_insertion(self) -> None:
+    def test_conditional_volume_entry_alongside_a_guarded_new_insertion(self) -> None:
         # The "volumes:" key itself is unconditional (always renders); one
         # pre-existing item under it is conditionally included. The writer's
-        # own new item is appended after every existing item -- including the
-        # conditional one -- and stays unconditional itself, since it is
-        # positioned after the guard closes, not inside it.
+        # own new item is appended after every existing item, including the
+        # conditional one, and receives the mandatory capability guard.
         deployment = DEPLOYMENT.replace(
             "      volumes:\n        - name: config\n          configMap:\n            name: orders-config\n",
             "      volumes:\n"
@@ -964,13 +980,15 @@ class HelmApplyTest(unittest.TestCase):
             patched = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
             self.assertIn("{{- if .Values.extra }}", patched)
             self.assertIn("{{- end }}", patched)
-            # The new volume is the last entry, after the guard closes -- not
-            # spliced in between the conditional item and its own {{- end }}.
+            # The new volume is after the existing conditional block, not
+            # spliced between that item and its own closing action.
             self.assertIn(
-                "{{- end }}\n        - name: orders-postgresql-service-default-secret", patched
+                f"{{{{- end }}}}\n        {CAPABILITY_GUARD_OPEN}\n"
+                "        - name: orders-postgresql-service-default-secret",
+                patched,
             )
 
-    def test_conditional_mount_entry_alongside_an_unconditional_new_insertion(self) -> None:
+    def test_conditional_mount_entry_alongside_a_guarded_new_insertion(self) -> None:
         deployment = DEPLOYMENT.replace(
             "          image: orders:latest\n"
             "          # keep this comment exactly where it is\n",
@@ -991,7 +1009,9 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(code, 0, report.get("__stderr"))
             patched = (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8")
             self.assertIn(
-                "{{- end }}\n            - name: orders-postgresql-service-default-secret", patched
+                f"{{{{- end }}}}\n            {CAPABILITY_GUARD_OPEN}\n"
+                "            - name: orders-postgresql-service-default-secret",
+                patched,
             )
 
     def test_unrelated_range_and_variable_assignment_elsewhere_do_not_block(self) -> None:
@@ -1347,7 +1367,7 @@ class HelmApplyTest(unittest.TestCase):
             self.assertTrue(any("versioningConfig" in e for e in report.get("blocking", [])))
             self.assertTrue((repo / "chart/templates/dbaas-declaration.json").exists())
 
-    def test_superseded_declaration_fully_migrated_is_deleted(self) -> None:
+    def test_superseded_declaration_is_preserved_under_fallback_guard(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
@@ -1366,8 +1386,10 @@ class HelmApplyTest(unittest.TestCase):
             the_plan["roots"][0]["sourceHashes"]["templates/dbaas-declaration.json"] = sha256(repo / "chart/templates/dbaas-declaration.json")
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            self.assertFalse((repo / "chart/templates/dbaas-declaration.json").exists())
-            self.assertIn("chart/templates/dbaas-declaration.json", report["deletedFiles"])
+            source = repo / "chart/templates/dbaas-declaration.json"
+            self.assertTrue(source.exists())
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN, source.read_text(encoding="utf-8"))
+            self.assertIn("chart/templates/dbaas-declaration.json", report["modifiedFiles"])
 
     def test_superseded_json_declaration_with_unrecognized_sibling_item_blocks(self) -> None:
         # A non-object entry sitting next to a fully-migrated declaration must
@@ -1427,7 +1449,8 @@ class HelmApplyTest(unittest.TestCase):
             kept = (repo / "chart/templates/dbaas-declaration.yaml").read_text(encoding="utf-8")
             self.assertIn("# preamble must survive", kept)
             self.assertIn("kind: ConfigMap", kept)
-            self.assertNotIn("DatabaseDeclaration", kept)
+            self.assertIn("DatabaseDeclaration", kept)
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN, kept)
 
     def test_superseded_yaml_declaration_preserves_preamble_in_reverse_document_order(self) -> None:
         # Same as above, but the migrated (removed) document comes FIRST and
@@ -1463,12 +1486,12 @@ class HelmApplyTest(unittest.TestCase):
             kept = (repo / "chart/templates/dbaas-declaration.yaml").read_text(encoding="utf-8")
             self.assertTrue(kept.startswith("# preamble must survive"))
             self.assertIn("kind: ConfigMap", kept)
-            self.assertNotIn("DatabaseDeclaration", kept)
+            self.assertIn("DatabaseDeclaration", kept)
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN, kept)
 
     def test_superseded_yaml_declaration_preserves_bom_and_crlf(self) -> None:
-        # A partial splice (one document removed, one retained) must
-        # reproduce the source's BOM and CRLF exactly -- not just when
-        # nothing migrates at all and the file is never rewritten.
+        # The original declaration bytes retain their BOM and CRLF when the
+        # writer adds the operator-absent fallback guard around them.
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
             repo = scaffold(tmp)
@@ -1497,7 +1520,8 @@ class HelmApplyTest(unittest.TestCase):
             kept_bytes = (repo / "chart/templates/dbaas-declaration.yaml").read_bytes()
             self.assertTrue(kept_bytes.startswith(b"\xef\xbb\xbf"))
             self.assertIn(b"\r\n", kept_bytes)
-            self.assertNotIn(b"DatabaseDeclaration", kept_bytes)
+            self.assertIn(b"DatabaseDeclaration", kept_bytes)
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN.encode(), kept_bytes)
 
     def test_workload_file_cannot_also_be_a_superseded_declaration_source(self) -> None:
         # apply_workload_patches() and verify_superseded() each write a new
@@ -1621,7 +1645,8 @@ class HelmApplyTest(unittest.TestCase):
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
             kept = (repo / "chart/templates/dbaas-declaration.yaml").read_text(encoding="utf-8")
-            self.assertNotIn("DatabaseDeclaration", kept)
+            self.assertIn("DatabaseDeclaration", kept)
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN, kept)
             self.assertIn("kind: ConfigMap", kept)
 
     def test_explicit_null_document_is_preserved_not_treated_as_phantom(self) -> None:
@@ -1658,7 +1683,8 @@ class HelmApplyTest(unittest.TestCase):
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
             kept = (repo / "chart/templates/dbaas-declaration.yaml").read_text(encoding="utf-8")
-            self.assertNotIn("DatabaseDeclaration", kept)
+            self.assertIn("DatabaseDeclaration", kept)
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN, kept)
             self.assertIn("null\n", kept)
             self.assertIn("kind: ConfigMap", kept)
 
@@ -1671,7 +1697,7 @@ class HelmApplyTest(unittest.TestCase):
             the_plan = plan(repo, originService="Orders.API_v1")
             code, report = run_migration(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            docs = [d for d in yaml.safe_load_all((repo / "chart/templates/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")) if d]
+            docs = load_generated_documents(repo / "chart/templates/dbaas-mounted-secret-resources.yaml")
             claim_doc = next(d for d in docs if d["kind"] == "DatabaseSecretClaim")
             self.assertEqual(claim_doc["metadata"]["labels"]["app.kubernetes.io/name"], "Orders.API_v1")
 

@@ -25,9 +25,6 @@ SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "dbaas-mounted-secret-migration" / 
 RUNNER = SCRIPTS / "apply_migration.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "issue_776"
 CORETPL_HELPER_STUBS = r'''{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}
-{{- define "coretpl.dbaasOperatorEnabled" -}}
-{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
-{{- end -}}
 '''
 
 
