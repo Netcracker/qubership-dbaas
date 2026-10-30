@@ -54,6 +54,16 @@ make manifests      # Regenerate CRDs + RBAC from markers
 make generate       # Regenerate DeepCopy methods
 ```
 
+### Verify after changes
+
+After any code or config change, run from the repository root:
+
+```bash
+make verify
+```
+
+That runs Super-Linter (and skillcheck when skills are present) plus Go, Python, and Java tests via `Makefile.precheck`. Do not consider the change done until `make verify` succeeds. Use `make lint` or `make test` alone only when you are iterating on one side of the check.
+
 ---
 
 ## dbaas-aggregator — Java / Quarkus Conventions
