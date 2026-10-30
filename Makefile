@@ -6,6 +6,7 @@
 LINTER_IMAGE ?= ghcr.io/netcracker/linter
 LINTER_TAG ?= common_linter_integration
 
+# Repo default branch is main (image / Makefile.precheck default is master).
 DEFAULT_BRANCH ?= main
 
 # Root agent-packages plus skills under dbaas-operator/.
@@ -15,7 +16,6 @@ export SKILLCHECK_PATTERNS
 # Go tests only for the operator module (not test-apps).
 GO_TEST_MODULES ?= dbaas-operator
 
-PYTHON ?= python3
 PY_BUILD ?= PYTHONPATH=dbaas-operator/agent-packages $(PYTHON) -m pip install -r dbaas-operator/agent-packages/requirements-test.txt
 
 include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))Makefile.precheck

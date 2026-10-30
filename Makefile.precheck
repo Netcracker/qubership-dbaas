@@ -17,6 +17,9 @@ LINTER_IMAGE_FULL := $(LINTER_IMAGE):$(LINTER_TAG)
 # firstword is this file, which also lives at the repository root.
 REPO_ROOT ?= $(dir $(abspath $(firstword $(MAKEFILE_LIST))))
 DEFAULT_BRANCH ?= master
+# Export so CI recipes (`run.sh`) and child processes see the value. Consumers
+# override with DEFAULT_BRANCH ?= <branch> in their thin Makefile before include.
+export DEFAULT_BRANCH
 
 # Go module cache override. If set, it is passed to the linter container.
 # The common linter image defaults to /tmp/lint/.go/pkg/mod.
