@@ -159,7 +159,7 @@ releases:
           - "wait"
           - "--namespace={{ $pgNamespace }}"
           - "patroniservices/patroni-services"
-          - '--for=jsonpath={.status.conditions[?(@.type=="Successful")].status}=True'
+          - '--for=jsonpath={.status.conditions[?(@.type=="Successful")].status}=true'
           - "--timeout=600s"
       # The reconcile stamps checksum/secret0 into the adapter pod template, which starts one more rollout, so wait it out as well.
       - events: ["postsync"]
