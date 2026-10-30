@@ -62,12 +62,33 @@ releases:
     labels:
       component: prerequisites
 
+  - name: pg-prerequisites
+    namespace: {{ $pgNamespace }}
+    chart: ./charts/pg-prerequisites
+    hooks:
+      - events: ["presync"]
+        name: "install-patroni-crds"
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "apply"
+          - "--server-side"
+          - "--force-conflicts"
+          - "-f"
+          - "https://raw.githubusercontent.com/Netcracker/pgskipper-operator/{{ $pgskipperRef }}/operator/charts/patroni-core/crds/netcracker.com_patronicores.yaml"
+          - "-f"
+          - "https://raw.githubusercontent.com/Netcracker/pgskipper-operator/{{ $pgskipperRef }}/operator/charts/patroni-services/crds/netcracker.com_patroniservices.yaml"
+    labels:
+      component: prerequisites
+
   - name: patroni-core
     namespace: {{ $pgNamespace }}
     chart: git::https://github.com/Netcracker/pgskipper-operator.git@operator/charts/patroni-core?ref={{ $pgskipperRef }}
     forceGoGetter: true
     # Helm cannot wait for PatroniCore, so wait for the primary pod.
     wait: false
+    needs:
+      - {{ $pgNamespace }}/pg-prerequisites
     values:
       - values/patroni-core.yaml.gotmpl
       - values/{{ .Environment.Name }}/patroni-core.yaml.gotmpl
