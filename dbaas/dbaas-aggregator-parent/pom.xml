@@ -31,8 +31,8 @@
         <surefire-plugin.version>3.6.1</surefire-plugin.version>
         <jacoco.plugin.version>0.8.16</jacoco.plugin.version>
         <quarkus-plugin.version>${quarkus.platform.version}</quarkus-plugin.version>
-        <jackson-bom.version>2.21.5</jackson-bom.version>
-        <lombok.version>1.18.46</lombok.version>
+        <jackson-bom.version>2.21.7</jackson-bom.version>
+        <lombok.version>1.18.48</lombok.version>
         <junit.version>6.0.3</junit.version>
         <jaxb.version>4.0.9</jaxb.version>
         <sonar.coverage.jacoco.xmlReportPaths>
@@ -155,7 +155,7 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>33.5.0-jre</version>
+            <version>33.7.2-android</version>
         </dependency>
     </dependencies>
 

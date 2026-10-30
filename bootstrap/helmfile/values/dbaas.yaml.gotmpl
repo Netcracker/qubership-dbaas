@@ -4,10 +4,11 @@ TAG: {{ requiredEnv "AGGREGATOR_TAG" | quote }}
 
 POSTGRES_HOST: {{ printf "pg-patroni.%s" (env "PG_NAMESPACE" | default "postgres") | quote }}
 
-M2M_AUTH_MODE: hybrid
-KUBERNETES_M2M_ENABLED: true
-
-REPLICAS: {{ env "AGGREGATOR_REPLICAS" | default "1" }}
+PRODUCTION_MODE: false
+{{- with env "M2M_AUTH_MODE" }}
+M2M_AUTH_MODE: {{ . | quote }}
+KUBERNETES_M2M_ENABLED: {{ ne . "legacy" }}
+{{- end }}
 
 BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD: password
 DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD: password

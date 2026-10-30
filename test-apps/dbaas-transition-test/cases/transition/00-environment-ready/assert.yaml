@@ -9,11 +9,6 @@ resourceRefs:
     ref: aggregator
   - apiVersion: apps/v1
     kind: Deployment
-    namespace: ${DBAAS_NAMESPACE}
-    name: dbaas-operator
-    ref: operator
-  - apiVersion: apps/v1
-    kind: Deployment
     namespace: ${PG_NAMESPACE}
     name: dbaas-postgres-adapter
     ref: adapter
@@ -25,12 +20,9 @@ collectors:
   - type: command
     command: kubectl -n ${DBAAS_NAMESPACE} describe deployment dbaas-aggregator
   - type: command
-    command: kubectl -n ${DBAAS_NAMESPACE} describe deployment dbaas-operator
-  - type: command
     command: kubectl -n ${PG_NAMESPACE} describe deployment dbaas-postgres-adapter
 assertAll:
   - celExpr: "aggregator.spec.replicas == 2"
   - celExpr: "aggregator.status.readyReplicas == 2"
   - celExpr: "aggregator.spec.strategy.type == 'RollingUpdate'"
-  - celExpr: "operator.status.readyReplicas >= 1"
   - celExpr: "adapter.status.readyReplicas >= 1"

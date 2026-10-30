@@ -162,7 +162,6 @@ public class PhysicalDatabasesService {
         log.info(MESSAGE_UPDATING_EXISTING_DATABASE,
                 existing.getPhysicalDatabaseIdentifier(), existing.getAdapter().getAddress());
         existing.setLabels(updateReq.getLabels());
-        encryption.deletePassword(existing);
         encryption.encryptPassword(updateReq);
         existing.getAdapter().setHttpBasicCredentials(updateReq.getHttpBasicCredentials());
         existing.setRoles(updateReq.getMetadata().getSupportedRoles());

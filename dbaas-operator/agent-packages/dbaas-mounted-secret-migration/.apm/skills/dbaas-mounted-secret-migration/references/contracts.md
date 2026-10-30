@@ -48,19 +48,18 @@ Rules:
 
 ## Capability guard (issue #776)
 
-Mixed clusters may not have the dbaas-operator CRDs installed at all. The plan's root-level
-`capabilityGuard` field (optional; set it to `"dbaas.netcracker.com/v1"`) makes
-every generated resource and inserted volume/mount conditional on that capability being present,
-instead of assuming the operator is always installed:
+Mixed clusters may not have the dbaas-operator CRDs installed at all. Helm roots default the plan's
+root-level `capabilityGuard` field to `"dbaas.netcracker.com/v1"`. Every generated resource and
+inserted volume or mount is conditional on that capability being present:
 
 ```gotemplate
-{{- if include "coretpl.dbaasOperatorEnabled" $ }}
+{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" }}
 ... InternalDatabase / DatabaseSecretClaim / DatabaseAccessPolicy ...
 {{- end }}
 ```
 
-Omitting `capabilityGuard` preserves the unwrapped, operator-only output exactly as before. When it
-is set:
+The guard is mandatory for Helm roots. Plain roots do not use it. The guarded migration has these
+effects:
 
 - every generated resource in the output file, and every newly inserted Secret volume/volumeMount
   in a workload manifest, is wrapped in the guard above;
@@ -71,7 +70,7 @@ is set:
 - a superseded legacy declaration is preserved -- its original bytes, comments and labels included
   -- guarded to the operator-absent (negated) branch, instead of being deleted:
   ```gotemplate
-  {{- if not (include "coretpl.dbaasOperatorEnabled" $) }}
+  {{- if not (.Capabilities.APIVersions.Has "dbaas.netcracker.com/v1") }}
   ... original legacy declaration bytes, verbatim ...
   {{- end }}
   ```

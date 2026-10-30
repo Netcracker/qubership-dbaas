@@ -9,7 +9,6 @@ Dual-stack monorepo:
 | **dbaas-aggregator**           | Java 21  | Quarkus 3.27                     | `dbaas/dbaas-aggregator/`           |
 | **dbaas-operator**             | Go 1.26  | Kubebuilder / controller-runtime | `dbaas-operator/`                   |
 | **dbaas-integration-tests**    | Java 21  | JUnit 5 + REST-assured           | `dbaas/dbaas-integration-tests/`    |
-| **encryption-services-cipher** | Java 21  | —                                | `dbaas/encryption-services-cipher/` |
 | **helm-templates**             | YAML     | Helm                             | `helm-templates/`                   |
 
 The aggregator exposes the REST API (`/api/v3/dbaas/*`) that routes requests to database adapters. The operator

@@ -211,7 +211,27 @@ Removes artifacts
 
 ## Helmfile
 
-`helmfile/helmfile.yaml.gotmpl` provides the reusable DBaaS environment layout for CI pipelines. It deploys PostgreSQL,
-the DBaaS aggregator, the dbaas-operator, the PostgreSQL adapter, and the shared M2M prerequisites. Callers provide
-DBaaS chart paths, image tags, and namespaces through environment variables. The layout uses fixed credentials for its
-ephemeral test environment. `PGSKIPPER_REF` selects the pgskipper revision and defaults to `main`.
+`helmfile/helmfile.yaml.gotmpl` provides the reusable DBaaS environment layout for CI pipelines. It deploys
+PostgreSQL, the DBaaS Aggregator, the DBaaS Operator, the PostgreSQL Services, and the shared M2M prerequisites.
+Callers provide image tags and namespaces through environment variables. `AGGREGATOR_CHART_DIR` and
+`OPERATOR_CHART_DIR` select the checkouts whose DBaaS charts are deployed, and default to the checkout holding the
+state file. `PGSKIPPER_REF` selects the pgskipper revision and defaults to `main`.
+
+An environment selects the `helmfile/values/<environment>/<release>.yaml.gotmpl` layer. Helmfile loads it after the
+regular values of every release, and skips it where the environment has no file for a release. `helmfile -e ci sync`
+loads `values/ci/`, the parameters the CI runs use. The state values the releases read through `.Values` are set at
+the root of the state file, so every environment gets them.
+
+Object storage is a switch rather than an environment. `backup.enabled` is `false` in the root values of the state
+file. Passing `--state-values-file values/backup/enable.yaml` sets it to `true`, which installs the MinIO operator
+and tenant, and adds `values/backup/patroni-services.yaml` to the values of `patroni-services`, so the backup daemon
+starts with its S3 endpoint. Without the switch, `values/patroni-services.yaml.gotmpl` keeps
+`backupDaemon.install: false` and helmfile does not fetch the MinIO charts.
+
+```bash
+AGGREGATOR_TAG=latest OPERATOR_TAG=latest helmfile -f helmfile/helmfile.yaml.gotmpl sync
+
+# With the test tuning and object storage, as .github/workflows/integration-tests.yml deploys them:
+AGGREGATOR_TAG=latest OPERATOR_TAG=latest \
+  helmfile -e ci --state-values-file values/backup/enable.yaml -f helmfile/helmfile.yaml.gotmpl sync
+```
