@@ -10,8 +10,6 @@ M2M_AUTH_MODE: {{ . | quote }}
 KUBERNETES_M2M_ENABLED: {{ ne . "legacy" }}
 {{- end }}
 
-REPLICAS: {{ env "AGGREGATOR_REPLICAS" | default "1" }}
-
 BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD: password
 DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD: password
 DBAAS_TENANT_PASSWORD: password

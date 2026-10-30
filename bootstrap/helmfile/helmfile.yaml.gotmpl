@@ -92,6 +92,7 @@ releases:
     chart: {{ $aggregatorChartDir }}/helm-templates/dbaas-aggregator
     values:
       - values/dbaas.yaml.gotmpl
+      - {{ $aggregatorChartDir }}/helm-templates/dbaas-aggregator/resource-profiles/dev-ha.yaml
       - values/{{ .Environment.Name }}/dbaas-aggregator.yaml.gotmpl
     needs:
       - {{ $dbaasNamespace }}/dbaas-prerequisites

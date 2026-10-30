@@ -41,7 +41,6 @@ jobs:
       TARGET_DIR: ${{ github.workspace }}/repos/qubership-dbaas-target
       PG_NAMESPACE: postgres
       DBAAS_NAMESPACE: dbaas
-      AGGREGATOR_REPLICAS: "2"
       PROBE_IMAGE_REPOSITORY: dbaas-availability-probe
       PROBE_IMAGE_TAG: it
       DBAAS_OPERATOR_ENABLED: ${{ inputs.operator-enabled }}
