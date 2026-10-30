@@ -739,7 +739,7 @@ public class PhysicalDatabasesService {
     private boolean isMigrationRequired(PhysicalDatabase physicalDatabase, PhysicalDatabaseRegistryRequestV3 requestedPhysicalDatabase) {
         List<String> requiredRoles = requestedPhysicalDatabase.getMetadata().getSupportedRoles();
         boolean rolesDifferent = isRolesDifferent(requiredRoles, physicalDatabase.getRoles());
-        boolean multiUsersEnabled = requestedPhysicalDatabase.getMetadata().getFeatures().get("multiusers");
+        boolean multiUsersEnabled = requestedPhysicalDatabase.getMetadata().getFeatures().getOrDefault("multiusers", false);
 
         if (!(rolesDifferent && multiUsersEnabled)) {
             return false;

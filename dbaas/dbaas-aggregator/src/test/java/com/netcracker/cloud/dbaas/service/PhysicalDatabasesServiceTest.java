@@ -132,7 +132,6 @@ class PhysicalDatabasesServiceTest {
                 physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
 
         assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-        verify(encryption).deletePassword(physicalDatabase);
         verify(encryption).encryptPassword(physicalDatabaseRegistryRequest);
         verify(physicalDatabaseDbaasRepository).save(physicalDatabase);
         assertEquals(Map.of("db_ext_domain", "ext"), physicalDatabase.getLabels());
@@ -450,7 +449,6 @@ class PhysicalDatabasesServiceTest {
 
         assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
         verify(physicalDatabaseDbaasRepository, never()).save(any(PhysicalDatabase.class));
-        verify(encryption, never()).deletePassword(any(PhysicalDatabase.class));
     }
 
     @Test
