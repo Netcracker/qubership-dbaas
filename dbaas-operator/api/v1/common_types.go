@@ -58,10 +58,8 @@ type Classifier struct {
 	// namespace is the Kubernetes namespace of the owning service.
 	// If omitted, the operator defaults it to the CR's metadata.namespace before
 	// calling the aggregator, which requires a namespace in the classifier.
-	// InternalDatabase and ExternalDatabase require an explicit value to equal
-	// metadata.namespace. DatabaseSecretClaim may name another namespace in the
-	// same composite structure to request credentials for a database owned there;
-	// its Secret is still written in the claim's metadata.namespace.
+	// If set, it must equal the CR's metadata.namespace — a mismatch causes
+	// InvalidConfiguration at the controller level.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 

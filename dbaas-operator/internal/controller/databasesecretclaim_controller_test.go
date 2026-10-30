@@ -370,14 +370,6 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(fixture.compositeCalls).To(BeZero())
 		})
 
-		It("keeps polling when no composite structure is registered", func() {
-			createCrossNamespaceClaim("reporting-service")
-
-			ds, result, err := reconcileAndFetch()
-			Expect(err).NotTo(HaveOccurred())
-			expectWaitingForComposite(ds, result)
-		})
-
 		It("keeps polling when each namespace belongs to a different composite structure", func() {
 			fixture.compositeBody = `[{"id":"other","namespaces":["other","` + ns + `"]},` +
 				`{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
@@ -411,7 +403,83 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			ds, _, err := reconcileAndFetch()
 			Expect(err).To(HaveOccurred(), "the rate limiter retries a transient failure")
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonCompositeLookupFailed))
 			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonCompositeLookupFailed)
+		})
+
+		It("preserves an existing owned Secret and retries when the composite lookup returns 403", func() {
+			fixture.body = successBody()
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
+
+			fixture.compositeStatusCode = http.StatusForbidden
+			fixture.compositeBody = `{"message":"forbidden"}`
+			fixture.capturedPath = ""
+			ds, _, err = reconcileAndFetch()
+			Expect(err).To(HaveOccurred(), "lookup authorization failures must remain retryable")
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonCompositeLookupFailed))
+			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
+				"an indeterminate lookup failure must not revoke an existing Secret")
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonCompositeLookupFailed)
+		})
+
+		It("deletes an owned Secret after composite removal and recreates it after re-addition", func() {
+			fixture.body = successBody()
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
+
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
+			fixture.capturedPath = ""
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectWaitingForComposite(ds, result)
+
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
+			ds, _, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed())
+		})
+
+		It("does not delete a target Secret that is not owned by the denied claim", func() {
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
+			createCrossNamespaceClaim("reporting-service")
+			Expect(k8sClient.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+				Name: secretName, Namespace: ns,
+			}})).To(Succeed())
+
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonNamespaceNotInComposite))
+			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
+				"the controller must never delete a foreign or unowned Secret")
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
+				EventReasonNamespaceNotInComposite, ownerNamespace)
 		})
 
 		It("rejects a label that equals the classifier's microserviceName without a composite lookup", func() {

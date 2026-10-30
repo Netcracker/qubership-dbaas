@@ -197,7 +197,7 @@ func TestListCompositeStructures_DecodesResponse(t *testing.T) {
 	if want := "/api/composite/v1/structures"; gotPath != want {
 		t.Errorf("path: got %q, want %q", gotPath, want)
 	}
-	if len(got) != 1 || got[0].ID != "base" || len(got[0].Namespaces) != 2 {
+	if len(got) != 1 || len(got[0].Namespaces) != 2 {
 		t.Errorf("structures: got %+v", got)
 	}
 }

@@ -170,7 +170,9 @@ namespace. Set the claim's `spec.classifier.namespace` explicitly to the owner n
 `app.kubernetes.io/name` label to the consuming service name, which must differ from `classifier.microserviceName`. The
 operator creates the Secret beside the claim, and dbaas-aggregator resolves the role from the access policy. A claim
 outside the owner's composite stays in `BackingOff` with reason `NamespaceNotInComposite` until the composite is
-registered. For example:
+registered. If a previously authorized consumer namespace is removed from the composite, the next safety-net reconcile
+deletes a target Secret controlled by that claim; a transient composite lookup failure preserves the Secret and retries.
+For example:
 
 ```yaml
 apiVersion: dbaas.netcracker.com/v1

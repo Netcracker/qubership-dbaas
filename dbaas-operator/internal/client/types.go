@@ -267,7 +267,6 @@ type ChangedDatabasesResponse struct {
 // CompositeStructure is one entry from ListCompositeStructures. Namespaces holds
 // the baseline and all of its satellites.
 type CompositeStructure struct {
-	ID         string   `json:"id"`
 	Namespaces []string `json:"namespaces"`
 }
 

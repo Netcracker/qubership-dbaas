@@ -46,7 +46,6 @@ var log = logging.GetLogger("dbaas-rotation-poller")
 func PatchClaimsForRotation(
 	ctx context.Context,
 	c client.Client,
-	databaseNamespace string,
 	classifier map[string]any,
 	dbType, operatorNamespace, triggerValue string,
 ) (matched, patched int, err error) {
@@ -59,7 +58,7 @@ func PatchClaimsForRotation(
 	list := &dbaasv1.DatabaseSecretClaimList{}
 	if err := c.List(ctx, list,
 		client.MatchingFields{dbaasv1.ClassifierTypeIndex: indexKey}); err != nil {
-		return 0, 0, fmt.Errorf("list DatabaseSecretClaim for database namespace %s: %w", databaseNamespace, err)
+		return 0, 0, fmt.Errorf("list DatabaseSecretClaim: %w", err)
 	}
 	patchBytes, err := json.Marshal(map[string]any{
 		"metadata": map[string]any{

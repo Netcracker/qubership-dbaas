@@ -179,36 +179,8 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	s *dbaasv1.DatabaseSecretClaim,
 	requestID string,
 ) (ctrl.Result, bool, error) {
-	// The aggregator skips its namespace check for the operator's identity, so this
-	// is the only place that stops a claim from reading another composite's database.
-	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
-		// originService comes from the label unverified. Matching the owner would
-		// grant the owner's access, which a policy can leave at admin.
-		if s.Labels["app.kubernetes.io/name"] == s.Spec.Classifier.MicroserviceName {
-			r.pollBackoff.forgetObject(s)
-			res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
-				r.Recorder, s,
-				fmt.Sprintf("label app.kubernetes.io/name %q must differ from spec.classifier.microserviceName on a cross-namespace claim; set it to the consuming service name",
-					s.Spec.Classifier.MicroserviceName))
-			return res, true, err
-		}
-
-		sameComposite, err := r.inSameComposite(ctx, ns, s.Namespace)
-		if err != nil {
-			res, err := r.handleAggregatorErr(ctx, s, err, requestID)
-			return res, true, err
-		}
-		if !sameComposite {
-			msg := fmt.Sprintf("spec.classifier.namespace %q and metadata.namespace %q are not in the same composite structure; register both in one composite or correct the classifier",
-				ns, s.Namespace)
-			// Keep polling: the composite may be registered after the claim is applied.
-			s.Status.FirstNotFoundAt = nil
-			markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
-				EventReasonNamespaceNotInComposite, msg)
-			r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite,
-				"%s (requestId=%s)", msg, requestID)
-			return r.pollBackoff.schedule(s), true, nil
-		}
+	if res, stop, err := r.validateCrossNamespaceAccess(ctx, s, requestID); stop {
+		return res, true, err
 	}
 
 	// extraKeys must not shadow the typed classifier fields — a collision is a
@@ -274,6 +246,60 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	return ctrl.Result{}, false, nil
 }
 
+// validateCrossNamespaceAccess stops a claim from reading a database outside its
+// composite structure. The aggregator skips this check for the operator's identity,
+// so nothing else enforces it. Same return contract as preflightValidate.
+func (r *DatabaseSecretClaimReconciler) validateCrossNamespaceAccess(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecretClaim,
+	requestID string,
+) (ctrl.Result, bool, error) {
+	ns := s.Spec.Classifier.Namespace
+	if ns == "" || ns == s.Namespace {
+		return ctrl.Result{}, false, nil
+	}
+
+	// originService comes from the label unverified. Matching the owner would
+	// grant the owner's access, which a policy can leave at admin.
+	if s.Labels["app.kubernetes.io/name"] == s.Spec.Classifier.MicroserviceName {
+		r.pollBackoff.forgetObject(s)
+		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
+			r.Recorder, s,
+			fmt.Sprintf("label app.kubernetes.io/name %q must differ from spec.classifier.microserviceName on a cross-namespace claim; set it to the consuming service name",
+				s.Spec.Classifier.MicroserviceName))
+		return res, true, err
+	}
+
+	sameComposite, err := r.inSameComposite(ctx, ns, s.Namespace)
+	if err != nil {
+		res, err := r.handleCompositeLookupErr(ctx, s, err, requestID)
+		return res, true, err
+	}
+	if sameComposite {
+		return ctrl.Result{}, false, nil
+	}
+
+	// A composite denial is a different wait condition from DatabaseNotFound.
+	// Reset that timer so re-authorization cannot resume an old not-found streak.
+	s.Status.FirstNotFoundAt = nil
+	secretDeleted, err := r.deleteOwnedSecretForCompositeDenial(ctx, s)
+	if err != nil {
+		return ctrl.Result{}, true, err
+	}
+
+	// Keep polling: the composite may be registered after the claim is applied.
+	msg := fmt.Sprintf("spec.classifier.namespace %q and metadata.namespace %q are not in the same composite structure; register both in one composite or correct the classifier",
+		ns, s.Namespace)
+	if secretDeleted {
+		msg += fmt.Sprintf("; deleted owned Secret %q because cross-namespace access is no longer allowed", s.Spec.SecretName)
+	}
+	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+		EventReasonNamespaceNotInComposite, msg)
+	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite,
+		"%s (requestId=%s)", msg, requestID)
+	return r.pollBackoff.schedule(s), true, nil
+}
+
 // inSameComposite reports whether one composite structure contains both namespaces.
 func (r *DatabaseSecretClaimReconciler) inSameComposite(ctx context.Context, namespace0, namespace1 string) (bool, error) {
 	aggStart := time.Now()
@@ -288,6 +314,55 @@ func (r *DatabaseSecretClaimReconciler) inSameComposite(ctx context.Context, nam
 		}
 	}
 	return false, nil
+}
+
+// handleCompositeLookupErr fails closed for credential issuance while keeping
+// the failure retryable. A 4xx from the topology endpoint describes the
+// operator-to-aggregator call, not an invalid DatabaseSecretClaim spec, so it
+// must not flow through handleAggregatorErr's permanent 400/403 mapping.
+// Existing Secrets are intentionally preserved when membership cannot be
+// determined: an authentication or aggregator outage must not mass-delete
+// credentials that may still be authorized.
+func (r *DatabaseSecretClaimReconciler) handleCompositeLookupErr(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecretClaim,
+	err error,
+	requestID string,
+) (ctrl.Result, error) {
+	s.Status.FirstNotFoundAt = nil
+	msg := fmt.Sprintf("failed to verify composite membership: %v", err)
+	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+		EventReasonCompositeLookupFailed, msg)
+	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonCompositeLookupFailed,
+		"%s (requestId=%s)", msg, requestID)
+	return ctrl.Result{}, err
+}
+
+// deleteOwnedSecretForCompositeDenial removes credentials previously
+// materialized by this claim after the aggregator definitively reports that the
+// consumer and database-owner namespaces no longer share a composite. A Secret
+// without this claim's controller reference is never deleted.
+func (r *DatabaseSecretClaimReconciler) deleteOwnedSecretForCompositeDenial(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecretClaim,
+) (bool, error) {
+	secretKey := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.SecretName}
+	existing := &corev1.Secret{}
+	if err := r.Get(ctx, secretKey, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !metav1.IsControlledBy(existing, s) {
+		return false, nil
+	}
+	if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+		return false, err
+	}
+	log.InfoC(ctx, "Deleted DatabaseSecretClaim-owned Secret after composite access denial name=%s secretName=%s",
+		s.Name, s.Spec.SecretName)
+	return true, nil
 }
 
 // writeSecret converges the target Secret in four steps:
