@@ -23,6 +23,7 @@ import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectSpy;
 import jakarta.inject.Inject;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.ws.rs.core.Response;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -78,8 +79,17 @@ class PhysicalDatabasesServiceQuarkusTest {
     @AfterEach
     void cleanUp() {
         databaseRegistryDbaasRepository.findAllDatabaseRegistersAnyLogType().forEach(databaseRegistryDbaasRepository::delete);
-        physicalDatabaseDbaasRepository.findAll().forEach(physicalDatabaseDbaasRepository::delete);
+        physicalDatabaseDbaasRepository.findAll().forEach(this::deletePhysicalDatabase);
         physicalDatabaseInstructionRepository.deleteAll();
+    }
+
+    private void deletePhysicalDatabase(PhysicalDatabase physicalDatabase) {
+        try {
+            physicalDatabaseDbaasRepository.delete(physicalDatabase);
+        } catch (OptimisticLockException e) {
+            // PgPhysicalDatabaseTableListener deletes the same H2 row, so this delete can affect 0 rows and roll back.
+            physicalDatabaseDbaasRepository.delete(physicalDatabase);
+        }
     }
 
     @Test
