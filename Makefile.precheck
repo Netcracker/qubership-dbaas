@@ -1,6 +1,6 @@
-# Vendored copy of platform-ci-toolkit/linter/templates/Makefile.
-# Included by the repository Makefile. Do not put consumer-specific values
-# here; set those in Makefile and refresh this file from upstream when needed.
+# Consumer Makefile template for platform-ci-toolkit / Super-Linter.
+# Copy this file into a consumer repository as Makefile, or include it from a
+# consumer Makefile and adjust the variables below if needed.
 #
 # This Makefile works in two modes:
 #   - Local: it pulls the linter image and runs lint via Docker; tests run on
@@ -12,26 +12,29 @@ LINTER_IMAGE ?= ghcr.io/netcracker/linter
 LINTER_TAG ?= latest
 LINTER_IMAGE_FULL := $(LINTER_IMAGE):$(LINTER_TAG)
 
-REPO_ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+# When this file is included, firstword is the consumer Makefile, so REPO_ROOT
+# resolves to the consumer repository root. When copied as the main Makefile,
+# firstword is this file, which also lives at the repository root.
+REPO_ROOT ?= $(dir $(abspath $(firstword $(MAKEFILE_LIST))))
 DEFAULT_BRANCH ?= master
 
 # Go module cache override. If set, it is passed to the linter container.
 # The common linter image defaults to /tmp/lint/.go/pkg/mod.
 GOMODCACHE ?=
 
-# Shell globs relative to the repository root that point to skill bundles or
-# individual skills. `make lint` runs skillcheck when this is non-empty.
-# Override to change the paths, or set an empty value to skip skillcheck.
+# Optional: shell globs relative to the repository root that point to skill
+# bundles or individual skills. When set, `make lint` also runs skillcheck.
+# Example: SKILLCHECK_PATTERNS ?= ".opencode/skills opencode-agents"
 SKILLCHECK_PATTERNS ?= agent-packages/*/.apm/skills
 export SKILLCHECK_PATTERNS
 
 # Optional: synchronize this Makefile from the upstream template.
-# Set PLATFORM_CI_TOOLKIT_RAW_URL to the raw URL of linter/templates/Makefile.consumer.
-sync-linter-makefile:
+# Set PLATFORM_CI_TOOLKIT_RAW_URL to the raw URL of linter/templates/Makefile.
+sync-precheck-makefile:
 ifdef PLATFORM_CI_TOOLKIT_RAW_URL
-	curl -fsSL -o $(REPO_ROOT)/Makefile.linter $(PLATFORM_CI_TOOLKIT_RAW_URL)
+	curl -fsSL -o $(REPO_ROOT)/Makefile.precheck $(PLATFORM_CI_TOOLKIT_RAW_URL)
 else
-	@echo "Set PLATFORM_CI_TOOLKIT_RAW_URL to the raw URL of linter/templates/Makefile.consumer"
+	@echo "Set PLATFORM_CI_TOOLKIT_RAW_URL to the raw URL of linter/templates/Makefile"
 	@exit 1
 endif
 
