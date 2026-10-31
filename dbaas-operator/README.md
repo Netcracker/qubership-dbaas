@@ -1,77 +1,37 @@
 # dbaas-operator
 
-`dbaas-operator` integrates Kubernetes with DBaaS by reconciling a family of custom resources that describe databases, credentials, access policies, and physical-database balancing rules, and driving them through dbaas-aggregator. It lets workloads declare and consume databases the Kubernetes-native way, and keeps `DatabaseSecretClaim` secrets in sync as credentials rotate.
+`dbaas-operator` lets a service declare its databases, credentials, access policies and placement rules as Kubernetes
+custom resources, and applies them through dbaas-aggregator.
 
-> **Onboarding a service:** see **[docs/howto/onboarding.md](docs/howto/onboarding.md)** for the migration
-> paths available to a service adopting the operator, automated and manual.
->
-> **Full reference:** see **[docs/DBaaS Operator.md](docs/DBaaS%20Operator.md)** for the complete design, status/condition reference, RBAC, authentication, and credential-rotation details. For a local kind environment see **[dev/README.md](dev/README.md)**.
+## Documentation
 
-## Custom Resources
+- [DBaaS Operator](docs/DBaaS%20Operator.md): custom resources, architecture and links to every page
+- [Installation](docs/installation/installation.md) and [parameters](docs/installation/parameters.md)
+- [Onboarding a service](docs/howto/onboarding.md)
+- [Status and troubleshooting](docs/status-and-troubleshooting.md)
 
-All CRs are served at `dbaas.netcracker.com/v1` and installed by `make install` / the Helm chart:
+## Development
 
-| Kind | Purpose |
-|---|---|
-| `ExternalDatabase` | Register a pre-existing (externally managed) database in dbaas-aggregator so microservices can discover its connection details. |
-| `InternalDatabase` | Provision a new logical database via dbaas-aggregator (asynchronous; polled to completion). |
-| `DatabaseSecretClaim` | Materialize a database's credentials into a Kubernetes `Secret` in the workload namespace, kept in sync as credentials rotate. |
-| `DatabaseAccessPolicy` | Declare per-microservice role grants and apply them to dbaas-aggregator. |
-| `MicroserviceBalancingRule` / `NamespaceBalancingRule` / `PermanentBalancingRule` | Configure physical-database balancing rules in dbaas-aggregator. |
-| `PhysicalDatabase` | Register a physical database (a DBMS cluster and its dbaas adapter) in dbaas-aggregator, using what the adapter reports about itself. |
+Prerequisites: Go (the version in [`go.mod`](go.mod)), Docker, kubectl, and Kubernetes 1.32 or newer.
 
-All workload CRs declare the target operator through
-required, immutable `spec.operatorNamespace`. The operator reconciles a CR only when that value
-matches its `CLOUD_NAMESPACE`.
-`PermanentBalancingRule` additionally requires `metadata.namespace` to equal
-`spec.operatorNamespace`, so its singleton lives with the assigned operator.
+```sh
+make test-unit    # unit tests, no envtest
+make test         # unit and envtest controller tests
+make lint         # make lint-fix applies fixes
+```
 
-## Authentication
-
-The operator authenticates to dbaas-aggregator in one of two modes, selected by `M2M_AUTH_MODE` and **must match the aggregator's setting**:
-
-- `legacy` (default) — HTTP Basic Auth, using the `dbaas-operator` entry of `users.json` in the aggregator-created `dbaas-security-configuration-secret`, mounted at `/etc/dbaas/security`;
-- `hybrid` or `k8s` — a Kubernetes projected service-account token (Bearer / M2M).
-
-Credential rotations are propagated by **polling** dbaas-aggregator's changed-databases feed (the operator exposes no inbound endpoint). See the [configuration parameters](docs/DBaaS%20Operator.md#configuration-parameters) for the full list.
-
-## Getting Started
-
-### Prerequisites
-- Go 1.26+
-- Docker
-- kubectl + access to a Kubernetes cluster. The CRDs use CEL validation
-  (`x-kubernetes-validations`), so Kubernetes v1.25+ is required (v1.29+ recommended).
-
-### Deployment
-
-**Production** — the operator ships as part of the Qubership Helm chart under
-[`helm-templates/dbaas-operator/`](helm-templates/dbaas-operator) (`values.yaml` +
-`values.schema.json`), deployed by the platform tooling and gated on
-`DBAAS_OPERATOR_ENABLED`; CRDs are rendered as chart templates. This is the
-supported install path.
-
-**Local / dev-test** — the Kustomize surface under `config/` is for local dev,
-tests, and envtest only (not a production distribution). Build and push the image,
-then install the CRDs and deploy via kustomize:
+The Kustomize setup in `config/` is for local development and envtest only; production installs use the Helm chart in
+[`helm-templates/dbaas-operator/`](helm-templates/dbaas-operator).
 
 ```sh
 make docker-build docker-push IMG=<registry>/dbaas-operator:tag
 make install                                    # CRDs only
-make deploy IMG=<registry>/dbaas-operator:tag   # kustomize config/default
+make deploy IMG=<registry>/dbaas-operator:tag   # controller from config/default
+make undeploy uninstall                         # remove the controller and the CRDs
 ```
 
-For a full local environment (kind + aggregator-mock + operator) and ready-made
-test resources, see **[dev/README.md](dev/README.md)**.
-
-### Uninstall (dev/test)
-
-```sh
-make undeploy     # remove the kustomize-deployed controller
-make uninstall    # remove the CRDs
-```
-
-Run `make help` to list all targets.
+For a local kind environment with an aggregator mock, see [dev/README.md](dev/README.md). Code conventions are in
+[AGENTS.md](AGENTS.md). Run `make help` to list all targets.
 
 ## License
 

@@ -40,7 +40,7 @@ the operator uses it. The event or log distinguishes two causes:
 
 - `dbaas-operator/cmd/credentials.go`
 - `helm-templates/dbaas-aggregator/templates/Secret.yaml`
-- `dbaas-operator/docs/DBaaS Operator.md` — section `Basic Auth (Default)`
+- `dbaas-operator/docs/installation/parameters.md` — section `Basic Auth (Default)`
 
 ### DBaaS custom resource has no status at all
 
@@ -74,7 +74,7 @@ operator. Clusters upgraded to 6.15.0 without the `NamespaceBinding` migration h
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — sections `High-Level Architecture`, `Custom Resources`
+- `dbaas-operator/docs/DBaaS Operator.md` — sections `Architecture`, `Custom Resources`, `Operator Assignment`
 - `dbaas-operator/docs/howto/migrate-from-namespacebinding.md` — sections `Setting the operator namespace`,
   `During the gap`
 - `dbaas-operator/docs/monitoring/DBaaS Operator Metrics.md` — `dbaas_resource_unassigned`
@@ -121,7 +121,7 @@ dbaas-aggregator returned `401` to the operator:
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — sections `Authentication: Basic Auth or M2M Token`, `Common Status Model`
+- `dbaas-operator/docs/installation/parameters.md` — section `Authentication`; `dbaas-operator/docs/status-and-troubleshooting.md` — section `Status`
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/security/DbaasUsersLoader.java`
 
 ### DBaaS custom resource is BackingOff with reason AggregatorError
@@ -150,7 +150,7 @@ retries with exponential backoff from 1 s up to 5 min. The CR heals by itself wh
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — sections `Common Response Handling`, `Reconcile Backoff`
+- `dbaas-operator/docs/dev/aggregator-contract.md` — section `Response Handling`; `dbaas-operator/docs/status-and-troubleshooting.md` — section `Reconcile Backoff`
 
 ### DBaaS custom resource is InvalidConfiguration
 
@@ -203,8 +203,8 @@ failure was actually a specification error:
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — sections `Common Status Model`, `ExternalDatabase Status Reference`,
-  `InternalDatabase Status Reference`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`
+- `dbaas-operator/docs/status-and-troubleshooting.md` — section `Status`; `dbaas-operator/docs/resources/*.md` —
+  section `Reasons`
 - `dbaas-operator/docs/howto/migrate-declarations-from-core-operator.md` — section `Gotchas`
 
 ### ExternalDatabase is BackingOff with reason SecretError
@@ -236,7 +236,7 @@ The credential Secret referenced in `credentialsSecretRef` cannot be read:
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — sections `ExternalDatabase Status Reference`, `Secret Access (Namespaced)`
+- `dbaas-operator/docs/resources/external-database.md` — section `Reasons`; `dbaas-operator/docs/installation/installation.md` — section `Secret Access`
 
 ### DatabaseSecretClaim stuck in Processing without conditions
 
@@ -261,7 +261,7 @@ cause is missing Secret RBAC (`forbidden`) in the CR's namespace.
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseSecretClaim Status Reference`
+- `dbaas-operator/docs/resources/database-secret-claim.md` — section `Reasons`
 - `dbaas-operator/docs/howto/onboarding.md` — section `Secret permissions in the workload namespace`
 
 ### DatabaseSecretClaim reports DatabaseNotFound or DatabaseNotFoundTimeout
@@ -294,7 +294,7 @@ dbaas-aggregator returned `404` / `CORE-DBAAS-4006` for the claim's classifier:
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseSecretClaim Status Reference`
+- `dbaas-operator/docs/resources/database-secret-claim.md` — section `Reasons`
 
 ### DatabaseSecretClaim reports SecretConflict
 
@@ -322,7 +322,7 @@ dbaas-aggregator returned `404` / `CORE-DBAAS-4006` for the claim's classifier:
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseSecretClaim Status Reference`
+- `dbaas-operator/docs/resources/database-secret-claim.md` — section `Reasons`
 
 ### InternalDatabase stays in WaitingForDependency
 
@@ -353,7 +353,7 @@ Provisioning is asynchronous and not failed. Two variants:
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — sections `InternalDatabase Status Reference`, `Exponential Poll Backoff`
+- `dbaas-operator/docs/resources/internal-database.md` — section `Reasons`; `dbaas-operator/docs/status-and-troubleshooting.md` — section `Exponential Poll Backoff`
 
 ### Balancing rule CR stuck in Terminating
 
@@ -381,7 +381,7 @@ Provisioning is asynchronous and not failed. Two variants:
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — section `Balancing Rule Status Reference`
+- `dbaas-operator/docs/resources/balancing-rules.md` — section `Reasons`
 
 ### All DBaaS custom resources disappeared after an operator redeploy
 
@@ -412,5 +412,4 @@ To pause the operator, set `REPLICAS: 0` in the `dbaas-operator` deployment para
 
 **Sources in Netcracker/qubership-dbaas main:**
 
-- `dbaas-operator/docs/DBaaS Operator.md` — sections `Prerequisites and Installation` (`Upgrade`),
-  `Configuration Parameters`
+- `dbaas-operator/docs/installation/parameters.md` — section `Settings`

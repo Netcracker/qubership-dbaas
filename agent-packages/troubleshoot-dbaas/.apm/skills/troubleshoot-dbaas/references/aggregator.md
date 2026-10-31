@@ -878,7 +878,7 @@ service: `DatabaseAccessPolicy` CR (dbaas-operator) or legacy `DbPolicy` declara
 **Sources in Netcracker/qubership-dbaas main:**
 
 - `dbaas/dbaas-aggregator/src/main/java/com/netcracker/cloud/dbaas/exceptions/ErrorCodes.java`
-- `dbaas-operator/docs/DBaaS Operator.md` — section `DatabaseAccessPolicy`
+- `dbaas-operator/docs/resources/database-access-policy.md`
 
 ### Database lookup returns CORE-DBAAS-4006
 
