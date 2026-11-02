@@ -32,6 +32,7 @@ spec:
 
 | Field                       | Mutable | Description                                                                                                                                                     |
 |-----------------------------|:-------:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `operatorNamespace`         |   Yes   | Namespace of the operator that manages the resource. Unlike on other resources, a wrong value can be corrected in place, without a recreation of CR.            |
 | `adapterAddress`            |   Yes   | Adapter base URL with a scheme and a host. dbaas-aggregator accepts only a scheme change, such as a switch to `https`; any other change is rejected with `409`. |
 | `credentialsSecretRef.name` |   Yes   | Secret with the adapter's own `username` and `password`. dbaas-aggregator uses them to call the adapter.                                                        |
 
