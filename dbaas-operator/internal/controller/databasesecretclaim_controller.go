@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,7 +57,89 @@ import (
 
 // secretNameIndex is the field index key for DatabaseSecretClaim.Spec.SecretName,
 // used to resolve sibling conflicts in O(1) instead of a full namespace scan.
-const secretNameIndex = "spec.secretName"
+const (
+	secretNameIndex      = "spec.secretName"
+	appNameLabel         = "app.kubernetes.io/name"
+	compositeTopologyTTL = 5 * time.Minute
+)
+
+// compositeTopologyCache maps each namespace to the aggregator's composite ID.
+// Database identities are intentionally absent because composite membership is
+// namespace-level topology and is shared by every database in that namespace.
+// Known membership is reused for five minutes, then refreshed by the next
+// cross-namespace reconcile so runtime topology adjustments are eventually seen.
+// A lookup involving an unregistered namespace is not cached as final: the next
+// reconcile refreshes the topology so claims applied before composite registration
+// can still converge.
+type compositeTopologyCache struct {
+	mu                     sync.RWMutex
+	refreshMu              sync.Mutex
+	namespaceToCompositeID map[string]string
+	refreshVersion         uint64
+	refreshedAt            time.Time
+	lastRefreshErr         error
+}
+
+type compositeLookupResult struct {
+	sameComposite   bool
+	namespacesKnown bool
+	refreshVersion  uint64
+	refreshedAt     time.Time
+	refreshErr      error
+}
+
+func (r compositeLookupResult) isFresh(now time.Time) bool {
+	return r.namespacesKnown && now.Sub(r.refreshedAt) < compositeTopologyTTL
+}
+
+func (c *compositeTopologyCache) lookup(databaseNamespace, claimNamespace string) compositeLookupResult {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	databaseCompositeID, databaseKnown := c.namespaceToCompositeID[databaseNamespace]
+	claimCompositeID, claimKnown := c.namespaceToCompositeID[claimNamespace]
+	result := compositeLookupResult{
+		namespacesKnown: databaseKnown && claimKnown,
+		refreshVersion:  c.refreshVersion,
+		refreshedAt:     c.refreshedAt,
+		refreshErr:      c.lastRefreshErr,
+	}
+	result.sameComposite = result.namespacesKnown && databaseCompositeID == claimCompositeID
+	return result
+}
+
+func (c *compositeTopologyCache) replace(structures []aggregatorclient.CompositeStructure) error {
+	namespaceToCompositeID := make(map[string]string)
+	for structureIndex := range structures {
+		compositeID := strings.TrimSpace(structures[structureIndex].ID)
+		if compositeID == "" {
+			return fmt.Errorf("composite structure at index %d has an empty id", structureIndex)
+		}
+		for _, namespace := range structures[structureIndex].Namespaces {
+			if strings.TrimSpace(namespace) == "" {
+				return fmt.Errorf("composite structure %q contains an empty namespace", compositeID)
+			}
+			if existingID, exists := namespaceToCompositeID[namespace]; exists && existingID != compositeID {
+				return fmt.Errorf("namespace %q belongs to multiple composite structures %q and %q",
+					namespace, existingID, compositeID)
+			}
+			namespaceToCompositeID[namespace] = compositeID
+		}
+	}
+	c.mu.Lock()
+	c.namespaceToCompositeID = namespaceToCompositeID
+	c.refreshVersion++
+	c.refreshedAt = time.Now()
+	c.lastRefreshErr = nil
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *compositeTopologyCache) recordRefreshFailure(err error) {
+	c.mu.Lock()
+	c.refreshVersion++
+	c.lastRefreshErr = err
+	c.mu.Unlock()
+}
 
 // DatabaseSecretClaimReconciler reconciles DatabaseSecretClaim objects.
 //
@@ -76,6 +159,7 @@ type DatabaseSecretClaimReconciler struct {
 	siblingTriggerStamps  map[string]struct{}
 	rotationTriggerValues map[string]string
 	pollBackoff           pollBackoffTracker
+	compositeTopology     compositeTopologyCache
 }
 
 func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -125,9 +209,13 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
+	if res, stop, err := r.validateCrossNamespaceAccess(ctx, s); stop {
+		return res, err
+	}
+
 	aggReq := &aggregatorclient.GetByClassifierRequest{
 		Classifier:    dbaasv1.ClassifierFlatMap(dbaasv1.EffectiveClassifier(s.Spec.Classifier, s.Namespace)),
-		OriginService: s.Labels["app.kubernetes.io/name"],
+		OriginService: s.Labels[appNameLabel],
 		UserRole:      s.Spec.UserRole,
 	}
 	aggStart := time.Now()
@@ -166,25 +254,16 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // preflightValidate runs all spec-level and pre-aggregator validations:
-// classifier.namespace consistency, the required app.kubernetes.io/name label,
-// ownership of any pre-existing target Secret, and the sibling-CR tiebreak that
-// resolves spec.secretName collisions deterministically (older claimant wins).
-// It returns stop=true when a terminal state has been set on the CR and the
-// caller must return res/err immediately; stop=false means validation passed
-// and the reconcile may proceed to the aggregator call.
+// the required app.kubernetes.io/name label, ownership of any pre-existing
+// target Secret, and the sibling-CR tiebreak that resolves spec.secretName
+// collisions deterministically (older claimant wins).
+// It returns stop=true when the CR's state has been set and the caller must
+// return res/err immediately; stop=false means validation passed and the
+// reconcile may proceed to cross-namespace authorization.
 func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
 ) (ctrl.Result, bool, error) {
-	if ns := s.Spec.Classifier.Namespace; ns != "" && ns != s.Namespace {
-		r.pollBackoff.forgetObject(s)
-		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
-			r.Recorder, s,
-			fmt.Sprintf("spec.classifier.namespace %q must match metadata.namespace %q",
-				ns, s.Namespace))
-		return res, true, err
-	}
-
 	// extraKeys must not shadow the typed classifier fields — a collision is a
 	// spec mistake (the typed field would win and the extraKey be dropped).
 	if reserved := dbaasv1.ReservedExtraKeys(s.Spec.Classifier); len(reserved) > 0 {
@@ -195,7 +274,7 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 		return res, true, err
 	}
 
-	if s.Labels["app.kubernetes.io/name"] == "" {
+	if s.Labels[appNameLabel] == "" {
 		r.pollBackoff.forgetObject(s)
 		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
 			r.Recorder, s,
@@ -246,6 +325,126 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 	}
 
 	return ctrl.Result{}, false, nil
+}
+
+// validateCrossNamespaceAccess stops a claim from reading a database outside its
+// composite structure. The aggregator skips this check for the operator's identity,
+// so nothing else enforces it. It gates credential retrieval only: composite
+// membership is deployment-time topology, so a denial never touches an existing
+// Secret. Same return contract as preflightValidate.
+func (r *DatabaseSecretClaimReconciler) validateCrossNamespaceAccess(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecretClaim,
+) (ctrl.Result, bool, error) {
+	databaseNamespace := s.Spec.Classifier.Namespace
+	claimNamespace := s.Namespace
+	if databaseNamespace == "" || databaseNamespace == claimNamespace {
+		return ctrl.Result{}, false, nil
+	}
+
+	// The aggregator treats originService == classifier.microserviceName as the
+	// database owner and evaluates owner roles instead of requiring a matching
+	// DatabaseAccessPolicy service grant. Because the operator supplies
+	// originService from this label, a cross-namespace consumer must not identify
+	// itself as the database-owning service.
+	if s.Labels[appNameLabel] == s.Spec.Classifier.MicroserviceName {
+		r.pollBackoff.forgetObject(s)
+		res, err := invalidSpec(ctx, &s.Status.Phase, &s.Status.Conditions, s.Generation,
+			r.Recorder, s,
+			fmt.Sprintf("label app.kubernetes.io/name %q identifies the database-owning service and cannot be used by a cross-namespace claim; set it to the consuming service name",
+				s.Spec.Classifier.MicroserviceName))
+		return res, true, err
+	}
+
+	sameComposite, err := r.inSameComposite(ctx, databaseNamespace, claimNamespace)
+	if err != nil {
+		res, err := r.handleCompositeLookupErr(ctx, s, err)
+		return res, true, err
+	}
+	if sameComposite {
+		return ctrl.Result{}, false, nil
+	}
+
+	// Keep polling: the composite may be registered after the claim is applied.
+	msg := fmt.Sprintf("spec.classifier.namespace %q and metadata.namespace %q are not in the same composite structure; register both in one composite or recreate the claim with the correct spec.classifier.namespace",
+		databaseNamespace, claimNamespace)
+	log.InfoC(ctx, "DatabaseSecretClaim namespaces are not in the same composite name=%s databaseNamespace=%s claimNamespace=%s",
+		s.Name, databaseNamespace, claimNamespace)
+	// A composite denial is a different wait condition from DatabaseNotFound.
+	// Reset that timer so re-authorization cannot resume an old not-found streak.
+	s.Status.FirstNotFoundAt = nil
+	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+		EventReasonNamespaceNotInComposite, msg)
+	r.Recorder.Event(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite, msg)
+	return r.pollBackoff.schedule(s), true, nil
+}
+
+// inSameComposite reports whether one composite structure contains both namespaces.
+// Known membership is served from the process-local topology cache. When either
+// namespace is not registered, the topology is fetched again so an initially
+// missing composite can still appear during deployment ordering.
+func (r *DatabaseSecretClaimReconciler) inSameComposite(
+	ctx context.Context,
+	databaseNamespace, claimNamespace string,
+) (bool, error) {
+	cached := r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if cached.isFresh(time.Now()) {
+		return cached.sameComposite, nil
+	}
+	observedRefreshVersion := cached.refreshVersion
+
+	// Serialize cache misses and check again after acquiring the refresh lock so
+	// concurrent reconciles for known topology do not duplicate the aggregator call.
+	r.compositeTopology.refreshMu.Lock()
+	defer r.compositeTopology.refreshMu.Unlock()
+	cached = r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if cached.isFresh(time.Now()) {
+		return cached.sameComposite, nil
+	}
+	if cached.refreshVersion != observedRefreshVersion {
+		// A concurrent reconcile already refreshed the full topology while this
+		// call waited. Reuse its missing-membership result or error rather than
+		// immediately sending the same list request again.
+		return false, cached.refreshErr
+	}
+
+	aggStart := time.Now()
+	structures, err := r.Aggregator.ListCompositeStructures(ctx)
+	if err == nil {
+		err = r.compositeTopology.replace(structures)
+	}
+	recordAggregatorCall(controllerDSC, operationListComposites, aggStart, err)
+	if err != nil {
+		r.compositeTopology.recordRefreshFailure(err)
+		return false, err
+	}
+	cached = r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if cached.namespacesKnown {
+		return cached.sameComposite, nil
+	}
+	return false, nil
+}
+
+// handleCompositeLookupErr fails closed for credential issuance while keeping
+// the failure retryable. A 4xx from the topology endpoint describes the
+// operator-to-aggregator call, not an invalid DatabaseSecretClaim spec, so it
+// must not flow through handleAggregatorErr's permanent 400/403 mapping.
+// Existing Secrets are intentionally preserved: the operator has no Secret
+// delete permission, and composite membership is treated as deployment-time
+// topology rather than a runtime revocation mechanism.
+func (r *DatabaseSecretClaimReconciler) handleCompositeLookupErr(
+	ctx context.Context,
+	s *dbaasv1.DatabaseSecretClaim,
+	err error,
+) (ctrl.Result, error) {
+	s.Status.FirstNotFoundAt = nil
+	msg := fmt.Sprintf("failed to verify composite membership: %v", err)
+	log.ErrorC(ctx, "Failed to verify composite membership DatabaseSecretClaim name=%s err=%v", s.Name, err)
+	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+		EventReasonCompositeLookupFailed, msg)
+	r.Recorder.Event(s, corev1.EventTypeWarning, EventReasonCompositeLookupFailed,
+		"failed to verify composite membership; see the Ready condition and operator logs for details")
+	return ctrl.Result{}, err
 }
 
 // writeSecret converges the target Secret in four steps:
@@ -346,7 +545,7 @@ func (r *DatabaseSecretClaimReconciler) updateOwnedSecret(
 		updated.Labels = make(map[string]string)
 	}
 	updated.Labels["app.kubernetes.io/managed-by"] = "dbaas-operator"
-	updated.Labels["app.kubernetes.io/name"] = s.Labels["app.kubernetes.io/name"]
+	updated.Labels[appNameLabel] = s.Labels[appNameLabel]
 
 	if !metav1.IsControlledBy(updated, s) {
 		if err := ctrl.SetControllerReference(s, updated, r.Scheme); err != nil {
@@ -407,7 +606,7 @@ func secretUpToDate(s *dbaasv1.DatabaseSecretClaim, existing *corev1.Secret, des
 	if existing.Labels["app.kubernetes.io/managed-by"] != "dbaas-operator" {
 		return false
 	}
-	if existing.Labels["app.kubernetes.io/name"] != s.Labels["app.kubernetes.io/name"] {
+	if existing.Labels[appNameLabel] != s.Labels[appNameLabel] {
 		return false
 	}
 	return true
@@ -451,9 +650,10 @@ func (r *DatabaseSecretClaimReconciler) markSecretConflict(ctx context.Context, 
 // handleAggregatorErr maps aggregator errors to phase/conditions/events for DatabaseSecretClaim.
 // It injects the DatabaseNotFound case before delegating to the shared handler:
 //   - 404 + CORE-DBAAS-4006  → BackingOff / DatabaseNotFound  (transient, DB not yet registered)
+//   - cross-namespace 403 + CORE-DBAAS-4023 → BackingOff / AccessPolicyNotReady (transient)
 //   - 404 without TMF body   → AggregatorError / BackingOff    (BG edge: no active namespace)
 //   - 401                    → BackingOff / Unauthorized        (transient)
-//   - 400 / 403              → InvalidConfiguration / AggregatorRejected (permanent)
+//   - other 400 / 403        → InvalidConfiguration / AggregatorRejected (permanent)
 //   - 5xx / network          → BackingOff / AggregatorError     (transient)
 //
 // On a continuous DatabaseNotFound streak longer than databaseNotFoundTimeout
@@ -467,6 +667,24 @@ func (r *DatabaseSecretClaimReconciler) handleAggregatorErr(
 	requestID string,
 ) (ctrl.Result, error) {
 	var aggErr *aggregatorclient.AggregatorError
+	if errors.As(err, &aggErr) &&
+		s.Spec.Classifier.Namespace != "" && s.Spec.Classifier.Namespace != s.Namespace &&
+		aggErr.TmfCode == "CORE-DBAAS-4023" {
+		// A cross-namespace claim depends on a DatabaseAccessPolicy that may be
+		// applied after the claim. Keep this declarative dependency retryable;
+		// same-namespace 403 handling remains the existing permanent rejection.
+		s.Status.FirstNotFoundAt = nil
+		msg := fmt.Sprintf("database access policy does not yet grant service %q the requested role for the database in namespace %q: %s",
+			s.Labels[appNameLabel], s.Spec.Classifier.Namespace, aggErr.UserMessage())
+		log.InfoC(ctx, "DatabaseAccessPolicy is not ready DatabaseSecretClaim name=%s service=%s databaseNamespace=%s",
+			s.Name, s.Labels[appNameLabel], s.Spec.Classifier.Namespace)
+		markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
+			EventReasonAccessPolicyNotReady, msg)
+		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonAccessPolicyNotReady,
+			"database access policy does not grant service %q the requested role for the database in namespace %q",
+			s.Labels[appNameLabel], s.Spec.Classifier.Namespace)
+		return r.pollBackoff.schedule(s), nil
+	}
 	if errors.As(err, &aggErr) && aggErr.IsDatabaseNotFound() {
 		now := metav1.Now()
 		if s.Status.FirstNotFoundAt == nil {
@@ -577,7 +795,8 @@ func buildSecretData(s *dbaasv1.DatabaseSecretClaim, dbResp *aggregatorclient.Da
 }
 
 // specOrRotationTriggerPredicate fires a reconcile on (a) a spec change
-// (generation bump) or (b) a change to the rotation-trigger annotation that
+// (generation bump), (b) a change to app.kubernetes.io/name, or (c) a change
+// to the rotation-trigger annotation that
 // the rotation poller patches when dbaas-aggregator reports a credentials
 // rotation. Plain GenerationChangedPredicate is not enough here: the poller
 // only mutates an annotation, which does not bump generation, so a rotation
@@ -591,6 +810,9 @@ func (specOrRotationTriggerPredicate) Update(e event.UpdateEvent) bool {
 		return false
 	}
 	if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+		return true
+	}
+	if e.ObjectOld.GetLabels()[appNameLabel] != e.ObjectNew.GetLabels()[appNameLabel] {
 		return true
 	}
 	return e.ObjectOld.GetAnnotations()[dbaasv1.AnnotationRotationTrigger] !=
@@ -738,7 +960,7 @@ func (r *DatabaseSecretClaimReconciler) buildOwnedSecret(
 			Namespace: owner.Namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "dbaas-operator",
-				"app.kubernetes.io/name":       owner.Labels["app.kubernetes.io/name"],
+				appNameLabel:                   owner.Labels[appNameLabel],
 			},
 		},
 		Type: corev1.SecretTypeOpaque,

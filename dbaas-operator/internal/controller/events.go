@@ -162,4 +162,25 @@ const (
 	// migration of existing logical databases, and the registration request is
 	// parked until the migration completes. Condition-only; no event is emitted.
 	ReasonRoleMigrationStarted = "RoleMigrationStarted"
+
+	// EventReasonNamespaceNotInComposite is emitted when a DatabaseSecretClaim names a
+	// classifier namespace outside its own composite structure. The controller keeps
+	// polling (Phase remains BackingOff, Stalled remains False) because the composite
+	// may be registered after the claim is applied.
+	// Type: Warning.
+	EventReasonNamespaceNotInComposite = "NamespaceNotInComposite"
+
+	// EventReasonCompositeLookupFailed is emitted when a DatabaseSecretClaim
+	// cannot retrieve or decode the aggregator's composite topology. The
+	// controller fails closed for new credential issuance, preserves any existing
+	// Secret, and retries because the claim spec is not known to be invalid.
+	// Type: Warning.
+	EventReasonCompositeLookupFailed = "CompositeLookupFailed"
+
+	// EventReasonAccessPolicyNotReady is emitted when a cross-namespace
+	// DatabaseSecretClaim reaches the aggregator before its DatabaseAccessPolicy
+	// grant is available. The controller keeps polling so declarative resources
+	// applied together can converge regardless of reconcile order.
+	// Type: Warning.
+	EventReasonAccessPolicyNotReady = "AccessPolicyNotReady"
 )

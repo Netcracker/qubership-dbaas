@@ -36,6 +36,9 @@ type DatabaseSecretClaimSpec struct {
 	OperatorNamespace string `json:"operatorNamespace"`
 
 	// classifier uniquely identifies the database whose credentials this secret tracks.
+	// If classifier.namespace is omitted, metadata.namespace is used. It may instead
+	// name a database-owner namespace in the same composite structure as the claim's
+	// namespace; the generated Secret remains in metadata.namespace.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="classifier is immutable after creation"
 	Classifier Classifier `json:"classifier"`
@@ -99,8 +102,7 @@ type DatabaseSecretClaimStatus struct {
 // get-by-classifier request to dbaas-aggregator. It cannot be enforced by CEL: a root-level
 // XValidation rule only sees metadata.name and metadata.generateName, so referencing
 // self.metadata.labels makes the API server reject the whole CRD with "undefined field 'labels'"
-// (controller-gen itself generates such a rule without complaint). The same limit rules out a CEL
-// check that spec.classifier.namespace equals metadata.namespace. Both are therefore enforced by a
+// (controller-gen itself generates such a rule without complaint). It is therefore enforced by a
 // controller-level pre-flight check before the aggregator is called.
 // It requests dbaas-aggregator to provision credentials for a managed database
 // and write them into a named Kubernetes Secret in the same namespace.

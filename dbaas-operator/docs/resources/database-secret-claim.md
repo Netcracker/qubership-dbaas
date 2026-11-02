@@ -70,6 +70,38 @@ A claim stalls with `SecretConflict` when its target Secret is owned by another 
 the namespace uses the same `secretName`. The older claim wins; the younger one recovers on its own once the older one
 is deleted.
 
+## Cross-Namespace Access
+
+A claim can read a database owned by another namespace when both namespaces belong to the same composite structure.
+Keep the database and its [`DatabaseAccessPolicy`](database-access-policy.md) in the owner namespace, and create the
+claim in the consumer namespace with `classifier.namespace` set to the owner namespace. The Secret stays in the claim's
+namespace.
+
+```yaml
+metadata:
+  name: orders-db-reader
+  namespace: reporting
+  labels:
+    app.kubernetes.io/name: reporting-service
+spec:
+  classifier:
+    microserviceName: orders-service
+    scope: service
+    namespace: orders
+```
+
+The operator checks composite membership before it requests credentials, because dbaas-aggregator skips its own
+namespace check for the operator's identity. dbaas-aggregator then applies the access policy. The label must name the
+consuming service and differ from `classifier.microserviceName`, which would otherwise get the owner's access. Other
+services the policy allows aren't distinguished: the label isn't a verified identity.
+
+The operator caches topology for five minutes once both namespaces are registered. The next cross-namespace reconcile
+after expiry refreshes the full topology, so runtime adjustments are detected. Claims involving an unregistered namespace
+refresh the topology on their next reconcile, allowing a claim applied before its composite to recover automatically.
+
+A claim applied before its composite or policy waits and recovers on its own. Composite membership is deployment-time
+topology, so the check gates credential retrieval and is not a runtime revocation mechanism.
+
 ## Reasons
 
 Besides the [shared reasons](../status-and-troubleshooting.md#shared-reasons):
@@ -83,12 +115,16 @@ Besides the [shared reasons](../status-and-troubleshooting.md#shared-reasons):
 | `DatabaseNotFound`          | `Ready=False`  | No database matches the classifier yet; polled with the [poll backoff](../status-and-troubleshooting.md#exponential-poll-backoff) |
 | `DatabaseNotFoundTimeout`   | `Ready=False`  | Still not found after 10 minutes; polling continues, Warning Events stop. Often a wrong classifier.                               |
 | `EmptyConnectionProperties` | `Ready=False`  | The database has no credentials for the role yet; polled                                                                          |
+| `NamespaceNotInComposite`   | `Ready=False`  | A cross-namespace claim and the database share no composite structure; polled                                                     |
+| `CompositeLookupFailed`     | `Ready=False`  | The composite structures could not be read; retried with the reconcile backoff                                                    |
+| `AccessPolicyNotReady`      | `Ready=False`  | A cross-namespace claim's service has no grant for the role yet; polled                                                           |
 
-`InvalidSpec` means the `app.kubernetes.io/name` label is missing, or `classifier.namespace` differs from
-`metadata.namespace`. Problems with Secret access leave the claim in `Processing`; see
+`InvalidSpec` means the `app.kubernetes.io/name` label is missing, or a cross-namespace claim's label equals
+`classifier.microserviceName`. Problems with Secret access leave the claim in `Processing`; see
 [Troubleshooting](../status-and-troubleshooting.md#a-databasesecretclaim-stays-in-processing).
 
-This kind doesn't set `status.lastRequestId`. Its Events carry the request ID instead:
+This kind doesn't set `status.lastRequestId`. Retryable composite and access-policy Events use stable messages so
+Kubernetes can group repeated warnings; use the operator logs for the request ID of an individual attempt:
 
 ```bash
 kubectl get events -n my-namespace --field-selector involvedObject.name=my-app-db-secret

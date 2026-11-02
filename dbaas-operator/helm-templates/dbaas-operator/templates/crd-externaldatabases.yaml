@@ -112,10 +112,9 @@ spec:
                   namespace:
                     description: |-
                       namespace is the Kubernetes namespace of the owning service.
-                      If omitted, the operator defaults it to the CR's metadata.namespace before
-                      calling the aggregator, which requires a namespace in the classifier.
-                      If set, it must equal the CR's metadata.namespace — a mismatch causes
-                      InvalidConfiguration at the controller level.
+                      Whether an omitted value is defaulted, and whether an explicit value may
+                      differ from metadata.namespace, is defined by the resource field containing
+                      the classifier.
                     type: string
                   scope:
                     description: 'scope is the classifier scope: "service" or "tenant".'
