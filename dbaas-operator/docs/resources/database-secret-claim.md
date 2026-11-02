@@ -95,6 +95,10 @@ namespace check for the operator's identity. dbaas-aggregator then applies the a
 consuming service and differ from `classifier.microserviceName`, which would otherwise get the owner's access. Other
 services the policy allows aren't distinguished: the label isn't a verified identity.
 
+The operator caches topology for one hour once both namespaces are registered. The next cross-namespace reconcile after
+expiry refreshes the full topology, so runtime adjustments are detected. Claims involving an unregistered namespace
+refresh the topology on their next reconcile, allowing a claim applied before its composite to recover automatically.
+
 A claim applied before its composite or policy waits and recovers on its own. Composite membership is deployment-time
 topology, so the check gates credential retrieval and is not a runtime revocation mechanism.
 
@@ -119,7 +123,8 @@ Besides the [shared reasons](../status-and-troubleshooting.md#shared-reasons):
 `classifier.microserviceName`. Problems with Secret access leave the claim in `Processing`; see
 [Troubleshooting](../status-and-troubleshooting.md#a-databasesecretclaim-stays-in-processing).
 
-This kind doesn't set `status.lastRequestId`. Its Events carry the request ID instead:
+This kind doesn't set `status.lastRequestId`. Retryable composite and access-policy Events use stable messages so
+Kubernetes can group repeated warnings; use the operator logs for the request ID of an individual attempt:
 
 ```bash
 kubectl get events -n my-namespace --field-selector involvedObject.name=my-app-db-secret

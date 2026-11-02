@@ -345,8 +345,11 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 
-			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
-				EventReasonNamespaceNotInComposite, ownerNamespace)
+			Expect(fixture.recorder.Events).To(Receive(And(
+				HavePrefix(corev1.EventTypeWarning+" "+EventReasonNamespaceNotInComposite),
+				ContainSubstring(ownerNamespace),
+				Not(ContainSubstring("requestId=")),
+			)))
 
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})
 			Expect(apierrors.IsNotFound(err)).To(BeTrue(), "no credentials are written")
@@ -413,8 +416,11 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
 			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
-			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
-				EventReasonAccessPolicyNotReady, "Role not permitted")
+			Expect(fixture.recorder.Events).To(Receive(And(
+				HavePrefix(corev1.EventTypeWarning+" "+EventReasonAccessPolicyNotReady),
+				ContainSubstring("reporting-service"),
+				Not(ContainSubstring("requestId=")),
+			)))
 
 			fixture.statusCode = http.StatusOK
 			fixture.body = successBody()
@@ -437,10 +443,13 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Reason).To(Equal(EventReasonCompositeLookupFailed))
 			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonCompositeLookupFailed)
+			Expect(fixture.recorder.Events).To(Receive(And(
+				HavePrefix(corev1.EventTypeWarning+" "+EventReasonCompositeLookupFailed),
+				Not(ContainSubstring("requestId=")),
+			)))
 		})
 
-		It("preserves an existing owned Secret and retries when the composite lookup returns 403", func() {
+		It("reuses cached composite membership after a successful lookup", func() {
 			fixture.body = successBody()
 			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
 			createCrossNamespaceClaim("reporting-service")
@@ -449,21 +458,54 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
+			Expect(fixture.compositeCalls).To(Equal(1))
 
+			// A later reconcile must use the cached, immutable topology. Making the
+			// endpoint fail proves that no second composite request is attempted.
 			fixture.compositeStatusCode = http.StatusForbidden
 			fixture.compositeBody = `{"message":"forbidden"}`
 			fixture.capturedPath = ""
 			ds, _, err = reconcileAndFetch()
-			Expect(err).To(HaveOccurred(), "lookup authorization failures must remain retryable")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(fixture.compositeCalls).To(Equal(1))
+			Expect(fixture.capturedPath).To(ContainSubstring("/databases/get-by-classifier/"))
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
+				"cached composite membership must keep the existing claim operational")
+		})
+
+		It("refreshes cached membership after the topology TTL expires", func() {
+			fixture.body = successBody()
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(fixture.compositeCalls).To(Equal(1))
+
+			// Simulate the one-hour TTL without sleeping, then move the two known
+			// namespaces into different structures in the aggregator response.
+			reconciler.compositeTopology.mu.Lock()
+			reconciler.compositeTopology.refreshedAt = time.Now().Add(-compositeTopologyTTL)
+			reconciler.compositeTopology.mu.Unlock()
+			fixture.compositeBody = `[{"id":"owner","namespaces":["` + ownerNamespace + `"]},` +
+				`{"id":"consumer","namespaces":["` + ns + `"]}]`
+			fixture.capturedPath = ""
+
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
-			Expect(ready.Reason).To(Equal(EventReasonCompositeLookupFailed))
-			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+			Expect(ready.Reason).To(Equal(EventReasonNamespaceNotInComposite))
+			Expect(fixture.compositeCalls).To(Equal(2))
+			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must be blocked after refreshed topology denies access")
 			Expect(k8sClient.Get(ctx,
 				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
-				"an indeterminate lookup failure must not revoke an existing Secret")
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonCompositeLookupFailed)
+				"topology adjustment must not delete the existing Secret")
 		})
 
 		It("stops on a foreign target Secret before checking composite membership", func() {

@@ -32,7 +32,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"sync"
 	"time"
 
@@ -58,9 +57,60 @@ import (
 // secretNameIndex is the field index key for DatabaseSecretClaim.Spec.SecretName,
 // used to resolve sibling conflicts in O(1) instead of a full namespace scan.
 const (
-	secretNameIndex = "spec.secretName"
-	appNameLabel    = "app.kubernetes.io/name"
+	secretNameIndex      = "spec.secretName"
+	appNameLabel         = "app.kubernetes.io/name"
+	compositeTopologyTTL = time.Hour
 )
+
+// compositeTopologyCache stores namespace membership returned by the aggregator.
+// Known membership is reused for one hour, then refreshed by the next
+// cross-namespace reconcile so runtime topology adjustments are eventually seen.
+// A lookup involving an unregistered namespace is not cached as final: the next
+// reconcile refreshes the topology so claims applied before composite registration
+// can still converge.
+type compositeTopologyCache struct {
+	mu                   sync.RWMutex
+	refreshMu            sync.Mutex
+	namespaceToComposite map[string]int
+	refreshVersion       uint64
+	refreshedAt          time.Time
+	lastRefreshErr       error
+}
+
+func (c *compositeTopologyCache) lookup(
+	firstNamespace, secondNamespace string,
+) (same, known bool, refreshVersion uint64, refreshedAt time.Time, lastRefreshErr error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	firstComposite, firstKnown := c.namespaceToComposite[firstNamespace]
+	secondComposite, secondKnown := c.namespaceToComposite[secondNamespace]
+	if !firstKnown || !secondKnown {
+		return false, false, c.refreshVersion, c.refreshedAt, c.lastRefreshErr
+	}
+	return firstComposite == secondComposite, true, c.refreshVersion, c.refreshedAt, c.lastRefreshErr
+}
+
+func (c *compositeTopologyCache) replace(structures []aggregatorclient.CompositeStructure) {
+	namespaceToComposite := make(map[string]int)
+	for compositeIndex := range structures {
+		for _, namespace := range structures[compositeIndex].Namespaces {
+			namespaceToComposite[namespace] = compositeIndex
+		}
+	}
+	c.mu.Lock()
+	c.namespaceToComposite = namespaceToComposite
+	c.refreshVersion++
+	c.refreshedAt = time.Now()
+	c.lastRefreshErr = nil
+	c.mu.Unlock()
+}
+
+func (c *compositeTopologyCache) recordRefreshFailure(err error) {
+	c.mu.Lock()
+	c.refreshVersion++
+	c.lastRefreshErr = err
+	c.mu.Unlock()
+}
 
 // DatabaseSecretClaimReconciler reconciles DatabaseSecretClaim objects.
 //
@@ -80,6 +130,7 @@ type DatabaseSecretClaimReconciler struct {
 	siblingTriggerStamps  map[string]struct{}
 	rotationTriggerValues map[string]string
 	pollBackoff           pollBackoffTracker
+	compositeTopology     compositeTopologyCache
 }
 
 func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -129,7 +180,7 @@ func (r *DatabaseSecretClaimReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	if res, stop, err := r.validateCrossNamespaceAccess(ctx, s, requestID); stop {
+	if res, stop, err := r.validateCrossNamespaceAccess(ctx, s); stop {
 		return res, err
 	}
 
@@ -255,7 +306,6 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 func (r *DatabaseSecretClaimReconciler) validateCrossNamespaceAccess(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
-	requestID string,
 ) (ctrl.Result, bool, error) {
 	databaseNamespace := s.Spec.Classifier.Namespace
 	claimNamespace := s.Namespace
@@ -279,7 +329,7 @@ func (r *DatabaseSecretClaimReconciler) validateCrossNamespaceAccess(
 
 	sameComposite, err := r.inSameComposite(ctx, databaseNamespace, claimNamespace)
 	if err != nil {
-		res, err := r.handleCompositeLookupErr(ctx, s, err, requestID)
+		res, err := r.handleCompositeLookupErr(ctx, s, err)
 		return res, true, err
 	}
 	if sameComposite {
@@ -289,32 +339,55 @@ func (r *DatabaseSecretClaimReconciler) validateCrossNamespaceAccess(
 	// Keep polling: the composite may be registered after the claim is applied.
 	msg := fmt.Sprintf("spec.classifier.namespace %q and metadata.namespace %q are not in the same composite structure; register both in one composite or recreate the claim with the correct spec.classifier.namespace",
 		databaseNamespace, claimNamespace)
+	log.InfoC(ctx, "DatabaseSecretClaim namespaces are not in the same composite name=%s databaseNamespace=%s claimNamespace=%s",
+		s.Name, databaseNamespace, claimNamespace)
 	// A composite denial is a different wait condition from DatabaseNotFound.
 	// Reset that timer so re-authorization cannot resume an old not-found streak.
 	s.Status.FirstNotFoundAt = nil
 	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 		EventReasonNamespaceNotInComposite, msg)
-	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite,
-		"%s (requestId=%s)", msg, requestID)
+	r.Recorder.Event(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite, msg)
 	return r.pollBackoff.schedule(s), true, nil
 }
 
 // inSameComposite reports whether one composite structure contains both namespaces.
+// Known membership is served from the process-local topology cache. When either
+// namespace is not registered, the topology is fetched again so an initially
+// missing composite can still appear during deployment ordering.
 func (r *DatabaseSecretClaimReconciler) inSameComposite(
 	ctx context.Context,
 	databaseNamespace, claimNamespace string,
 ) (bool, error) {
+	same, known, observedRefreshVersion, refreshedAt, _ := r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if known && time.Since(refreshedAt) < compositeTopologyTTL {
+		return same, nil
+	}
+
+	// Serialize cache misses and check again after acquiring the refresh lock so
+	// concurrent reconciles for known topology do not duplicate the aggregator call.
+	r.compositeTopology.refreshMu.Lock()
+	defer r.compositeTopology.refreshMu.Unlock()
+	same, known, currentRefreshVersion, refreshedAt, lastRefreshErr := r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if known && time.Since(refreshedAt) < compositeTopologyTTL {
+		return same, nil
+	}
+	if currentRefreshVersion != observedRefreshVersion {
+		// A concurrent reconcile already refreshed the full topology while this
+		// call waited. Reuse its missing-membership result or error rather than
+		// immediately sending the same list request again.
+		return false, lastRefreshErr
+	}
+
 	aggStart := time.Now()
 	structures, err := r.Aggregator.ListCompositeStructures(ctx)
 	recordAggregatorCall(controllerDSC, operationListComposites, aggStart, err)
 	if err != nil {
+		r.compositeTopology.recordRefreshFailure(err)
 		return false, err
 	}
-	for i := range structures {
-		if slices.Contains(structures[i].Namespaces, databaseNamespace) &&
-			slices.Contains(structures[i].Namespaces, claimNamespace) {
-			return true, nil
-		}
+	r.compositeTopology.replace(structures)
+	if same, known, _, _, _ := r.compositeTopology.lookup(databaseNamespace, claimNamespace); known {
+		return same, nil
 	}
 	return false, nil
 }
@@ -330,14 +403,14 @@ func (r *DatabaseSecretClaimReconciler) handleCompositeLookupErr(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
 	err error,
-	requestID string,
 ) (ctrl.Result, error) {
 	s.Status.FirstNotFoundAt = nil
 	msg := fmt.Sprintf("failed to verify composite membership: %v", err)
+	log.ErrorC(ctx, "Failed to verify composite membership DatabaseSecretClaim name=%s err=%v", s.Name, err)
 	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 		EventReasonCompositeLookupFailed, msg)
-	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonCompositeLookupFailed,
-		"%s (requestId=%s)", msg, requestID)
+	r.Recorder.Event(s, corev1.EventTypeWarning, EventReasonCompositeLookupFailed,
+		"failed to verify composite membership; see the Ready condition and operator logs for details")
 	return ctrl.Result{}, err
 }
 
@@ -570,10 +643,13 @@ func (r *DatabaseSecretClaimReconciler) handleAggregatorErr(
 		s.Status.FirstNotFoundAt = nil
 		msg := fmt.Sprintf("database access policy does not yet grant service %q the requested role for the database in namespace %q: %s",
 			s.Labels[appNameLabel], s.Spec.Classifier.Namespace, aggErr.UserMessage())
+		log.InfoC(ctx, "DatabaseAccessPolicy is not ready DatabaseSecretClaim name=%s service=%s databaseNamespace=%s",
+			s.Name, s.Labels[appNameLabel], s.Spec.Classifier.Namespace)
 		markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 			EventReasonAccessPolicyNotReady, msg)
 		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonAccessPolicyNotReady,
-			"%s (requestId=%s)", msg, requestID)
+			"database access policy does not grant service %q the requested role for the database in namespace %q",
+			s.Labels[appNameLabel], s.Spec.Classifier.Namespace)
 		return r.pollBackoff.schedule(s), nil
 	}
 	if errors.As(err, &aggErr) && aggErr.IsDatabaseNotFound() {

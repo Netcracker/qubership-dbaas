@@ -25,6 +25,10 @@ together with `internal/client/` when the contract changes.
 always sends `metadata.namespace`; dbaas-aggregator resolves the database from the classifier. Requests time out after
 30 seconds, and the client doesn't retry; the controller retries with the reconcile backoff.
 
+The `DatabaseSecretClaim` controller caches composite membership in memory for one hour once both namespaces are known.
+The next cross-namespace reconcile after expiry replaces the full topology, allowing runtime adjustments to be seen.
+When either namespace is absent, the next claim reconcile reads the endpoint again so deployment ordering can converge.
+
 ## Response Handling
 
 All resource-driven calls share this mapping, classified by the `AggregatorError` helpers in
