@@ -45,8 +45,8 @@ All resources are namespaced, belong to `dbaas.netcracker.com/v1` and share the 
   only for `/metrics` and the health probes.
 - Credential changes made on the aggregator side reach `DatabaseSecretClaim` Secrets through the rotation poller.
 - The operator doesn't watch Secrets. `ExternalDatabase` and `PhysicalDatabase` re-read the Secrets they reference on
-  a periodic resync, so a changed password applies within one resync interval. See
-  [Parameters](installation/parameters.md#settings).
+  a periodic resync, so a changed password applies within one resync interval. To apply it at once, change the
+  resource's `dbaas.netcracker.com/refresh` annotation. See [Parameters](installation/parameters.md#settings).
 
 ## Operator Assignment
 
