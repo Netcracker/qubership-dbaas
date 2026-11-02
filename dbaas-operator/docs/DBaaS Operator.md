@@ -54,7 +54,7 @@ Every resource names the operator that owns it in `spec.operatorNamespace`. An o
 when that value equals its own namespace (`CLOUD_NAMESPACE`), and leaves other resources untouched, without a status
 or an event. Several operators can therefore share a cluster.
 
-`spec.operatorNamespace` is immutable on almost all resources. To move any other resource to another operator, delete it
+`spec.operatorNamespace` is immutable on almost all resources. To move a resource to another operator, delete it
 and create it again.
 
 ## Immutable Identity
