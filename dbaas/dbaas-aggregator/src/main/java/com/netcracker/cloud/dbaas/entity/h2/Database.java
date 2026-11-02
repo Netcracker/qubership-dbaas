@@ -8,7 +8,6 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-import org.hibernate.collection.spi.PersistentBag;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -103,13 +102,13 @@ public class Database extends AbstractDatabase {
 
     public com.netcracker.cloud.dbaas.entity.pg.Database asPgEntity() {
         com.netcracker.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
-        copy.setDatabaseRegistry(new PersistentBag(null, this.databaseRegistry.stream().map(dr -> dr.asPgEntity(copy)).toList()));
+        copy.setDatabaseRegistry(new ArrayList<>(this.databaseRegistry.stream().map(dr -> dr.asPgEntity(copy)).toList()));
         return copy;
     }
 
     public com.netcracker.cloud.dbaas.entity.pg.Database asPgEntity(com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry clone) {
         com.netcracker.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
-        copy.setDatabaseRegistry(new PersistentBag(null, this.databaseRegistry.stream().map(dr -> {
+        copy.setDatabaseRegistry(new ArrayList<>(this.databaseRegistry.stream().map(dr -> {
             if (dr.getId().equals(clone.getId())) {
                 return clone;
             } else {
