@@ -170,8 +170,9 @@ namespace. Set the claim's `spec.classifier.namespace` explicitly to the owner n
 `app.kubernetes.io/name` label to the consuming service name, which must differ from `classifier.microserviceName`. The
 operator creates the Secret beside the claim, and dbaas-aggregator resolves the role from the access policy. A claim
 outside the owner's composite stays in `BackingOff` with reason `NamespaceNotInComposite` until the composite is
-registered. If a previously authorized consumer namespace is removed from the composite, the next safety-net reconcile
-deletes a target Secret controlled by that claim; a transient composite lookup failure preserves the Secret and retries.
+registered. Composite membership is deployment-time topology; the operator checks it before retrieving credentials but
+does not delete Secrets as a runtime revocation mechanism. A transient composite lookup failure blocks new retrieval
+and retries.
 For example:
 
 ```yaml
@@ -253,7 +254,7 @@ directory, add another directory level, use a different base path, or mount the 
 
 The operator holds no cluster-wide Secret permission, so each namespace with a `DatabaseSecretClaim` —
 or an `ExternalDatabase` that references a credential Secret — has to grant the operator's ServiceAccount
-`get`, `create`, `update`, `patch` and `delete` on `secrets`, through a Role and RoleBinding in that namespace.
+`get`, `create`, `update` and `patch` on `secrets`, through a Role and RoleBinding in that namespace.
 Without them both fail with `forbidden`.
 
 The dbaas-agent chart ships that pair, named `dbaas-operator-secrets`, wherever Cloud Core is installed.

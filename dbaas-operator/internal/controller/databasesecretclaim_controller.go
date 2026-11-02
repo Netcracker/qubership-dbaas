@@ -290,23 +290,6 @@ func (r *DatabaseSecretClaimReconciler) validateCrossNamespaceAccess(
 	// A composite denial is a different wait condition from DatabaseNotFound.
 	// Reset that timer so re-authorization cannot resume an old not-found streak.
 	s.Status.FirstNotFoundAt = nil
-	// Set the denial before attempting revocation. A missing delete permission or
-	// another Kubernetes API failure must not leave an old Ready=True condition
-	// visible while the Secret is still present.
-	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
-		EventReasonNamespaceNotInComposite, msg)
-	secretDeleted, err := r.deleteOwnedSecretForCompositeDenial(ctx, s)
-	if err != nil {
-		msg += fmt.Sprintf("; failed to delete owned Secret %q: %v", s.Spec.SecretName, err)
-		markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
-			EventReasonNamespaceNotInComposite, msg)
-		r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite,
-			"%s (requestId=%s)", msg, requestID)
-		return ctrl.Result{}, true, err
-	}
-	if secretDeleted {
-		msg += fmt.Sprintf("; deleted owned Secret %q because cross-namespace access is no longer allowed", s.Spec.SecretName)
-	}
 	markTransientFailure(&s.Status.Phase, &s.Status.Conditions, s.Generation,
 		EventReasonNamespaceNotInComposite, msg)
 	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite,
@@ -338,9 +321,9 @@ func (r *DatabaseSecretClaimReconciler) inSameComposite(
 // the failure retryable. A 4xx from the topology endpoint describes the
 // operator-to-aggregator call, not an invalid DatabaseSecretClaim spec, so it
 // must not flow through handleAggregatorErr's permanent 400/403 mapping.
-// Existing Secrets are intentionally preserved when membership cannot be
-// determined: an authentication or aggregator outage must not mass-delete
-// credentials that may still be authorized.
+// Existing Secrets are intentionally preserved: the operator has no Secret
+// delete permission, and composite membership is treated as deployment-time
+// topology rather than a runtime revocation mechanism.
 func (r *DatabaseSecretClaimReconciler) handleCompositeLookupErr(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,
@@ -354,42 +337,6 @@ func (r *DatabaseSecretClaimReconciler) handleCompositeLookupErr(
 	r.Recorder.Eventf(s, corev1.EventTypeWarning, EventReasonCompositeLookupFailed,
 		"%s (requestId=%s)", msg, requestID)
 	return ctrl.Result{}, err
-}
-
-// deleteOwnedSecretForCompositeDenial removes credentials previously
-// materialized by this claim after the aggregator definitively reports that the
-// consumer and database-owner namespaces no longer share a composite. A Secret
-// without this claim's controller reference is never deleted.
-func (r *DatabaseSecretClaimReconciler) deleteOwnedSecretForCompositeDenial(
-	ctx context.Context,
-	s *dbaasv1.DatabaseSecretClaim,
-) (bool, error) {
-	secretKey := types.NamespacedName{Namespace: s.Namespace, Name: s.Spec.SecretName}
-	existing := &corev1.Secret{}
-	if err := r.Get(ctx, secretKey, existing); err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if !metav1.IsControlledBy(existing, s) {
-		return false, nil
-	}
-	// The read is normally served from the controller cache. Protect the
-	// subsequent delete against a replacement Secret appearing under the same
-	// name, or against ownership changing before the API server handles it.
-	uid := existing.UID
-	resourceVersion := existing.ResourceVersion
-	preconditions := client.Preconditions{
-		UID:             &uid,
-		ResourceVersion: &resourceVersion,
-	}
-	if err := r.Delete(ctx, existing, preconditions); err != nil && !apierrors.IsNotFound(err) {
-		return false, err
-	}
-	log.InfoC(ctx, "Deleted DatabaseSecretClaim-owned Secret after composite access denial name=%s secretName=%s",
-		s.Name, s.Spec.SecretName)
-	return true, nil
 }
 
 // writeSecret converges the target Secret in four steps:

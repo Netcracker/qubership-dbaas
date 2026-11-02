@@ -30,7 +30,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,19 +40,6 @@ import (
 	dbaasv1 "github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1"
 	aggregatorclient "github.com/netcracker/qubership-dbaas/dbaas-operator/internal/client"
 )
-
-type deleteInterceptClient struct {
-	client.Client
-	deleteFn func(context.Context, client.Client, client.Object, ...client.DeleteOption) error
-}
-
-func (c *deleteInterceptClient) Delete(
-	ctx context.Context,
-	obj client.Object,
-	opts ...client.DeleteOption,
-) error {
-	return c.deleteFn(ctx, c.Client, obj, opts...)
-}
 
 var _ = Describe("DatabaseSecretClaim Controller", func() {
 	const (
@@ -480,7 +466,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonCompositeLookupFailed)
 		})
 
-		It("deletes an owned Secret after composite removal and recreates it after re-addition", func() {
+		It("does not delete an existing Secret if a later composite check denies access", func() {
 			fixture.body = successBody()
 			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
 			createCrossNamespaceClaim("reporting-service")
@@ -491,111 +477,17 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
 
 			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
-			fixture.capturedPath = ""
 			ds, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
-			expectWaitingForComposite(ds, result)
-
-			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
-			ds, _, err = reconcileAndFetch()
-			Expect(err).NotTo(HaveOccurred())
-			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
-			Expect(k8sClient.Get(ctx,
-				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed())
-		})
-
-		It("reports the composite denial even when Secret deletion is forbidden", func() {
-			fixture.body = successBody()
-			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
-			createCrossNamespaceClaim("reporting-service")
-
-			ds, _, err := reconcileAndFetch()
-			Expect(err).NotTo(HaveOccurred())
-			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
-			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
-
-			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
-			reconciler.Client = &deleteInterceptClient{
-				Client: cacheClient,
-				deleteFn: func(_ context.Context, _ client.Client, obj client.Object, _ ...client.DeleteOption) error {
-					return apierrors.NewForbidden(
-						schema.GroupResource{Resource: "secrets"}, obj.GetName(), fmt.Errorf("delete is not permitted"))
-				},
-			}
-
-			ds, _, err = reconcileAndFetch()
-			Expect(err).To(HaveOccurred())
-			Expect(apierrors.IsForbidden(err)).To(BeTrue())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
 			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
-			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 			Expect(ready.Reason).To(Equal(EventReasonNamespaceNotInComposite))
-			Expect(ready.Message).To(ContainSubstring("failed to delete owned Secret"))
-			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
-			Expect(stalled).NotTo(BeNil())
-			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
 			Expect(k8sClient.Get(ctx,
 				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
-				"the Secret remains when revocation is forbidden")
-			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
-				EventReasonNamespaceNotInComposite, "failed to delete owned Secret")
-		})
-
-		It("does not delete a replacement Secret when the cached owned Secret is stale", func() {
-			createCrossNamespaceClaim("reporting-service")
-
-			claim := &dbaasv1.DatabaseSecretClaim{}
-			Eventually(func() error {
-				return cacheClient.Get(ctx, namespacedName, claim)
-			}).Should(Succeed())
-
-			original := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-				Name:      secretName,
-				Namespace: ns,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(claim, dbaasv1.GroupVersion.WithKind("DatabaseSecretClaim")),
-				},
-			}}
-			Expect(k8sClient.Create(ctx, original)).To(Succeed())
-			Eventually(func() error {
-				return cacheClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})
-			}).Should(Succeed())
-
-			var deleteOptions client.DeleteOptions
-			wrappedClient := &deleteInterceptClient{
-				Client: cacheClient,
-				deleteFn: func(ctx context.Context, c client.Client, obj client.Object, opts ...client.DeleteOption) error {
-					for _, opt := range opts {
-						opt.ApplyToDelete(&deleteOptions)
-					}
-
-					current := &corev1.Secret{}
-					key := types.NamespacedName{Name: secretName, Namespace: ns}
-					Expect(k8sClient.Get(ctx, key, current)).To(Succeed())
-					Expect(k8sClient.Delete(ctx, current)).To(Succeed())
-					Eventually(func() bool {
-						return apierrors.IsNotFound(k8sClient.Get(ctx, key, &corev1.Secret{}))
-					}).Should(BeTrue())
-
-					replacement := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-						Name: secretName, Namespace: ns,
-					}}
-					Expect(k8sClient.Create(ctx, replacement)).To(Succeed())
-					return c.Delete(ctx, obj, opts...)
-				},
-			}
-			reconciler.Client = wrappedClient
-
-			deleted, err := reconciler.deleteOwnedSecretForCompositeDenial(ctx, claim)
-			Expect(err).To(HaveOccurred(), "the stale delete must fail its API preconditions")
-			Expect(deleted).To(BeFalse())
-			Expect(deleteOptions.Preconditions).NotTo(BeNil())
-			Expect(deleteOptions.Preconditions.UID).To(Equal(&original.UID))
-			Expect(deleteOptions.Preconditions.ResourceVersion).To(Equal(&original.ResourceVersion))
-			Expect(k8sClient.Get(ctx,
-				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
-				"the replacement Secret must survive a stale cached delete")
+				"the operator has no Secret delete permission and must leave existing material untouched")
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite)
 		})
 
 		It("stops on a foreign target Secret before checking composite membership", func() {
