@@ -309,6 +309,12 @@ type ChangedDatabasesResponse struct {
 	HighWaterMark *ChangeCursor        `json:"highWaterMark"`
 }
 
+// CompositeStructure is one entry from ListCompositeStructures. Namespaces holds
+// the baseline and all of its satellites.
+type CompositeStructure struct {
+	Namespaces []string `json:"namespaces"`
+}
+
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 // RequestContextError reports a local request-context invariant violation.

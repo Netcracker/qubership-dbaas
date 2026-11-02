@@ -164,6 +164,35 @@ describes, and `userRole` selects which role's credentials are written — one c
 holds `connectionProperties.json` with the adapter-specific connection details, and `metadata.json`
 describing the database, so a client can match the Secret to a request without calling the aggregator.
 
+For cross-namespace access, both namespaces must belong to the same composite structure. Keep the database declaration
+and its `DatabaseAccessPolicy` in the owner namespace, and place the `DatabaseSecretClaim` in the consumer's workload
+namespace. Set the claim's `spec.classifier.namespace` explicitly to the owner namespace and its
+`app.kubernetes.io/name` label to the consuming service name, which must differ from `classifier.microserviceName`. The
+operator creates the Secret beside the claim, and dbaas-aggregator resolves the role from the access policy. A claim
+outside the owner's composite stays in `BackingOff` with reason `NamespaceNotInComposite` until the composite is
+registered. If a previously authorized consumer namespace is removed from the composite, the next safety-net reconcile
+deletes a target Secret controlled by that claim; a transient composite lookup failure preserves the Secret and retries.
+For example:
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: orders-db-reader
+  namespace: reporting
+  labels:
+    app.kubernetes.io/name: reporting-service
+spec:
+  operatorNamespace: dbaas-system
+  classifier:
+    microserviceName: orders-service
+    scope: service
+    namespace: orders
+  type: postgresql
+  userRole: ro
+  secretName: orders-db-reader-secret
+```
+
 Ordering does not have to be managed: a claim whose database does not exist yet receives
 `DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. After ten minutes
 the `Ready` reason changes to `DatabaseNotFoundTimeout` and one Warning event is emitted, but polling
@@ -222,7 +251,7 @@ directory, add another directory level, use a different base path, or mount the 
 
 The operator holds no cluster-wide Secret permission, so each namespace with a `DatabaseSecretClaim` —
 or an `ExternalDatabase` that references a credential Secret — has to grant the operator's ServiceAccount
-`get`, `create`, `update` and `patch` on `secrets`, through a Role and RoleBinding in that namespace.
+`get`, `create`, `update`, `patch` and `delete` on `secrets`, through a Role and RoleBinding in that namespace.
 Without them both fail with `forbidden`.
 
 The dbaas-agent chart ships that pair, named `dbaas-operator-secrets`, wherever Cloud Core is installed.
