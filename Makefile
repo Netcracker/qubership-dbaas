@@ -18,4 +18,4 @@ GO_TEST_MODULES ?= dbaas-operator
 
 PY_BUILD ?= PYTHONPATH=dbaas-operator/agent-packages $(PYTHON) -m pip install -r dbaas-operator/agent-packages/requirements-test.txt
 
-include $(dir $(abspath $(lastword $(MAKEFILE_LIST))))Makefile.precheck
+include Makefile.precheck
