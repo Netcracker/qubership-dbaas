@@ -96,8 +96,7 @@ consuming service and differ from `classifier.microserviceName`, which would oth
 services the policy allows aren't distinguished: the label isn't a verified identity.
 
 A claim applied before its composite or policy waits and recovers on its own. Composite membership is deployment-time
-topology, so the check gates credential retrieval and doesn't revoke anything: a later denial blocks the claim and
-leaves an existing Secret untouched.
+topology, so the check gates credential retrieval and is not a runtime revocation mechanism.
 
 ## Reasons
 
