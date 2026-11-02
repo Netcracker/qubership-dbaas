@@ -176,4 +176,11 @@ const (
 	// Secret, and retries because the claim spec is not known to be invalid.
 	// Type: Warning.
 	EventReasonCompositeLookupFailed = "CompositeLookupFailed"
+
+	// EventReasonAccessPolicyNotReady is emitted when a cross-namespace
+	// DatabaseSecretClaim reaches the aggregator before its DatabaseAccessPolicy
+	// grant is available. The controller keeps polling so declarative resources
+	// applied together can converge regardless of reconcile order.
+	// Type: Warning.
+	EventReasonAccessPolicyNotReady = "AccessPolicyNotReady"
 )

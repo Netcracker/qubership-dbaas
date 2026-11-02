@@ -194,10 +194,12 @@ spec:
 ```
 
 Ordering does not have to be managed: a claim whose database does not exist yet receives
-`DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. After ten minutes
-the `Ready` reason changes to `DatabaseNotFoundTimeout` and one Warning event is emitted, but polling
-continues and the claim still recovers on its own. When credentials rotate, the operator rewrites the
-Secret in place under the same name.
+`DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. A cross-namespace
+claim whose `DatabaseAccessPolicy` grant has not reached the aggregator yet similarly receives
+`AccessPolicyNotReady` and keeps polling. After ten minutes of `DatabaseNotFound`, the `Ready` reason
+changes to `DatabaseNotFoundTimeout` and one Warning event is emitted, but polling continues and the
+claim still recovers on its own. For `AccessPolicyNotReady`, check the policy's service name and
+requested role. When credentials rotate, the operator rewrites the Secret in place under the same name.
 
 ### Mounting credentials in the application container
 

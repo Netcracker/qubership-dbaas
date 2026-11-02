@@ -30,6 +30,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -352,6 +353,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
 			Expect(ready.Reason).To(Equal(EventReasonNamespaceNotInComposite))
+			Expect(ready.Message).To(ContainSubstring("recreate the claim"))
 
 			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
 			Expect(stalled).NotTo(BeNil())
@@ -406,6 +408,35 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed())
+		})
+
+		It("keeps polling when the access policy is applied after the claim", func() {
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
+			fixture.statusCode = http.StatusForbidden
+			fixture.body = `{"code":"CORE-DBAAS-4023","message":"Role not permitted"}`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonAccessPolicyNotReady))
+			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
+				EventReasonAccessPolicyNotReady, "Role not permitted")
+
+			fixture.statusCode = http.StatusOK
+			fixture.body = successBody()
+			ds, _, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed())
 		})
 
 		It("blocks the claim and retries when the composite lookup fails", func() {
@@ -471,6 +502,44 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(k8sClient.Get(ctx,
 				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed())
+		})
+
+		It("reports the composite denial even when Secret deletion is forbidden", func() {
+			fixture.body = successBody()
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
+			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
+
+			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
+			reconciler.Client = &deleteInterceptClient{
+				Client: cacheClient,
+				deleteFn: func(_ context.Context, _ client.Client, obj client.Object, _ ...client.DeleteOption) error {
+					return apierrors.NewForbidden(
+						schema.GroupResource{Resource: "secrets"}, obj.GetName(), fmt.Errorf("delete is not permitted"))
+				},
+			}
+
+			ds, _, err = reconcileAndFetch()
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsForbidden(err)).To(BeTrue())
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(EventReasonNamespaceNotInComposite))
+			Expect(ready.Message).To(ContainSubstring("failed to delete owned Secret"))
+			stalled := findCondition(ds.Status.Conditions, conditionTypeStalled)
+			Expect(stalled).NotTo(BeNil())
+			Expect(stalled.Status).To(Equal(metav1.ConditionFalse))
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
+				"the Secret remains when revocation is forbidden")
+			expectRecordedEventContaining(fixture.recorder.Events, corev1.EventTypeWarning,
+				EventReasonNamespaceNotInComposite, "failed to delete owned Secret")
 		})
 
 		It("does not delete a replacement Secret when the cached owned Secret is stale", func() {
@@ -1990,6 +2059,24 @@ var _ = Describe("DatabaseSecretClaim Controller — rotation-trigger predicate"
 			Expect(ok).To(BeTrue())
 		})
 
+		It("fires when app.kubernetes.io/name is corrected", func() {
+			old := secretWith(1, "")
+			old.Labels = map[string]string{appNameLabel: "database-owner"}
+			updated := secretWith(1, "")
+			updated.Labels = map[string]string{appNameLabel: "reporting-service"}
+			ok := pred.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated})
+			Expect(ok).To(BeTrue())
+		})
+
+		It("fires when app.kubernetes.io/name is added or removed", func() {
+			withoutLabel := secretWith(1, "")
+			withLabel := secretWith(1, "")
+			withLabel.Labels = map[string]string{appNameLabel: "reporting-service"}
+
+			Expect(pred.Update(event.UpdateEvent{ObjectOld: withoutLabel, ObjectNew: withLabel})).To(BeTrue())
+			Expect(pred.Update(event.UpdateEvent{ObjectOld: withLabel, ObjectNew: withoutLabel})).To(BeTrue())
+		})
+
 		It("does NOT fire on a status-only update (no generation or annotation change)", func() {
 			ok := pred.Update(event.UpdateEvent{
 				ObjectOld: secretWith(3, "evt-1"),
@@ -2003,6 +2090,15 @@ var _ = Describe("DatabaseSecretClaim Controller — rotation-trigger predicate"
 			old.Annotations["unrelated"] = "a"
 			updated := secretWith(1, "evt-1")
 			updated.Annotations["unrelated"] = "b"
+			ok := pred.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated})
+			Expect(ok).To(BeFalse())
+		})
+
+		It("does NOT fire when only an unrelated label changed", func() {
+			old := secretWith(1, "evt-1")
+			old.Labels = map[string]string{appNameLabel: "reporting-service", "unrelated": "a"}
+			updated := secretWith(1, "evt-1")
+			updated.Labels = map[string]string{appNameLabel: "reporting-service", "unrelated": "b"}
 			ok := pred.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated})
 			Expect(ok).To(BeFalse())
 		})
