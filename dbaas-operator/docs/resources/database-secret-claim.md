@@ -95,8 +95,8 @@ namespace check for the operator's identity. dbaas-aggregator then applies the a
 consuming service and differ from `classifier.microserviceName`, which would otherwise get the owner's access. Other
 services the policy allows aren't distinguished: the label isn't a verified identity.
 
-The operator caches topology for one hour once both namespaces are registered. The next cross-namespace reconcile after
-expiry refreshes the full topology, so runtime adjustments are detected. Claims involving an unregistered namespace
+The operator caches topology for five minutes once both namespaces are registered. The next cross-namespace reconcile
+after expiry refreshes the full topology, so runtime adjustments are detected. Claims involving an unregistered namespace
 refresh the topology on their next reconcile, allowing a claim applied before its composite to recover automatically.
 
 A claim applied before its composite or policy waits and recovers on its own. Composite membership is deployment-time

@@ -500,7 +500,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			Expect(fixture.compositeCalls).To(Equal(1))
 
-			// Simulate the one-hour TTL without sleeping, then move the two known
+			// Simulate the five-minute TTL without sleeping, then move the two known
 			// namespaces into different structures in the aggregator response.
 			reconciler.compositeTopology.mu.Lock()
 			reconciler.compositeTopology.refreshedAt = time.Now().Add(-compositeTopologyTTL)

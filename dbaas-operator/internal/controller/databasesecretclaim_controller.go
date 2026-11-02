@@ -60,13 +60,13 @@ import (
 const (
 	secretNameIndex      = "spec.secretName"
 	appNameLabel         = "app.kubernetes.io/name"
-	compositeTopologyTTL = time.Hour
+	compositeTopologyTTL = 5 * time.Minute
 )
 
 // compositeTopologyCache maps each namespace to the aggregator's composite ID.
 // Database identities are intentionally absent because composite membership is
 // namespace-level topology and is shared by every database in that namespace.
-// Known membership is reused for one hour, then refreshed by the next
+// Known membership is reused for five minutes, then refreshed by the next
 // cross-namespace reconcile so runtime topology adjustments are eventually seen.
 // A lookup involving an unregistered namespace is not cached as final: the next
 // reconcile refreshes the topology so claims applied before composite registration
