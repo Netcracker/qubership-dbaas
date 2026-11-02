@@ -449,6 +449,21 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			)))
 		})
 
+		It("fails closed when a namespace belongs to multiple composite structures", func() {
+			fixture.compositeBody = `[{"id":"owner","namespaces":["` + ownerNamespace + `","` + ns + `"]},` +
+				`{"id":"consumer","namespaces":["` + ns + `"]}]`
+			createCrossNamespaceClaim("reporting-service")
+
+			ds, _, err := reconcileAndFetch()
+			Expect(err).To(HaveOccurred(), "ambiguous topology must be retried as a transient lookup failure")
+			Expect(err.Error()).To(ContainSubstring("belongs to multiple composite structures"))
+			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseBackingOff))
+			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(EventReasonCompositeLookupFailed))
+			Expect(fixture.capturedPath).To(BeEmpty(), "ambiguous topology must block get-by-classifier")
+		})
+
 		It("reuses cached composite membership after a successful lookup", func() {
 			fixture.body = successBody()
 			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`

@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,47 +63,75 @@ const (
 	compositeTopologyTTL = time.Hour
 )
 
-// compositeTopologyCache stores namespace membership returned by the aggregator.
+// compositeTopologyCache maps each namespace to the aggregator's composite ID.
+// Database identities are intentionally absent because composite membership is
+// namespace-level topology and is shared by every database in that namespace.
 // Known membership is reused for one hour, then refreshed by the next
 // cross-namespace reconcile so runtime topology adjustments are eventually seen.
 // A lookup involving an unregistered namespace is not cached as final: the next
 // reconcile refreshes the topology so claims applied before composite registration
 // can still converge.
 type compositeTopologyCache struct {
-	mu                   sync.RWMutex
-	refreshMu            sync.Mutex
-	namespaceToComposite map[string]int
-	refreshVersion       uint64
-	refreshedAt          time.Time
-	lastRefreshErr       error
+	mu                     sync.RWMutex
+	refreshMu              sync.Mutex
+	namespaceToCompositeID map[string]string
+	refreshVersion         uint64
+	refreshedAt            time.Time
+	lastRefreshErr         error
 }
 
-func (c *compositeTopologyCache) lookup(
-	firstNamespace, secondNamespace string,
-) (same, known bool, refreshVersion uint64, refreshedAt time.Time, lastRefreshErr error) {
+type compositeLookupResult struct {
+	sameComposite   bool
+	namespacesKnown bool
+	refreshVersion  uint64
+	refreshedAt     time.Time
+	refreshErr      error
+}
+
+func (r compositeLookupResult) isFresh(now time.Time) bool {
+	return r.namespacesKnown && now.Sub(r.refreshedAt) < compositeTopologyTTL
+}
+
+func (c *compositeTopologyCache) lookup(databaseNamespace, claimNamespace string) compositeLookupResult {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	firstComposite, firstKnown := c.namespaceToComposite[firstNamespace]
-	secondComposite, secondKnown := c.namespaceToComposite[secondNamespace]
-	if !firstKnown || !secondKnown {
-		return false, false, c.refreshVersion, c.refreshedAt, c.lastRefreshErr
+	databaseCompositeID, databaseKnown := c.namespaceToCompositeID[databaseNamespace]
+	claimCompositeID, claimKnown := c.namespaceToCompositeID[claimNamespace]
+	result := compositeLookupResult{
+		namespacesKnown: databaseKnown && claimKnown,
+		refreshVersion:  c.refreshVersion,
+		refreshedAt:     c.refreshedAt,
+		refreshErr:      c.lastRefreshErr,
 	}
-	return firstComposite == secondComposite, true, c.refreshVersion, c.refreshedAt, c.lastRefreshErr
+	result.sameComposite = result.namespacesKnown && databaseCompositeID == claimCompositeID
+	return result
 }
 
-func (c *compositeTopologyCache) replace(structures []aggregatorclient.CompositeStructure) {
-	namespaceToComposite := make(map[string]int)
-	for compositeIndex := range structures {
-		for _, namespace := range structures[compositeIndex].Namespaces {
-			namespaceToComposite[namespace] = compositeIndex
+func (c *compositeTopologyCache) replace(structures []aggregatorclient.CompositeStructure) error {
+	namespaceToCompositeID := make(map[string]string)
+	for structureIndex := range structures {
+		compositeID := strings.TrimSpace(structures[structureIndex].ID)
+		if compositeID == "" {
+			return fmt.Errorf("composite structure at index %d has an empty id", structureIndex)
+		}
+		for _, namespace := range structures[structureIndex].Namespaces {
+			if strings.TrimSpace(namespace) == "" {
+				return fmt.Errorf("composite structure %q contains an empty namespace", compositeID)
+			}
+			if existingID, exists := namespaceToCompositeID[namespace]; exists && existingID != compositeID {
+				return fmt.Errorf("namespace %q belongs to multiple composite structures %q and %q",
+					namespace, existingID, compositeID)
+			}
+			namespaceToCompositeID[namespace] = compositeID
 		}
 	}
 	c.mu.Lock()
-	c.namespaceToComposite = namespaceToComposite
+	c.namespaceToCompositeID = namespaceToCompositeID
 	c.refreshVersion++
 	c.refreshedAt = time.Now()
 	c.lastRefreshErr = nil
 	c.mu.Unlock()
+	return nil
 }
 
 func (c *compositeTopologyCache) recordRefreshFailure(err error) {
@@ -358,36 +387,40 @@ func (r *DatabaseSecretClaimReconciler) inSameComposite(
 	ctx context.Context,
 	databaseNamespace, claimNamespace string,
 ) (bool, error) {
-	same, known, observedRefreshVersion, refreshedAt, _ := r.compositeTopology.lookup(databaseNamespace, claimNamespace)
-	if known && time.Since(refreshedAt) < compositeTopologyTTL {
-		return same, nil
+	cached := r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if cached.isFresh(time.Now()) {
+		return cached.sameComposite, nil
 	}
+	observedRefreshVersion := cached.refreshVersion
 
 	// Serialize cache misses and check again after acquiring the refresh lock so
 	// concurrent reconciles for known topology do not duplicate the aggregator call.
 	r.compositeTopology.refreshMu.Lock()
 	defer r.compositeTopology.refreshMu.Unlock()
-	same, known, currentRefreshVersion, refreshedAt, lastRefreshErr := r.compositeTopology.lookup(databaseNamespace, claimNamespace)
-	if known && time.Since(refreshedAt) < compositeTopologyTTL {
-		return same, nil
+	cached = r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if cached.isFresh(time.Now()) {
+		return cached.sameComposite, nil
 	}
-	if currentRefreshVersion != observedRefreshVersion {
+	if cached.refreshVersion != observedRefreshVersion {
 		// A concurrent reconcile already refreshed the full topology while this
 		// call waited. Reuse its missing-membership result or error rather than
 		// immediately sending the same list request again.
-		return false, lastRefreshErr
+		return false, cached.refreshErr
 	}
 
 	aggStart := time.Now()
 	structures, err := r.Aggregator.ListCompositeStructures(ctx)
+	if err == nil {
+		err = r.compositeTopology.replace(structures)
+	}
 	recordAggregatorCall(controllerDSC, operationListComposites, aggStart, err)
 	if err != nil {
 		r.compositeTopology.recordRefreshFailure(err)
 		return false, err
 	}
-	r.compositeTopology.replace(structures)
-	if same, known, _, _, _ := r.compositeTopology.lookup(databaseNamespace, claimNamespace); known {
-		return same, nil
+	cached = r.compositeTopology.lookup(databaseNamespace, claimNamespace)
+	if cached.namespacesKnown {
+		return cached.sameComposite, nil
 	}
 	return false, nil
 }

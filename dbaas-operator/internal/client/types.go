@@ -309,9 +309,10 @@ type ChangedDatabasesResponse struct {
 	HighWaterMark *ChangeCursor        `json:"highWaterMark"`
 }
 
-// CompositeStructure is one entry from ListCompositeStructures. Namespaces holds
-// the baseline and all of its satellites.
+// CompositeStructure is one entry from ListCompositeStructures. ID identifies
+// the composite, and Namespaces holds its baseline and all satellites.
 type CompositeStructure struct {
+	ID         string   `json:"id"`
 	Namespaces []string `json:"namespaces"`
 }
 

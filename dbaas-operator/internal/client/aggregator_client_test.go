@@ -200,6 +200,9 @@ func TestListCompositeStructures_DecodesResponse(t *testing.T) {
 	if len(got) != 1 || len(got[0].Namespaces) != 2 {
 		t.Errorf("structures: got %+v", got)
 	}
+	if len(got) == 1 && got[0].ID != "base" {
+		t.Errorf("structure ID: got %q, want %q", got[0].ID, "base")
+	}
 }
 
 func TestListCompositeStructures_ReturnsAggregatorError(t *testing.T) {
