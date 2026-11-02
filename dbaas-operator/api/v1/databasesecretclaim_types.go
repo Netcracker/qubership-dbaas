@@ -36,9 +36,9 @@ type DatabaseSecretClaimSpec struct {
 	OperatorNamespace string `json:"operatorNamespace"`
 
 	// classifier uniquely identifies the database whose credentials this secret tracks.
-	// As an exception to the rule on classifier.namespace, it may differ from
-	// metadata.namespace when the database is owned by another namespace in the same
-	// composite structure; the generated Secret remains in metadata.namespace.
+	// If classifier.namespace is omitted, metadata.namespace is used. It may instead
+	// name a database-owner namespace in the same composite structure as the claim's
+	// namespace; the generated Secret remains in metadata.namespace.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="classifier is immutable after creation"
 	Classifier Classifier `json:"classifier"`

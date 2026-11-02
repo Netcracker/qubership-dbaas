@@ -56,11 +56,9 @@ type Classifier struct {
 	Scope string `json:"scope"`
 
 	// namespace is the Kubernetes namespace of the owning service.
-	// If omitted, the operator defaults it to the CR's metadata.namespace before
-	// calling the aggregator, which requires a namespace in the classifier.
-	// InternalDatabase and ExternalDatabase require an explicit value to equal the
-	// CR's metadata.namespace. DatabaseSecretClaim may instead name a database-owner
-	// namespace in the same composite structure as the claim's namespace.
+	// Whether an omitted value is defaulted, and whether an explicit value may
+	// differ from metadata.namespace, is defined by the resource field containing
+	// the classifier.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 

@@ -42,6 +42,7 @@ type InitialInstantiation struct {
 	// sourceClassifier is the classifier of the database to clone from.
 	// Required when approach is "clone". Must reference an existing database in dbaas.
 	// microserviceName must match classifier.microserviceName.
+	// Its namespace may differ from metadata.namespace and is not defaulted when omitted.
 	// +optional
 	SourceClassifier *Classifier `json:"sourceClassifier,omitempty"`
 }
@@ -72,6 +73,8 @@ type InternalDatabaseSpec struct {
 	// classifier uniquely identifies this database in dbaas.
 	// The aggregator uses it to look up or create the physical database.
 	// Required keys: microserviceName, scope.
+	// If namespace is set, it must equal metadata.namespace; if omitted,
+	// metadata.namespace is used for the aggregator request.
 	// Immutable after creation — changing the classifier of an existing
 	// InternalDatabase would switch the CR onto a different database while
 	// the controller's status (trackingId, observedGeneration) still references
