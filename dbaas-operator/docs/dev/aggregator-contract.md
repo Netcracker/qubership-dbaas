@@ -13,6 +13,7 @@ together with `internal/client/` when the contract changes.
 | `PUT`           | `/api/v3/dbaas/{namespace}/databases/registration/externally_manageable`              | `ExternalDatabase`, with `updateConnectionProperties: true`                                       |
 | `POST`          | `/api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}`                        | `DatabaseSecretClaim`, with `originService` and `userRole`                                        |
 | `GET`           | `/api/v3/dbaas/databases/changed?sinceTs=&sinceId=&limit=`                            | Rotation poller; needs `CLUSTER_OPERATOR`                                                         |
+| `GET`           | `/api/composite/v1/structures`                                                        | `DatabaseSecretClaim` with another `classifier.namespace`; needs `DB_CLIENT`                      |
 | `PUT`           | `/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices`                  | `MicroserviceBalancingRule`                                                                       |
 | `PUT`, `DELETE` | `/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}`             | `NamespaceBalancingRule`                                                                          |
 | `PUT`, `DELETE` | `/api/v3/dbaas/balancing/rules/permanent`                                             | `PermanentBalancingRule`                                                                          |
@@ -20,8 +21,9 @@ together with `internal/client/` when the contract changes.
 
 `PhysicalDatabase` also calls the adapter: `GET {adapterAddress}/api/v2/adapter/physical_database`.
 
-`{namespace}` is `classifier.namespace` when set, otherwise `metadata.namespace`. Requests time out after 30 seconds,
-and the client doesn't retry; the controller retries with the reconcile backoff.
+`{namespace}` is `classifier.namespace` when set, otherwise `metadata.namespace`, except that `DatabaseSecretClaim`
+always sends `metadata.namespace`; dbaas-aggregator resolves the database from the classifier. Requests time out after
+30 seconds, and the client doesn't retry; the controller retries with the reconcile backoff.
 
 ## Response Handling
 
@@ -45,6 +47,9 @@ Exceptions:
 | tenant get-or-create    | `202`                                   | `WaitingForDependency`; the body has no credentials, repeat with the poll backoff |
 | get-by-classifier       | `404` with `CORE-DBAAS-4006`            | `DatabaseNotFound`; `404` without a TMF body is `AggregatorError`                 |
 | get-by-classifier       | `200` with empty `connectionProperties` | `EmptyConnectionProperties`                                                       |
+| get-by-classifier       | cross-namespace `403` `CORE-DBAAS-4023` | `AccessPolicyNotReady`, polled; a same-namespace `403` stays `AggregatorRejected` |
+| composite structures    | any error                               | `CompositeLookupFailed`, retried; get-by-classifier is not called                 |
+| composite structures    | no structure has both namespaces        | `NamespaceNotInComposite`, polled; get-by-classifier is not called                |
 | namespace rule `DELETE` | `404`                                   | Treated as removed                                                                |
 | physical database `PUT` | `202`                                   | `WaitingForDependency`, `RoleMigrationStarted`; the body isn't read               |
 | changed-databases feed  | any error                               | Logged; the cursor stays and the next tick retries. No resource status changes.   |
@@ -53,7 +58,7 @@ Exceptions:
 
 The first call without `sinceTs` returns only the feed's high-water mark, which seeds the in-memory cursor
 `(lastRotatedAt, id)`. Later calls return databases whose credentials changed after the cursor. For each, the poller
-finds `DatabaseSecretClaim` resources by `(classifier, type)` through a cache index and patches their
+finds `DatabaseSecretClaim` resources in any namespace by `(classifier, type)` through a cache index and patches their
 `dbaas.netcracker.com/rotation-trigger` annotation; the reconciler then fetches the credentials. The cursor isn't
 persisted: the full reconcile at startup and the hourly requeue cover what a restart loses. See
 [Rotation role lookup](designs/rotation-role-lookup.md) for why the index ignores `userRole`.

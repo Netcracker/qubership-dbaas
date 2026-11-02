@@ -249,7 +249,9 @@ func (r *DatabaseSecretClaimReconciler) preflightValidate(
 
 // validateCrossNamespaceAccess stops a claim from reading a database outside its
 // composite structure. The aggregator skips this check for the operator's identity,
-// so nothing else enforces it. Same return contract as preflightValidate.
+// so nothing else enforces it. It gates credential retrieval only: composite
+// membership is deployment-time topology, so a denial never touches an existing
+// Secret. Same return contract as preflightValidate.
 func (r *DatabaseSecretClaimReconciler) validateCrossNamespaceAccess(
 	ctx context.Context,
 	s *dbaasv1.DatabaseSecretClaim,

@@ -67,7 +67,8 @@ Waiting for work the aggregator hasn't finished isn't a failure, and uses a sepa
 
 - an `InternalDatabase` waiting for asynchronous provisioning or a tenant database;
 - a `PhysicalDatabase` waiting for a role migration;
-- a `DatabaseSecretClaim` waiting for its database (`DatabaseNotFound`) or its role (`EmptyConnectionProperties`).
+- a `DatabaseSecretClaim` waiting for its database (`DatabaseNotFound`), its role (`EmptyConnectionProperties`), its
+  composite structure (`NamespaceNotInComposite`) or its policy grant (`AccessPolicyNotReady`).
 
 The sequence starts again at 5 s after a spec change, a new operation or an operator restart.
 
@@ -100,6 +101,9 @@ resource. See them with `kubectl describe` or
 | Warning | `DatabaseNotFound`           | A `DatabaseSecretClaim` database doesn't exist yet                               |
 | Warning | `DatabaseNotFoundTimeout`    | It still doesn't exist after 10 minutes                                          |
 | Warning | `EmptyConnectionProperties`  | The aggregator returned no credentials for the role                              |
+| Warning | `NamespaceNotInComposite`    | A cross-namespace claim and its database share no composite structure            |
+| Warning | `CompositeLookupFailed`      | The operator could not read the composite structures                             |
+| Warning | `AccessPolicyNotReady`       | A cross-namespace claim has no policy grant for its role yet                     |
 | Warning | `AdapterError`               | A `PhysicalDatabase` adapter answered `404` or `503`                             |
 | Warning | `RegistrationConflict`       | Another `PhysicalDatabase` claims the same adapter or identifier                 |
 
@@ -150,6 +154,19 @@ Check that `M2M_AUTH_MODE` matches dbaas-aggregator's setting, and that the oper
 The `DatabaseSecretClaim` classifier matches no database. Either the database hasn't been provisioned yet (check the
 `InternalDatabase`), or the classifier differs from the one the database was created with. A `scope: tenant` claim
 needs the tenant database to exist; see [Tenant databases](resources/internal-database.md#tenant-databases).
+
+### `NamespaceNotInComposite`, `CompositeLookupFailed` or `AccessPolicyNotReady`
+
+A cross-namespace `DatabaseSecretClaim` is waiting, and no credentials are requested until the check passes. An
+existing Secret is left in place. See
+[Cross-namespace access](resources/database-secret-claim.md#cross-namespace-access).
+
+- `NamespaceNotInComposite`: register both namespaces in one composite structure, or recreate the claim with the correct
+  `classifier.namespace`.
+- `CompositeLookupFailed`: the operator couldn't read the composite structures from dbaas-aggregator. The message has
+  the cause; the claim retries with the reconcile backoff.
+- `AccessPolicyNotReady`: the owner's `DatabaseAccessPolicy` doesn't grant the claim's service the requested role. Check
+  the service name and role.
 
 ### A Balancing Rule Is Stuck in `Terminating`
 

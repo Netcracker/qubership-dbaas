@@ -466,7 +466,7 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonCompositeLookupFailed)
 		})
 
-		It("does not delete an existing Secret if a later composite check denies access", func() {
+		It("leaves an existing Secret untouched if a later composite check denies access", func() {
 			fixture.body = successBody()
 			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","` + ns + `"]}]`
 			createCrossNamespaceClaim("reporting-service")
@@ -476,7 +476,12 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			Expect(ds.Status.Phase).To(Equal(dbaasv1.PhaseSucceeded))
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeNormal, EventReasonSecretCreated)
 
+			secretKey := types.NamespacedName{Name: secretName, Namespace: ns}
+			before := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, secretKey, before)).To(Succeed())
+
 			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
+			fixture.capturedPath = ""
 			ds, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
@@ -484,9 +489,14 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 			ready := findCondition(ds.Status.Conditions, conditionTypeReady)
 			Expect(ready).NotTo(BeNil())
 			Expect(ready.Reason).To(Equal(EventReasonNamespaceNotInComposite))
-			Expect(k8sClient.Get(ctx,
-				types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})).To(Succeed(),
-				"the operator has no Secret delete permission and must leave existing material untouched")
+			Expect(fixture.capturedPath).To(BeEmpty(), "get-by-classifier must not be called")
+
+			after := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, secretKey, after)).To(Succeed(),
+				"composite validation gates credential retrieval and must not revoke a Secret")
+			Expect(after.UID).To(Equal(before.UID))
+			Expect(after.ResourceVersion).To(Equal(before.ResourceVersion))
+			Expect(after.Data).To(Equal(before.Data))
 			expectRecordedEvent(fixture.recorder.Events, corev1.EventTypeWarning, EventReasonNamespaceNotInComposite)
 		})
 

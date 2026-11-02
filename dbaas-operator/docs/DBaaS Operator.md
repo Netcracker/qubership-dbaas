@@ -71,7 +71,7 @@ delete it and create a new one. Each resource page lists its immutable fields.
 | `microserviceName` |         Yes          | The microservice that owns the database                                             |
 | `scope`            |         Yes          | `service` or `tenant`                                                               |
 | `tenantId`         | With `scope: tenant` | The tenant; see [tenant databases](resources/internal-database.md#tenant-databases) |
-| `namespace`        |          No          | Must equal `metadata.namespace` when set; defaults to it when absent                |
+| `namespace`        |          No          | Must equal `metadata.namespace` when set; defaults to it when absent. A `DatabaseSecretClaim` may name another namespace in its [composite structure](resources/database-secret-claim.md#cross-namespace-access). |
 | `customKeys`       |          No          | Any additional identity keys, sent nested under `customKeys`                        |
 | `extraKeys`        |          No          | Any additional identity keys, sent at the top level of the classifier               |
 
