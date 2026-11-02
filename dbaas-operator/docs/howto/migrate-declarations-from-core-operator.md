@@ -252,8 +252,8 @@ spec:
 - **Status & lifecycle.** Each CR now carries its own `status.phase`, conditions, and
   `observedGeneration`; provisioning may be synchronous or asynchronous, and the controller polls the
   aggregator while an async operation is in flight. See
-  [InternalDatabase Status Reference](../DBaaS%20Operator.md#internaldatabase-status-reference) for the
-  phase and condition reference.
+  [InternalDatabase Reasons](../resources/internal-database.md#reasons) and
+  [Status](../status-and-troubleshooting.md#status) for the phase and condition reference.
 
 ---
 

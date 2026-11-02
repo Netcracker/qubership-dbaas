@@ -1,13 +1,15 @@
 name: qubership-dbaas
 version: 1.0.0
 description: APM project for qubership-dbaas
+targets: [opencode, claude]
 dependencies:
   apm:
-  - Netcracker/qubership-ai-packages/agent-packages/qubership-essentials
+  - Netcracker/qubership-ai-packages/agent-packages/qubership-repo-essentials
+  - Netcracker/qubership-ai-packages/agent-packages/test-authoring
+  - Netcracker/qubership-ai-packages/agent-packages/adversarial-code-review
   mcp: []
 includes: auto
 scripts: {}
-targets:
-- claude
-- codex
-- cursor
+compilation:
+  agents_md:
+    mode: managed_section

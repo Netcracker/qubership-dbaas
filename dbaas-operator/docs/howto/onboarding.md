@@ -12,11 +12,11 @@ The complete custom resource reference, status model, and configuration paramete
 
 ## Migration paths
 
-| Current state of the service | Recommended path |
-|---|---|
-| Provisions databases through dbaas-aggregator at runtime | [Automated migration](#automated-migration) with `dbaas-mounted-secret-migration` |
-| Ships Core Operator `kind: DBaaS` declarations | [Automated migration](#automated-migration) with `migrate-core-operator-dbaas-declarations`, or the [declaration mapping guide](migrate-declarations-from-core-operator.md) |
-| Has no existing DBaaS integration | [Manual migration](#manual-migration) |
+| Current state of the service                             | Recommended path                                                                                                                                                            |
+|----------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Provisions databases through dbaas-aggregator at runtime | [Automated migration](#automated-migration) with `dbaas-mounted-secret-migration`                                                                                           |
+| Ships Core Operator `kind: DBaaS` declarations           | [Automated migration](#automated-migration) with `migrate-core-operator-dbaas-declarations`, or the [declaration mapping guide](migrate-declarations-from-core-operator.md) |
+| Has no existing DBaaS integration                        | [Manual migration](#manual-migration)                                                                                                                                       |
 
 ---
 
@@ -64,12 +64,12 @@ The equivalent work performed by hand, and the starting point for a service with
 
 2. **Select a custom resource for each requirement.**
 
-   | Requirement | Custom resource |
-   |------|----|
-   | Provision a new logical database | `InternalDatabase` |
-   | Register a database that already exists elsewhere | `ExternalDatabase` |
-   | Expose credentials as a mountable Secret (see [Obtaining credentials](#obtaining-credentials)) | `DatabaseSecretClaim` |
-   | Grant a microservice a role on a database | `DatabaseAccessPolicy` |
+   | Requirement                                                                                    | Custom resource        |
+   |------------------------------------------------------------------------------------------------|------------------------|
+   | Provision a new logical database                                                               | `InternalDatabase`     |
+   | Register a database that already exists elsewhere                                              | `ExternalDatabase`     |
+   | Expose credentials as a mountable Secret (see [Obtaining credentials](#obtaining-credentials)) | `DatabaseSecretClaim`  |
+   | Grant a microservice a role on a database                                                      | `DatabaseAccessPolicy` |
 
    The balancing rule resources (`MicroserviceBalancingRule`, `NamespaceBalancingRule`,
    `PermanentBalancingRule`) control physical database placement rather than a service's own database.
@@ -229,7 +229,7 @@ The dbaas-agent chart ships that pair, named `dbaas-operator-secrets`, wherever 
 A namespace without Cloud Core has to supply it, applied manually or from the service's own chart.
 [`config/samples/namespaced-secret-rbac.yaml`](../../config/samples/namespaced-secret-rbac.yaml) is a
 ready-to-apply bundle for one namespace; see
-[Secret Access (Namespaced)](../DBaaS%20Operator.md#secret-access-namespaced) for the rationale.
+[Secret Access](../installation/installation.md#secret-access) for the rationale.
 
 ### Starting before the Secret exists
 
