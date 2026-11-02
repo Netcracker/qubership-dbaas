@@ -25,9 +25,6 @@ SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "migrate-core-operator-dbaas-declar
 RUNNER = SCRIPTS / "apply_migration.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "issue_776"
 CORETPL_HELPER_STUBS = r'''{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}
-{{- define "coretpl.dbaasOperatorEnabled" -}}
-{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
-{{- end -}}
 '''
 
 
@@ -76,7 +73,7 @@ class Issue776FixturesTest(unittest.TestCase):
                         "operatorNamespace": '{{ include "coretpl.dbaasNamespace" $ }}',
                         "serviceName": "{{ .Values.SERVICE_NAME }}",
                         "namespace": "{{ .Values.NAMESPACE }}",
-                        "outputFile": "dbaas-operator-resources.yaml",
+                        "outputFile": "templates/dbaas-operator-resources.yaml",
                         "sources": [{"path": "chart/dbaas-declaration.yaml", "sha256": sha256(source)}],
                     }
                 ],
@@ -99,7 +96,7 @@ class Issue776FixturesTest(unittest.TestCase):
                         "operatorNamespace": '{{ include "coretpl.dbaasNamespace" $ }}',
                         "serviceName": "site-management",
                         "namespace": "{{ .Values.NAMESPACE }}",
-                        "outputFile": "dbaas-operator-resources.yaml",
+                        "outputFile": "templates/dbaas-operator-resources.yaml",
                         "sources": [{"path": "chart/dbaas-declaration.yaml", "sha256": sha256(source)}],
                     }
                 ],

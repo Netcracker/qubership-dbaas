@@ -13,8 +13,10 @@ public interface DatabaseDbaasRepository {
     List<Database> findInternalDatabaseByNamespace(String namespace);
 
     List<Database> findInternalDatabasesByNamespaceAndType(String namespace, String type);
-
+    @Deprecated
     List<Database> findDatabasesByAdapterIdAndType(String adapterId, String type, boolean isUseCache);
+
+    List<Database> findDatabasesForMigration(String adapterId, String type, List<String> requiredRoles, int limit);
 
     List<Database> findByDbState_StateAndDbState_PodName(DbState.DatabaseStateStatus state, String podName);
 

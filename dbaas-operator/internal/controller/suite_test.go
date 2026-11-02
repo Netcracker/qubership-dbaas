@@ -125,6 +125,8 @@ var _ = BeforeSuite(func() {
 		},
 	)).To(Succeed())
 
+	Expect(indexPhysicalDatabases(ctx, mgr.GetFieldIndexer())).To(Succeed())
+
 	cacheClient = mgr.GetClient()
 
 	go func() {

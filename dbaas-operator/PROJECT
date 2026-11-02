@@ -72,4 +72,13 @@ resources:
   kind: PermanentBalancingRule
   path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
   version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: netcracker.com
+  group: dbaas
+  kind: PhysicalDatabase
+  path: github.com/netcracker/qubership-dbaas/dbaas-operator/api/v1
+  version: v1
 version: "3"

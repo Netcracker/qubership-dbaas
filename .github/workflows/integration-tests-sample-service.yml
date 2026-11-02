@@ -12,16 +12,11 @@ on:
         description: SMTP password used to email the test report.
   workflow_dispatch:
     inputs:
-      aggregator-m2m-auth-mode:
-        description: M2M_AUTH_MODE of the aggregator
+      m2m-auth-mode:
+        description: M2M_AUTH_MODE value
         type: choice
         options: [hybrid, legacy, k8s]
         default: hybrid
-      operator-m2m-auth-mode:
-        description: M2M_AUTH_MODE of dbaas-operator
-        type: choice
-        options: [legacy, hybrid, k8s]
-        default: legacy
   schedule:
     - cron: "0 2 * * *"  # Daily at 02:00 UTC
   pull_request:
@@ -75,40 +70,8 @@ jobs:
           head-sha: ${{ github.event.pull_request.head.sha }}
           pull-request-number: ${{ github.event.pull_request.number }}
 
-      - name: Create kind config
-        run: |
-          cat <<EOF_KIND > kind-config.yaml
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          kubeadmConfigPatches:
-            - |
-              kind: ClusterConfiguration
-              apiServer:
-                extraArgs:
-                  - name: enable-admission-plugins
-                    value: NodeRestriction,OwnerReferencesPermissionEnforcement
-          nodes:
-            - role: control-plane
-            - role: worker
-              labels:
-                region: database
-            - role: worker
-          EOF_KIND
-
-      - name: Set up Kind
-        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
-        with:
-          # kind v0.32.0 is the first release that generates kubeadm v1beta4
-          # config; the admission-plugin patch in kind-config.yaml uses its list-form extraArgs.
-          version: v0.33.0
-          cluster_name: kind
-          config: kind-config.yaml
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5
-
-      - name: Set up Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+      - name: Set up kind cluster
+        uses: ./.github/actions/setup-kind-cluster
 
       - name: Set up JDK 26
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
@@ -125,30 +88,6 @@ jobs:
       - name: Deploy Fluent Bit
         run: |
           kubectl apply -f .github/declarations/fluent-bit-logging.yaml
-
-      - name: Create Patroni service values
-        run: |
-          cat <<'EOF_PATRONI' > "$GITHUB_WORKSPACE/patroni-services-values.yaml"
-          postgresPassword: ${POSTGRES_PASSWORD}
-
-          backupDaemon:
-            install: false
-
-          dbaas:
-            install: true
-            aggregator:
-              registrationAddress: http://${DBAAS_SERVICE_NAME}.${DBAAS_NAMESPACE}.svc.cluster.local:8080
-              registrationUsername: cluster-dba
-              registrationPassword: password
-
-          # The patroni-services chart runs Robot Framework integration tests by default
-          # (integration-robot-tests / supplementary-robot-tests). In kind they create+drop a burst of
-          # throwaway databases that overwhelms the single-node Patroni and transiently breaks unrelated
-          # provisioning (the sample-service tenant claims landed in that window). Disable them — this IT
-          # exercises dbaas itself, the patroni self-tests are not needed here.
-          tests:
-            install: false
-          EOF_PATRONI
 
       - name: Compute DBaaS image tag
         env:
@@ -229,55 +168,12 @@ jobs:
           docker build -t "$PROXY_IMAGE_REPOSITORY:$PROXY_IMAGE_TAG" test-apps/dbaas-proxy
           kind load docker-image "$PROXY_IMAGE_REPOSITORY:$PROXY_IMAGE_TAG" --name kind
 
-      - name: Deploy DBaaS Aggregator, Operator, and PostgreSQL
-        working-directory: bootstrap
-        run: >
-          make install
-          CONFIG_FILE=local.mk
-          M2M_AUTH_MODE=${{ inputs.aggregator-m2m-auth-mode || 'hybrid' }}
-          OPERATOR_M2M_AUTH_MODE=${{ inputs.operator-m2m-auth-mode || 'legacy' }}
-          PATRONI_SERVICES_VALUES_FILE=$GITHUB_WORKSPACE/patroni-services-values.yaml
-          REPOS_DIR=$(dirname $GITHUB_WORKSPACE)
-
-      - name: Wait for DBaaS deployments
-        run: |
-          kubectl rollout status deployment/dbaas-aggregator -n "$TEST_NAMESPACE" --timeout=300s
-          kubectl rollout status deployment/dbaas-operator -n "$TEST_NAMESPACE" --timeout=300s
-
-      # Phase C authenticates with `dbaas`-audience projected tokens, which the aggregator verifies by
-      # OIDC discovery against the kube-apiserver (/.well-known/openid-configuration + JWKS). Grant the
-      # aggregator ServiceAccount the issuer-discovery role and restart so the verifier re-runs
-      # discovery with the permission. Test-only — the product chart does not ship this binding.
-      - name: Grant aggregator OIDC issuer-discovery (for direct-M2M verification)
-        run: |
-          kubectl create clusterrolebinding dbaas-aggregator-issuer-discovery \
-            --clusterrole=system:service-account-issuer-discovery \
-            --serviceaccount="$TEST_NAMESPACE":dbaas-aggregator \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n "$TEST_NAMESPACE" rollout restart deployment/dbaas-aggregator
-          kubectl rollout status deployment/dbaas-aggregator -n "$TEST_NAMESPACE" --timeout=300s
-
-      - name: Wait for PostgreSQL readiness
-        run: |
-          PATRONI_POD="$(kubectl -n postgres get pods -o name | grep '^pod/pg-patroni-' | head -1 | cut -d/ -f2)"
-          if [ -z "$PATRONI_POD" ]; then
-            echo "No pg-patroni pod found in namespace postgres"
-            kubectl -n postgres get pods -o wide
-            kubectl -n postgres get svc
-            exit 1
-          fi
-          echo "Waiting for PostgreSQL pod: $PATRONI_POD"
-          kubectl -n postgres wait --for=condition=Ready pod/"$PATRONI_POD" --timeout=300s
-          for i in {1..60}; do
-            if kubectl -n postgres exec "$PATRONI_POD" -- pg_isready -h pg-patroni.postgres -p 5432; then
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "PostgreSQL did not accept connections in time"
-          kubectl -n postgres get pods -o wide
-          kubectl -n postgres get svc
-          exit 1
+      - name: Provision testing environment
+        env:
+          AGGREGATOR_TAG: ${{ env.TAG }}
+          OPERATOR_TAG: ${{ env.DBAAS_OPERATOR_TAG }}
+          M2M_AUTH_MODE: ${{ inputs.m2m-auth-mode }}
+        run: helmfile -e ci -f bootstrap/helmfile/helmfile.yaml.gotmpl sync
 
       # The operator holds no cluster-wide Secret RBAC, so the namespace gets a
       # dbaas-operator-secrets Role + RoleBinding bound to the operator ServiceAccount. Without it,
@@ -315,8 +211,6 @@ jobs:
             --mapping "postgresql:8801:pg-patroni.postgres.svc.cluster.local:5432"
 
       # The proxy is installed after the operator, so update the already-running Deployment directly.
-      # DBAAS_ROTATION_POLL_INTERVAL already comes from
-      # bootstrap/dbaas-operator-values.yaml and decides how fast a rotation reaches the Secret.
       - name: Route the operator through DBaaS Proxy
         run: |
           kubectl -n "$TEST_NAMESPACE" set env deployment/dbaas-operator \
@@ -388,8 +282,8 @@ jobs:
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The ephemeral kind bootstrap registers this DB_CLIENT user; see the dbaas block in
-          # patroni-services-values.yaml above, which must stay in step with these values.
+          # The helmfile bootstrap registers this DB_CLIENT user; see the dbaas block in
+          # bootstrap/helmfile/values/patroni-services.yaml.gotmpl, which must stay in step with these values.
           ROTATION_DBAAS_USERNAME: cluster-dba
           ROTATION_DBAAS_PASSWORD: password
 

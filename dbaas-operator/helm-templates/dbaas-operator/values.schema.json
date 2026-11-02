@@ -206,6 +206,18 @@
         "10m"
       ]
     },
+    "DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL": {
+      "$id": "#/properties/DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL",
+      "type": "string",
+      "title": "The DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL schema",
+      "description": "PhysicalDatabase resync period as a Go duration (e.g. 30m, 1h). Each resync probes the adapter and repeats the registration, which picks up a rotated adapter password and restores a registration changed outside the resource. Leave empty to use the operator's built-in default (10m).",
+      "default": "",
+      "examples": [
+        "",
+        "30m",
+        "1h"
+      ]
+    },
     "DBAAS_AGGREGATOR_URL": {
       "$id": "#/properties/DBAAS_AGGREGATOR_URL",
       "type": "string",

@@ -11,10 +11,9 @@ Convert legacy DBaaS declarations into dedicated Kubernetes resources:
 - `DbPolicy` or `dbPolicy` to `apiVersion: dbaas.netcracker.com/v1`, `kind: DatabaseAccessPolicy`
 
 For a Helm chart, inspect `Chart.yaml` and `Chart.lock` before inventory. Upgrade the chart to the
-latest available CoreTPL release that includes the DBaaS helpers, refresh its lock file and vendored
-dependencies, and verify that it provides `coretpl.dbaasNamespace` and
-`coretpl.dbaasOperatorEnabled`. Stop if those helpers are unavailable. Plain manifests do not use
-CoreTPL and require a verified literal operator namespace.
+latest available CoreTPL release that includes `coretpl.dbaasNamespace`, refresh its lock file and
+vendored dependencies, and verify that the helper is available. Stop if it is unavailable. Plain
+manifests do not use CoreTPL and require a verified literal operator namespace.
 
 `scripts/apply_migration.py` is the only process allowed to create, modify, or delete files in the
 consumer repository. It is deterministic: given the same plan and repository state it produces the
@@ -38,11 +37,11 @@ change the plan (or the source) and re-run the writer.
    root, plus any `helmValues` the chart needs to render at all), the output file, and every source
    file with the SHA-256 of the exact bytes you inspected. Read [mapping.md](references/mapping.md)
    for the field-by-field conversion this plan feeds into; do not restate it here.
-   For a mixed cluster where the dbaas-operator CRDs may not be installed, set the optional
-   `capabilityGuard` field (`"dbaas.netcracker.com/v1"`) so the generated resource only renders
-   when that capability is present and the legacy source is preserved -- not deleted -- guarded to
-   the operator-absent branch instead (see mapping.md's "Capability guard" section). Omitting it
-   keeps every prior behavior unchanged.
+   Helm roots always use the `dbaas.netcracker.com/v1` capability guard. The writer adds it
+   automatically when `capabilityGuard` is omitted and rejects an explicit `null`. Generated
+   resources render only when the capability is present, while the writer preserves legacy sources
+   under the operator-absent branch. Plain roots contain static, non-Helm manifests and do not use
+   this guard. See [mapping.md](references/mapping.md) for the complete capability-guard contract.
 3. **Check.** Run `apply_migration.py --repo-root <repo> --plan <plan.json> --check`. This computes
    every change, materializes it into an isolated temporary tree per root, and validates it there --
    including rendering a helm root with `helm template` -- without touching the real repository.

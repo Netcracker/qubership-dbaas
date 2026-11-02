@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.entity.pg;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.netcracker.cloud.dbaas.entity.shared.AbstractDbResource;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import lombok.EqualsAndHashCode;
@@ -13,6 +14,7 @@ import lombok.NonNull;
 @Entity(name = "DbResource")
 @Table(name = "db_resources")
 @EqualsAndHashCode(callSuper = true)
+@Schema(description = "Database resources. Used for bulk drop resources operation")
 public class DbResource extends AbstractDbResource {
 
     public DbResource(@JsonProperty("kind") @NonNull String kind, @JsonProperty("name") @NonNull String name) {

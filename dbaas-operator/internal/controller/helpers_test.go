@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -264,5 +265,94 @@ func TestIsReadyForGeneration(t *testing.T) {
 				t.Errorf("isReadyForGeneration() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestHandleRemoteError_AdapterMirrorsAggregator checks that an adapter error and
+// an aggregator error with the same status code end in the same phase, Stalled
+// condition, and retry behavior; only the reason names differ.
+func TestHandleRemoteError_AdapterMirrorsAggregator(t *testing.T) {
+	tests := []struct {
+		status               int
+		wantPhase            dbaasv1.Phase
+		wantStalled          metav1.ConditionStatus
+		wantRetry            bool
+		wantAggregatorReason string
+		wantAdapterReason    string
+	}{
+		{status: 401, wantPhase: dbaasv1.PhaseBackingOff, wantStalled: metav1.ConditionFalse, wantRetry: true,
+			wantAggregatorReason: EventReasonUnauthorized, wantAdapterReason: EventReasonUnauthorized},
+		{status: 400, wantPhase: dbaasv1.PhaseInvalidConfiguration, wantStalled: metav1.ConditionTrue,
+			wantAggregatorReason: EventReasonAggregatorRejected, wantAdapterReason: EventReasonAdapterRejected},
+		{status: 403, wantPhase: dbaasv1.PhaseInvalidConfiguration, wantStalled: metav1.ConditionTrue,
+			wantAggregatorReason: EventReasonAggregatorRejected, wantAdapterReason: EventReasonAdapterRejected},
+		{status: 409, wantPhase: dbaasv1.PhaseInvalidConfiguration, wantStalled: metav1.ConditionTrue,
+			wantAggregatorReason: EventReasonAggregatorRejected, wantAdapterReason: EventReasonAdapterRejected},
+		{status: 404, wantPhase: dbaasv1.PhaseBackingOff, wantStalled: metav1.ConditionFalse, wantRetry: true,
+			wantAggregatorReason: EventReasonAggregatorError, wantAdapterReason: EventReasonAdapterError},
+		{status: 500, wantPhase: dbaasv1.PhaseBackingOff, wantStalled: metav1.ConditionFalse, wantRetry: true,
+			wantAggregatorReason: EventReasonAggregatorError, wantAdapterReason: EventReasonAdapterError},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("HTTP %d", tt.status), func(t *testing.T) {
+			for _, c := range []struct {
+				svc        remoteService
+				err        error
+				wantReason string
+			}{
+				{svc: aggregatorService, err: &aggregatorclient.AggregatorError{StatusCode: tt.status, Body: "nope"}, wantReason: tt.wantAggregatorReason},
+				{svc: adapterService, err: &aggregatorclient.AdapterError{StatusCode: tt.status, Body: "nope"}, wantReason: tt.wantAdapterReason},
+			} {
+				phase := dbaasv1.PhaseProcessing
+				var conditions []metav1.Condition
+				recorder := record.NewFakeRecorder(1)
+
+				result, err := handleRemoteError(&phase, &conditions, 3, recorder, &dbaasv1.PhysicalDatabase{},
+					c.err, "request-1", c.svc)
+
+				if !result.IsZero() {
+					t.Errorf("%s: result = %+v, want zero", c.svc.name, result)
+				}
+				if gotRetry := err != nil; gotRetry != tt.wantRetry {
+					t.Errorf("%s: retry = %v, want %v", c.svc.name, gotRetry, tt.wantRetry)
+				}
+				if phase != tt.wantPhase {
+					t.Errorf("%s: phase = %q, want %q", c.svc.name, phase, tt.wantPhase)
+				}
+				ready := findCondition(conditions, conditionTypeReady)
+				if ready == nil || ready.Status != metav1.ConditionFalse || ready.Reason != c.wantReason {
+					t.Errorf("%s: Ready = %+v, want False/%s", c.svc.name, ready, c.wantReason)
+				}
+				stalled := findCondition(conditions, conditionTypeStalled)
+				if stalled == nil || stalled.Status != tt.wantStalled {
+					t.Errorf("%s: Stalled = %+v, want %s", c.svc.name, stalled, tt.wantStalled)
+				}
+				select {
+				case event := <-recorder.Events:
+					if !strings.Contains(event, corev1.EventTypeWarning+" "+c.wantReason) || !strings.Contains(event, c.svc.name) {
+						t.Errorf("%s: event = %q, want a %s warning naming the service", c.svc.name, event, c.wantReason)
+					}
+				default:
+					t.Errorf("%s: expected a warning event", c.svc.name)
+				}
+			}
+		})
+	}
+}
+
+func TestIsOlderClaimant(t *testing.T) {
+	older := &dbaasv1.PhysicalDatabase{ObjectMeta: metav1.ObjectMeta{
+		UID: "b", CreationTimestamp: metav1.NewTime(time.Unix(100, 0))}}
+	younger := &dbaasv1.PhysicalDatabase{ObjectMeta: metav1.ObjectMeta{
+		UID: "a", CreationTimestamp: metav1.NewTime(time.Unix(200, 0))}}
+	sameTimeLowUID := &dbaasv1.PhysicalDatabase{ObjectMeta: metav1.ObjectMeta{
+		UID: "a", CreationTimestamp: metav1.NewTime(time.Unix(100, 0))}}
+
+	if !isOlderClaimant(older, younger) || isOlderClaimant(younger, older) {
+		t.Error("the earlier creationTimestamp must win regardless of UID")
+	}
+	if !isOlderClaimant(sameTimeLowUID, older) || isOlderClaimant(older, sameTimeLowUID) {
+		t.Error("on equal creationTimestamps the lower UID must win, and exactly one side must win")
 	}
 }

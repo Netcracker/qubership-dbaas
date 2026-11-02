@@ -1,0 +1,25 @@
+# The Secret holds the adapter's own Basic Auth credentials under the fixed keys
+# "username" and "password". It must be in the same namespace as the
+# PhysicalDatabase, and the operator needs Secret read access there
+# (see namespaced-secret-rbac.yaml).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dbaas-adapter-credentials
+type: Opaque
+stringData:
+  username: "dbaas-aggregator"
+  password: "change-me"
+---
+# Everything else (physicalDatabaseId, type, labels, supportedRoles, features,
+# readOnlyHost, apiVersions) comes from the adapter's
+# GET /api/v2/adapter/physical_database and is shown in the status.
+apiVersion: dbaas.netcracker.com/v1
+kind: PhysicalDatabase
+metadata:
+  name: postgres-core
+spec:
+  operatorNamespace: dbaas-system
+  adapterAddress: http://pg-dbaas-adapter.postgres:8080
+  credentialsSecretRef:
+    name: dbaas-adapter-credentials

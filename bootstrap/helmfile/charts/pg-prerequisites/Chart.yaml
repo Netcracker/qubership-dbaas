@@ -1,0 +1,4 @@
+apiVersion: v2
+name: pg-prerequisites
+description: Cluster prerequisites for the Patroni stack deployed by pgskipper.
+version: 0.0.1

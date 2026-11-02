@@ -15,16 +15,15 @@ import com.netcracker.cloud.dbaas.repositories.pg.jpa.BackupRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.BgNamespaceRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.RestoreRepository;
 import com.netcracker.cloud.dbaas.utils.RestClientExceptionUtil;
+import com.netcracker.cloud.dbaas.utils.RetryPolicyUtil;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.cdi.SchedulerLock;
 import net.javacrumbs.shedlock.core.LockAssert;
 import net.javacrumbs.shedlock.core.LockConfiguration;
-import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.core.SimpleLock;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
@@ -74,8 +73,8 @@ public class DbBackupV2Service {
     private final AsyncOperations asyncOperations;
     private final PasswordEncryption encryption;
     private final BgNamespaceRepository bgNamespaceRepository;
-    private final LockProvider lockProvider;
     private final DeletionService deletionService;
+    private final LockService lockService;
 
     private final Duration retryDelay;
     private final int retryAttempts;
@@ -91,8 +90,8 @@ public class DbBackupV2Service {
                              AsyncOperations asyncOperations,
                              PasswordEncryption encryption,
                              BgNamespaceRepository bgNamespaceRepository,
-                             LockProvider lockProvider,
                              DeletionService deletionService,
+                             LockService lockService,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.delay.seconds") Duration retryDelay,
                              @ConfigProperty(name = "dbaas.backup-restore.retry.attempts") int retryAttempts,
                              @ConfigProperty(name = "dbaas.backup-restore.check.attempts") int retryCount
@@ -106,8 +105,8 @@ public class DbBackupV2Service {
         this.asyncOperations = asyncOperations;
         this.encryption = encryption;
         this.bgNamespaceRepository = bgNamespaceRepository;
-        this.lockProvider = lockProvider;
         this.deletionService = deletionService;
+        this.lockService = lockService;
         this.retryDelay = retryDelay;
         this.retryAttempts = retryAttempts;
         this.retryCount = retryCount;
@@ -1781,7 +1780,7 @@ public class DbBackupV2Service {
                 Duration.ofMinutes(LOCK_AT_MOST),
                 Duration.ofMinutes(LOCK_AT_LEAST));
 
-        Optional<SimpleLock> optLock = lockProvider.lock(config);
+        Optional<SimpleLock> optLock = lockService.getExpirableLock(config);
 
         if (optLock.isEmpty()) {
             throw new OperationAlreadyRunningException("restore", "");
@@ -1799,11 +1798,7 @@ public class DbBackupV2Service {
 
             return action.get();
         } finally {
-            try {
-                lock.unlock();
-            } catch (IllegalStateException ex) {
-                log.debug("Lock is already unlocked", ex);
-            }
+            LockService.unlock(lock);
         }
     }
 
@@ -1815,11 +1810,7 @@ public class DbBackupV2Service {
 
     private RetryPolicy<Object> buildRetryPolicy(String operation, String entityType, String entityId, String adapterId) {
         String context = String.format("%s operation [%s=%s, adapter=%s]", operation, entityType, entityId, adapterId);
-        return new RetryPolicy<>()
-                .handle(AdapterException.class)
-                .abortIf((_, e) -> e != null && is4xxError(e))
-                .withMaxRetries(retryAttempts)
-                .withDelay(retryDelay)
+        return RetryPolicyUtil.buildAdapterRetryPolicy(retryAttempts, retryDelay)
                 .onFailedAttempt(e -> log.warn("Attempt failed for {}: {}",
                         context, extractErrorMessage(e.getLastFailure())))
                 .onRetry(e -> log.info("Retrying {}...", context))

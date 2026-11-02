@@ -153,6 +153,10 @@ spec:
             # Secrets. Short here so credential rotations are picked up quickly in dev.
             - name: DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL
               value: "2s"
+            # PhysicalDatabase probes the adapter and repeats the registration on
+            # each resync. Short here so a 202 scenario turns into Succeeded quickly in dev.
+            - name: DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL
+              value: "10s"
           # Run the binary THROUGH the base image's ENTRYPOINT (/usr/bin/entrypoint.sh),
           # which loads the Kubernetes service-account ca.crt into the trust store before
           # exec'ing its args, so any outbound TLS (e.g. an HTTPS aggregator URL) trusts the

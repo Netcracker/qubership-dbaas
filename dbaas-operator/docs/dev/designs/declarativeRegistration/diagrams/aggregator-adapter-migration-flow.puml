@@ -1,0 +1,48 @@
+@startuml
+title Additional roles migration
+
+participant "DBaaS Adapter" as Adapter
+participant "DBaaS Aggregator" as Aggregator
+database "DBaaS Registry" as Registry
+
+note over Adapter, Aggregator
+  Starts when physical database registration answers 202 Accepted
+  with the first portion of logical databases (up to 100).
+end note
+
+loop while Aggregator answers 202 Accepted
+  Adapter -> Adapter: create users for new roles\nin logical databases of the portion
+  Adapter -> Aggregator: report portion result\nPOST /api/v3/dbaas/{type}/physical_databases/{phydbid}/instruction/{instructionId}/additional-roles\n(connection properties of new users, or failure)
+
+  opt adapter created users
+    Aggregator -> Registry: save connection properties of logical databases\nand remove them from the migration plan
+  end
+
+  alt adapter reports failure, or saving results fails
+    Aggregator -> Registry: delete migration plan
+    Aggregator --> Adapter: 500 Internal Server Error (no error code): migration aborted,\nrestarts on next registration
+  else portion is processed without failures
+    alt logical databases remain in the plan
+      Aggregator --> Adapter: 202 Accepted: next portion of logical databases
+    else all logical databases are migrated
+      Aggregator -> Registry: apply the parked registration request:\nsave new supported roles of physical database\nand delete migration plan
+      Aggregator -> Aggregator: reset the adapter client and physical database caches
+      note right of Aggregator
+        The physical database enters the new state only here.
+        Until this step it keeps the old set of roles, so the
+        aggregator never hands out a role that is not yet stored
+        in the DBaaS Registry. After the cache reset, requests use
+        the new roles, adapter address and credentials.
+      end note
+      Aggregator --> Adapter: 200 OK: migration completed
+    end
+  end
+end
+
+legend bottom right
+  Solid arrow: synchronous request. Dashed arrow: response.
+  Each loop iteration is a separate request initiated by the adapter.
+  Registry write acknowledgements are omitted.
+endlegend
+@enduml
+

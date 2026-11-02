@@ -28,10 +28,9 @@ Read [contracts.md](references/contracts.md) before building a plan, and
 [testing.md](references/testing.md) when validating generated output or running a cluster test.
 
 For a Helm chart, inspect `Chart.yaml` and `Chart.lock` before inventory. Upgrade the chart to the
-latest available CoreTPL release that includes the DBaaS helpers, refresh its lock file and vendored
-dependencies, and verify that it provides `coretpl.dbaasNamespace` and
-`coretpl.dbaasOperatorEnabled`. Stop if those helpers are unavailable. Plain manifests do not use
-CoreTPL and require a verified literal operator namespace.
+latest available CoreTPL release that includes `coretpl.dbaasNamespace`, refresh its lock file and
+vendored dependencies, and verify that the helper is available. Stop if it is unavailable. Plain
+manifests do not use CoreTPL and require a verified literal operator namespace.
 
 `scripts/apply_migration.py` is the only process that creates, modifies, or deletes a file named in
 its plan -- a generated resource, a patched workload manifest, or a superseded declaration. Once
@@ -204,9 +203,9 @@ those namespaces differ.
 }
 ```
 
-`capabilityGuard` and `operatorModeEnvironment` (both omitted above) are optional -- see
-references/contracts.md's "Capability guard" section for a mixed cluster where the dbaas-operator
-CRDs may not be installed. Omitting `capabilityGuard` keeps every prior behavior unchanged.
+Helm roots default `capabilityGuard` to `"dbaas.netcracker.com/v1"`; the example states it
+explicitly for clarity. The guard is mandatory for Helm roots. `operatorModeEnvironment` remains
+optional. See references/contracts.md's "Capability guard" section for the guarded behavior.
 
 `sourceHashes` keys are root-relative and must record the SHA-256 of every file this root reads
 (every workload file, every superseded-declaration file) at the moment of discovery; the writer

@@ -4,4 +4,5 @@ resources:
 - dbaas_v1_namespacebalancingrule.yaml
 - dbaas_v1_permanentbalancingrule.yaml
 - dbaas_v1_externaldatabase.yaml
+- dbaas_v1_physicaldatabase.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

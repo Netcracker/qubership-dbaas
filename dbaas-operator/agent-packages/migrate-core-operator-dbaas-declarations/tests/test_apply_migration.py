@@ -28,12 +28,21 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PACKAGE_ROOT / ".apm" / "skills" / "migrate-core-operator-dbaas-declarations" / "scripts"
 RUNNER = SCRIPTS / "apply_migration.py"
 CORETPL_HELPER_STUBS = r'''{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}
-{{- define "coretpl.dbaasOperatorEnabled" -}}
-{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" -}}true{{- end -}}
-{{- end -}}
 '''
-CORETPL_OPERATOR_GUARD = '{{- if include "coretpl.dbaasOperatorEnabled" $ }}'
-CORETPL_OPERATOR_FALLBACK_GUARD = '{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}'
+CAPABILITY_GUARD_OPEN = '{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" }}'
+CAPABILITY_FALLBACK_GUARD_OPEN = (
+    '{{- if not (.Capabilities.APIVersions.Has "dbaas.netcracker.com/v1") }}'
+)
+
+
+def unwrap_capability_guard(content: str) -> str:
+    """Remove the outer generated-resource guard so assertions can parse YAML."""
+    lines = content.splitlines(keepends=True)
+    guard_index = next(i for i, line in enumerate(lines) if line.strip() == CAPABILITY_GUARD_OPEN)
+    del lines[guard_index]
+    end_index = next(i for i in range(len(lines) - 1, -1, -1) if lines[i].strip() == "{{- end }}")
+    del lines[end_index]
+    return "".join(lines)
 
 
 def sha256(path: Path) -> str:
@@ -109,7 +118,7 @@ class ApplyMigrationTest(unittest.TestCase):
             plan = root_plan(repo, "deploy", "deploy/dbaas.json", "dbaas-operator-resources.yaml")
 
             code, report = run(repo, plan, "apply", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(code, 0, report)
             self.assertEqual(report["status"], "changed")
             self.assertFalse((repo / "deploy/dbaas.json").exists())
             out = (repo / "deploy/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
@@ -843,12 +852,13 @@ class ApplyMigrationTest(unittest.TestCase):
             (repo / "chart/Chart.yaml").write_text("apiVersion: v2\nname: svc\nversion: 0.1.0\n", encoding="utf-8")
             write(repo, "chart/dbaas.json", json.dumps(self._templated_scope_declaration()))
             plan = root_plan(
-                repo, "chart", "chart/dbaas.json", "dbaas-operator-resources.yaml",
+                repo, "chart", "chart/dbaas.json", "templates/dbaas-operator-resources.yaml",
                 kind="helm", namespace="{{ .Values.NAMESPACE }}",
                 nameOverrides={"chart/dbaas.json#1#1#1": "{{ trunc 20 .Release.Name }}-svc-db"},
+                helmValues={"NAMESPACE": "deploy-ns", "SCOPE": "service"},
             )
             code, report = run(repo, plan, "check", tmp)
-            self.assertEqual(code, 0, report.get("__stderr"))
+            self.assertEqual(code, 0, report)
 
     def test_bom_and_crlf_source_preserved_when_nothing_migrates(self) -> None:
         body = "apiVersion: v1\r\nkind: ConfigMap\r\nmetadata:\r\n  name: keep\r\n"
@@ -1064,7 +1074,7 @@ class ApplyMigrationTest(unittest.TestCase):
             self.assertEqual(code, 0, report)
             output = (repo / "chart/templates/resources.yaml").read_text(encoding="utf-8")
             self.assertIn("# guard comment\n{{- if .Values.DB_ENABLED }}", output)
-            self.assertTrue(output.endswith("{{- end }}\n\n"))
+            self.assertTrue(unwrap_capability_guard(output).endswith("{{- end }}\n\n"))
 
     def test_plan_rejects_non_hex_hash_and_non_string_root(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1171,7 +1181,9 @@ class HelmTemplateParsingTest(unittest.TestCase):
             plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
             code, report = run(repo, plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            out = unwrap_capability_guard(
+                (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            )
             resource = yaml.safe_load(out.split("{{- if .Values.enabled }}", 1)[1].rsplit("{{- end }}", 1)[0])
             self.assertEqual(
                 resource["spec"]["classifier"]["microserviceName"], "{{ .Values.SERVICE_NAME }}"
@@ -1191,7 +1203,9 @@ class HelmTemplateParsingTest(unittest.TestCase):
             plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
             code, report = run(repo, plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            resource = yaml.safe_load((repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8"))
+            resource = yaml.safe_load(unwrap_capability_guard(
+                (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            ))
             self.assertEqual(resource["spec"]["microserviceName"], "{{ .Values.SERVICE_NAME | quote }}")
 
     def test_nested_range_inside_a_converted_document_blocks(self) -> None:
@@ -1275,7 +1289,9 @@ class HelmTemplateParsingTest(unittest.TestCase):
             code, report = run(repo, plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
             remaining = (repo / "chart/templates/dbaas.yaml").read_text(encoding="utf-8")
-            self.assertEqual(remaining, f"---\n{unrelated}")
+            self.assertTrue(remaining.startswith(f"---\n{unrelated}"))
+            self.assertIn(CAPABILITY_FALLBACK_GUARD_OPEN, remaining)
+            self.assertIn("kind: DatabaseDeclaration", remaining)
 
     def test_comments_and_crlf_line_endings_parse(self) -> None:
         body = (
@@ -1300,7 +1316,9 @@ class HelmTemplateParsingTest(unittest.TestCase):
             # never "{{ .Values.SERVICE_NAME }} # trailing comment" (which
             # changes policy identity and would be ineffective once the
             # legacy source is removed).
-            out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            out = unwrap_capability_guard(
+                (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
+            )
             inner = out.split("{{- if .Values.enabled }}", 1)[1].rsplit("{{- end }}", 1)[0]
             resource = yaml.safe_load(inner)
             self.assertEqual(resource["spec"]["microserviceName"], "{{ .Values.SERVICE_NAME }}")
@@ -1325,9 +1343,9 @@ class HelmTemplateParsingTest(unittest.TestCase):
             plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
             code, report = run(repo, plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            resource = yaml.safe_load(
+            resource = yaml.safe_load(unwrap_capability_guard(
                 (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
-            )
+            ))
             self.assertEqual(
                 resource["spec"]["classifier"]["microserviceName"], "{{ .Values.SERVICE_NAME }}"
             )
@@ -1354,9 +1372,9 @@ class HelmTemplateParsingTest(unittest.TestCase):
             plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", "templates/dbaas-operator-resources.yaml")
             code, report = run(repo, plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            resource = yaml.safe_load(
+            resource = yaml.safe_load(unwrap_capability_guard(
                 (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
-            )
+            ))
             self.assertEqual(resource["spec"]["settings"]["doubleQuoted"], "{{ .Values.NAME }} # double")
             self.assertEqual(resource["spec"]["settings"]["singleQuoted"], "{{ .Values.NAME }} # single")
             self.assertEqual(resource["spec"]["settings"]["quotedWithRealComment"], "{{ .Values.NAME }}")
@@ -1380,10 +1398,7 @@ GUARD = "dbaas.netcracker.com/v1"
 
 @unittest.skipIf(yaml is None, "PyYAML is required to verify generated YAML")
 class CapabilityGuardTest(unittest.TestCase):
-    """Issue #776 phase 4: the optional capabilityGuard plan field wraps the
-    generated resource in the CoreTPL DBaaS-operator guard and
-    preserves the legacy source under the negated (operator-absent) branch
-    instead of deleting it. Omitting it preserves existing behavior."""
+    """Issue #776 phase 4: Helm migrations use the capability guard by default."""
 
     def test_capability_guard_rejects_an_unrelated_api_version(self) -> None:
         content = json.dumps(
@@ -1425,7 +1440,7 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(code, 5, report.get("__stderr"))
             self.assertIn("coretpl.dbaasNamespace", json.dumps(report))
 
-    def test_omitting_capability_guard_preserves_existing_behavior(self) -> None:
+    def test_omitting_capability_guard_enables_it_for_helm(self) -> None:
         content = json.dumps(
             {"apiVersion": "nc.core.dbaas/v3", "kind": "DbPolicy", "disableGlobalPermissions": True}
         )
@@ -1438,10 +1453,28 @@ class CapabilityGuardTest(unittest.TestCase):
             )
             code, report = run(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
-            self.assertFalse((repo / "chart/templates/dbaas-policy.json").exists())
+            self.assertTrue((repo / "chart/templates/dbaas-policy.json").exists())
             out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
-            self.assertNotIn("coretpl.dbaasOperatorEnabled", out)
+            self.assertIn(CAPABILITY_GUARD_OPEN, out)
             self.assertIn("coretpl.dbaasNamespace", out)
+
+    def test_null_capability_guard_is_rejected(self) -> None:
+        content = json.dumps(
+            {"apiVersion": "nc.core.dbaas/v3", "kind": "DbPolicy", "disableGlobalPermissions": True}
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas-policy.json", content)
+            the_plan = helm_root_plan(
+                repo,
+                "chart/templates/dbaas-policy.json",
+                "templates/dbaas-operator-resources.yaml",
+                capabilityGuard=None,
+            )
+            code, report = run(repo, the_plan, "check", tmp)
+            self.assertEqual(code, 2, report.get("__stderr"))
+            self.assertIn("capabilityGuard cannot be null", json.dumps(report))
 
     def test_generated_resource_guarded_and_legacy_source_preserved_under_else(self) -> None:
         content = json.dumps(
@@ -1459,7 +1492,7 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(code, 0, report.get("__stderr"))
 
             out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
-            self.assertTrue(out.startswith(f"---\n{CORETPL_OPERATOR_GUARD}\n"))
+            self.assertTrue(out.startswith(f"---\n{CAPABILITY_GUARD_OPEN}\n"))
             self.assertIn("kind: DatabaseAccessPolicy", out)
             self.assertIn("{{- end }}", out)
 
@@ -1468,7 +1501,7 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertTrue(source_path.exists())
             preserved = source_path.read_text(encoding="utf-8")
             self.assertTrue(
-                preserved.startswith(f"{CORETPL_OPERATOR_FALLBACK_GUARD}\n")
+                preserved.startswith(f"{CAPABILITY_FALLBACK_GUARD_OPEN}\n")
             )
             self.assertIn(content, preserved)
             self.assertTrue(preserved.rstrip("\n").endswith("{{- end }}"))
@@ -1507,7 +1540,7 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(source_path.read_text(encoding="utf-8"), preserved)
             self.assertEqual(
                 output_path.read_text(encoding="utf-8").count(
-                    CORETPL_OPERATOR_GUARD
+                    CAPABILITY_GUARD_OPEN
                 ),
                 1,
             )
@@ -1531,7 +1564,7 @@ class CapabilityGuardTest(unittest.TestCase):
             code, report = run(repo, the_plan, "apply", tmp)
             self.assertEqual(code, 0, report.get("__stderr"))
             out = (repo / "chart/templates/dbaas-operator-resources.yaml").read_text(encoding="utf-8")
-            self.assertIn(CORETPL_OPERATOR_GUARD, out)
+            self.assertIn(CAPABILITY_GUARD_OPEN, out)
             self.assertIn("{{- if .Values.enabled }}", out)
             self.assertEqual(out.count("{{- end }}"), 2)
 

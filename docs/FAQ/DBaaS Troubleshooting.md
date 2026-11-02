@@ -17,7 +17,7 @@ evaluate the operability and load of the adapters and the DBaaS itself.
 
 <details><summary>Example</summary>
 
-Full documentation: [Get overall status](../rest-api.md#get-overall-status)
+Full documentation: [Get overall status](../api/rest-api.md#get-overall-status)
 
 ```bash
 # Request
@@ -70,7 +70,7 @@ The response contains a list of lost databases for each physical adapter.
 
 <details><summary>Example</summary>
 
-Full documentation: [Get lost databases](../rest-api.md#get-lost-databases)
+Full documentation: [Get lost databases](../api/rest-api.md#get-lost-databases)
 
 ```bash
 # Request
@@ -133,7 +133,7 @@ DBMS), so this list needs to be analyzed manually.
 <details><summary>Example</summary>
 
 Full
-documentation: [Get ghost databases](../rest-api.md#get-ghost-databases)
+documentation: [Get ghost databases](../api/rest-api.md#get-ghost-databases)
 
 ```bash
 # Request
@@ -204,7 +204,7 @@ The response contains detailed information about the logical databases found.
 <details><summary>Example</summary>
 
 Full
-documentation: [Find Debug Logical Databases](../rest-api.md#find-debug-logical-databases)
+documentation: [Find Debug Logical Databases](../api/rest-api.md#find-debug-logical-databases)
 
 ```bash
 # Request
@@ -282,7 +282,7 @@ is created to analyze the problem.
 <details><summary>Example</summary>
 
 Full
-documentation: [Get Dump of Dbaas Database Information](../rest-api.md#get-dump-of-dbaas-database-information)
+documentation: [Get Dump of Dbaas Database Information](../api/rest-api.md#get-dump-of-dbaas-database-information)
 
 ```bash
 # Request

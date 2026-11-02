@@ -77,6 +77,11 @@ public class SecureDbaasAdapterRestClientV2 implements DbaasAdapterRestClientV2 
     }
 
     @Override
+    public Response getPhysicalDatabaseInformation() {
+        return executeRequest(restClient::getPhysicalDatabaseInformation);
+    }
+
+    @Override
     public Response forceRegistration() {
         return executeRequest(restClient::forceRegistration);
     }

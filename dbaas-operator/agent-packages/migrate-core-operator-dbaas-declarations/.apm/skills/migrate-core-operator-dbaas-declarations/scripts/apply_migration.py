@@ -39,10 +39,11 @@ Plan shape::
 
 A source is matched against the plan's recorded SHA-256 before it is read.
 Every supported item in a source is converted; a source is deleted only when
-every item in it converted successfully -- unless ``capabilityGuard`` (optional;
-omitted above by default) is set, in which case it is preserved instead, guarded
-to the operator-absent branch (see references/mapping.md's "Capability guard"
-section). A ``nameOverrides`` key addresses one generated resource as
+every item in it converted successfully. Helm roots default ``capabilityGuard``
+to ``dbaas.netcracker.com/v1``, which preserves the source under the
+operator-absent branch. This guard is mandatory for Helm roots (see
+references/mapping.md's "Capability guard" section). A ``nameOverrides`` key
+addresses one generated resource as
 ``<source path>#<doc index>#<item index>#<declaration index>`` (all 1-based) and
 is required whenever that resource's default name would be templated or would
 mix literal text with a Helm expression.
@@ -103,15 +104,11 @@ _DBAAS_CAPABILITY = "dbaas.netcracker.com/v1"
 
 
 def _capability_guard_open(capability_guard: str) -> str:
-    # The plan value still drives Helm's --api-versions validation render.
-    # CoreTPL owns the actual capability lookup in generated templates.
-    return '{{- if include "coretpl.dbaasOperatorEnabled" $ }}\n'
+    return '{{- if .Capabilities.APIVersions.Has "' + capability_guard + '" }}\n'
 
 
 def _negated_guard_open(capability_guard: str) -> str:
-    # The plan value still drives Helm's --api-versions validation render.
-    # CoreTPL owns the actual capability lookup in generated templates.
-    return '{{- if not (include "coretpl.dbaasOperatorEnabled" $) }}\n'
+    return '{{- if not (.Capabilities.APIVersions.Has "' + capability_guard + '") }}\n'
 
 
 _CAPABILITY_GUARD_CLOSE = "{{- end }}\n"
@@ -243,13 +240,14 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
         seen_namespaces.add(root["namespace"])
         if "namePrefix" in root and not isinstance(root["namePrefix"], str):
             raise PlanError(f"{where}.namePrefix must be a string")
-        # capabilityGuard is optional (issue #776): omitting it preserves the
-        # existing operator-only behavior exactly. When present, the
-        # generated resource is wrapped in the CoreTPL DBaaS-operator guard,
-        # and the superseded source document is preserved -- guarded to
-        # the operator-absent branch -- instead of deleted (see build_root).
-        if "capabilityGuard" in root and root["capabilityGuard"] != _DBAAS_CAPABILITY:
+        capability_guard = root.get(
+            "capabilityGuard", _DBAAS_CAPABILITY if root["kind"] == "helm" else None
+        )
+        if root["kind"] == "helm" and capability_guard is None:
+            raise PlanError(f"{where}.capabilityGuard cannot be null for a helm root")
+        if capability_guard is not None and capability_guard != _DBAAS_CAPABILITY:
             raise PlanError(f"{where}.capabilityGuard must be {_DBAAS_CAPABILITY!r}")
+        norm["capabilityGuard"] = capability_guard
         for field in ("helmValues", "nameOverrides"):
             value = root.get(field)
             if value is None:

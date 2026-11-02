@@ -38,6 +38,7 @@ const (
 	controllerMBR = "microservicebalancingrule"
 	controllerNBR = "namespacebalancingrule"
 	controllerPBR = "permanentbalancingrule"
+	controllerPDR = "physicaldatabase"
 
 	triggerSpecChange         = "spec_change"
 	triggerPolling            = "polling"
@@ -74,6 +75,9 @@ const (
 	operationDeleteNamespaceRule     = "delete_namespace_balancing_rule"
 	operationApplyPermanentRule      = "apply_permanent_balancing_rule"
 	operationDeletePermanentRule     = "delete_permanent_balancing_rule"
+
+	operationRegisterPDR  = "register_physical_database"
+	operationProbeAdapter = "probe_adapter"
 )
 
 // Metric declarations.
@@ -95,7 +99,7 @@ var dbaasReconcileTriggerTotal = prometheus.NewCounterVec(
 var dbaasSecretResolutionErrorsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "dbaas_secret_resolution_errors_total",
-		Help: "Failures reading credential Secrets referenced by ExternalDatabase, scoped to CRs assigned to this operator instance. Labeled by namespace and failure category (secret_not_found, key_missing, key_empty, forbidden, secret_read_failed).",
+		Help: "Failures reading credential Secrets referenced by ExternalDatabase and PhysicalDatabase, scoped to CRs assigned to this operator instance. Labeled by namespace and failure category (secret_not_found, key_missing, key_empty, forbidden, secret_read_failed).",
 	},
 	[]string{"namespace", "reason"},
 )
@@ -124,6 +128,28 @@ var dbaasAggregatorRequestsTotal = prometheus.NewCounterVec(
 	[]string{"controller", "operation", "result"},
 )
 
+// dbaasAdapterRequestDurationSeconds tracks HTTP call latency from the operator
+// directly to dbaas adapters (the PhysicalDatabase probe). Buckets
+// match dbaasAggregatorRequestDurationSeconds.
+var dbaasAdapterRequestDurationSeconds = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "dbaas_adapter_request_duration_seconds",
+		Help:    "Duration of HTTP calls from the operator to dbaas adapters by controller and operation.",
+		Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	},
+	[]string{"controller", "operation"},
+)
+
+// dbaasAdapterRequestsTotal counts direct adapter calls by controller, operation,
+// and result, with the same result values as dbaasAggregatorRequestsTotal.
+var dbaasAdapterRequestsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "dbaas_adapter_requests_total",
+		Help: "Total calls from the operator to dbaas adapters, labeled by controller, operation, and result.",
+	},
+	[]string{"controller", "operation", "result"},
+)
+
 // dbaasAsyncOperationDurationSeconds measures end-to-end provisioning time from
 // async submit (HTTP 202) to final poll outcome. This is the user-visible DD SLO.
 var dbaasAsyncOperationDurationSeconds = prometheus.NewHistogramVec(
@@ -141,6 +167,8 @@ func init() {
 		dbaasSecretResolutionErrorsTotal,
 		dbaasAggregatorRequestDurationSeconds,
 		dbaasAggregatorRequestsTotal,
+		dbaasAdapterRequestDurationSeconds,
+		dbaasAdapterRequestsTotal,
 		dbaasAsyncOperationDurationSeconds,
 	)
 }
@@ -178,6 +206,45 @@ func aggregatorResult(err error) string {
 		}
 		if aggErr.IsDatabaseNotFound() {
 			return resultDatabaseNotFound
+		}
+		return resultServerError
+	}
+	return resultNetworkError
+}
+
+// recordAdapterCall records both the duration and the outcome counter for a
+// single direct adapter HTTP call. Call it immediately after every
+// AdapterClient method returns, passing the start time and the error (nil = success).
+func recordAdapterCall(controller, operation string, start time.Time, err error) {
+	dbaasAdapterRequestDurationSeconds.
+		WithLabelValues(controller, operation).
+		Observe(time.Since(start).Seconds())
+	dbaasAdapterRequestsTotal.
+		WithLabelValues(controller, operation, adapterResult(err)).
+		Inc()
+}
+
+// adapterResult maps an error from AdapterClient to a result label. A 200 that
+// lacks a field the registration needs is the adapter's fault and counts as
+// server_error, not as a network failure.
+func adapterResult(err error) string {
+	if err == nil {
+		return resultSuccess
+	}
+	var requestContextErr *aggregatorclient.RequestContextError
+	if errors.As(err, &requestContextErr) {
+		return resultConfigurationError
+	}
+	if errors.Is(err, aggregatorclient.ErrAdapterResponseIncomplete) {
+		return resultServerError
+	}
+	var adapterErr *aggregatorclient.AdapterError
+	if errors.As(err, &adapterErr) {
+		if adapterErr.IsAuthError() {
+			return resultAuthError
+		}
+		if adapterErr.IsSpecRejection() {
+			return resultSpecRejection
 		}
 		return resultServerError
 	}

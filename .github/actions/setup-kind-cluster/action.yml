@@ -1,0 +1,43 @@
+name: Set up kind cluster
+description: >
+  Creates a kind cluster from the kind config and installs kubectl, Helm, and a pinned Helmfile
+  release.
+
+inputs:
+  kind-config:
+    description: Path to the kind cluster config, relative to the workspace root.
+    required: false
+    default: bootstrap/helmfile/kind.yaml
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Kind
+      uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+      with:
+        version: v0.33.0
+        cluster_name: kind
+        config: ${{ github.workspace }}/${{ inputs.kind-config }}
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
+
+    - name: Set up Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+    - name: Install Helmfile
+      shell: bash
+      run: |
+        set -euo pipefail
+        version=1.8.2
+        archive=helmfile_${version}_linux_amd64.tar.gz
+        sha256=f179485c5bb9f8e20fbd8ea16d8807915988aba4d60131ee864fb3232452716e
+        download_dir="$RUNNER_TEMP/helmfile-download"
+        mkdir -p "$download_dir" "$RUNNER_TEMP/helmfile-bin"
+        curl -sSLo "$download_dir/$archive" \
+          "https://github.com/helmfile/helmfile/releases/download/v${version}/${archive}"
+        echo "${sha256}  ${download_dir}/${archive}" | sha256sum -c -
+        tar -xzf "$download_dir/$archive" -C "$RUNNER_TEMP/helmfile-bin" helmfile
+        chmod 0755 "$RUNNER_TEMP/helmfile-bin/helmfile"
+        echo "$RUNNER_TEMP/helmfile-bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/helmfile-bin/helmfile" version

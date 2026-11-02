@@ -42,8 +42,8 @@ a count.
 Add render tests that verify `coretpl.dbaasNamespace` is available and the writer never creates an
 operator namespace entry in `values.yaml`/`values.schema.json`. CoreTPL owns tests for the helper's
 internal resolution logic. When a capability guard is used, also render with and without the target
-API version and verify that `coretpl.dbaasOperatorEnabled` selects the native and fallback branches
-respectively.
+API version and verify that the generated capability condition selects the native and fallback
+branches respectively.
 
 Install PyYAML in the execution environment, then run the bundled validator:
 

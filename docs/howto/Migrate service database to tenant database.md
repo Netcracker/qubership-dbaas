@@ -19,7 +19,7 @@ Old service classifier place into "from", new tenant classifier place into "to" 
 
 To migrate service classifier to tenant you have to set scope="tenant" and add one more field tenantId={**tenant-id**}
 
-[PUT /api/v3/dbaas/namespaces/{namespace}/databases/update-classifier/{type}](../rest-api.md#update-existing-database-classifier)
+[PUT /api/v3/dbaas/namespaces/{namespace}/databases/update-classifier/{type}](../api/rest-api.md#update-existing-database-classifier)
 
 Example request body :
 
@@ -44,7 +44,7 @@ Example request body :
 
 Send request to DBaaS Aggregator to get list databases from namespaces.
 
-[GET /api/v3/dbaas/{namespace}/databases/list](../rest-api.md#get-database-by-classifier)
+[GET /api/v3/dbaas/{namespace}/databases/list](../api/rest-api.md#get-database-by-classifier)
 
 You will receive all databases from namespaces. Response contains 2 databases with bellow classifiers.
 
@@ -91,7 +91,7 @@ When updated service will start.
 
 Check that database with old classifier has is externally_manageable flag.
 
-[POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}](../rest-api.md#get-database-by-classifier)
+[POST /api/v3/dbaas/{namespace}/databases/get-by-classifier/{type}](../api/rest-api.md#get-database-by-classifier)
 
 Example request body:
 

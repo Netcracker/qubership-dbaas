@@ -93,8 +93,10 @@ The operator publishes two families of metrics:
 | `dbaas_reconcile_trigger_total` | Counter | `controller`, `trigger` | Reconcile invocations broken down by what triggered them. Complements the framework's reconcile totals with the trigger dimension. |
 | `dbaas_aggregator_requests_total` | Counter | `controller`, `operation`, `result` | Calls to dbaas-aggregator by controller, operation, and outcome. The `result` label separates user errors (`spec_rejection`), local operator wiring errors (`configuration_error`), and platform errors (`auth_error`, `server_error`). |
 | `dbaas_aggregator_request_duration_seconds` | Histogram | `controller`, `operation` | Latency of HTTP calls to dbaas-aggregator. Buckets: `0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30` s. |
+| `dbaas_adapter_requests_total` | Counter | `controller`, `operation`, `result` | Calls from the operator directly to dbaas adapters — the `PhysicalDatabase` probe. `result` values are described below. |
+| `dbaas_adapter_request_duration_seconds` | Histogram | `controller`, `operation` | Latency of direct calls to dbaas adapters. Same buckets as `dbaas_aggregator_request_duration_seconds`. |
 | `dbaas_async_operation_duration_seconds` | Histogram | `result` | End-to-end duration of asynchronous `InternalDatabase` provisioning, from async submit (HTTP 202) to the final poll outcome. Buckets: `1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200` s. The submit timestamp is held in operator memory, so an operation that was in flight across an operator restart or a leadership change is never observed — `_count` under-reports completions after a restart. |
-| `dbaas_secret_resolution_errors_total` | Counter | `namespace`, `reason` | Failures reading the credential `Secret` referenced by an `ExternalDatabase` assigned to this operator instance. A non-zero value means a database may be left without valid credentials — direct service impact. |
+| `dbaas_secret_resolution_errors_total` | Counter | `namespace`, `reason` | Failures reading the credential `Secret` referenced by an `ExternalDatabase` or a `PhysicalDatabase` assigned to this operator instance. A non-zero value means a database or an adapter registration may be left without valid credentials — direct service impact. |
 
 > Histograms expose the usual `_bucket`, `_sum`, and `_count` series.
 >
@@ -229,20 +231,21 @@ appears first and is expanded by default; all detailed rows are collapsed until 
 
 **`controller`** (lowercase; event/operation metrics):
 `externaldatabase`, `internaldatabase`, `databaseaccesspolicy`, `databasesecretclaim`,
-`microservicebalancingrule`, `namespacebalancingrule`, `permanentbalancingrule`, `balancingrule`.
+`microservicebalancingrule`, `namespacebalancingrule`, `permanentbalancingrule`, `balancingrule`,
+`physicaldatabase`.
 
 > The three balancing-rule kinds share one reconciler, so **aggregator-call** metrics group them
 > under `balancingrule`, while **reconcile-trigger** metrics use the per-kind names.
 
 **`kind`** (CamelCase; resource-state metrics):
 `ExternalDatabase`, `InternalDatabase`, `DatabaseAccessPolicy`, `DatabaseSecretClaim`,
-`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`.
+`MicroserviceBalancingRule`, `NamespaceBalancingRule`, `PermanentBalancingRule`, `PhysicalDatabase`.
 
 **`trigger`** (what caused a reconcile):
 
 | Value | Meaning |
 |---|---|
-| `spec_change` | The CR spec / generation changed. It is also the **default/catch-all** bucket: for `ExternalDatabase` it additionally counts the periodic resync (`ResyncInterval`) and `refresh`-annotation force-reconciles, since those are not classified as any of the more specific triggers below. |
+| `spec_change` | The CR spec / generation changed. It is also the **default/catch-all** bucket: for `ExternalDatabase` and `PhysicalDatabase` it additionally counts the periodic resync (`ResyncInterval`) and `refresh`-annotation force-reconciles, and for `PhysicalDatabase` also the reconciles triggered by a sibling that claims the same `physicalDatabaseId`, since those are not classified as any of the more specific triggers below. |
 | `polling` | An `InternalDatabase` reconcile that polls an in-progress async provisioning operation (`status.trackingId` is set). Emitted only with `controller="internaldatabase"` — the rotation poller's feed shows up as `rotation_trigger` instead |
 | `rotation_trigger` | A rotation-trigger annotation was stamped — `databasesecretclaim` only |
 | `sibling_secret_claim_change` | A related `DatabaseSecretClaim` changed — `databasesecretclaim` only |
@@ -256,7 +259,11 @@ appears first and is expanded by default; all detailed rows are collapsed until 
 `register_external_database`, `apply_config`, `poll_status`, `get_database_by_classifier`,
 `create_database`, `apply_microservice_balancing_rule`, `cleanup_microservice_balancing_rule`,
 `apply_namespace_balancing_rule`, `delete_namespace_balancing_rule`,
-`apply_permanent_balancing_rule`, `delete_permanent_balancing_rule`.
+`apply_permanent_balancing_rule`, `delete_permanent_balancing_rule`, `register_physical_database`.
+
+**`operation`** (which adapter call — `dbaas_adapter_requests_total`, `dbaas_adapter_request_duration_seconds`):
+`probe_adapter` — the `GET {spec.adapterAddress}/api/v2/adapter/physical_database` request a
+`PhysicalDatabase` sends before it registers the adapter.
 
 The rotation poller's changed-databases feed (`GET /api/v3/dbaas/databases/changed`) has no `operation`
 value — it is not recorded in `dbaas_aggregator_requests_total` at all.
@@ -277,6 +284,11 @@ value — it is not recorded in `dbaas_aggregator_requests_total` at all.
 | `network_error` | Connection/timeout, no HTTP response | Platform error |
 | `database_not_found` | Database not yet known to the aggregator | Normal `DatabaseSecretClaim` waiting state — **not** a failure |
 
+**`result`** (adapter call outcome — `dbaas_adapter_requests_total`): `success` for a `200`, `auth_error` for a
+`401`, which points at the adapter credentials `Secret` rather than at the operator, `server_error` for a `404`, a
+`503`, or a `200` without a required field, and `network_error` when the adapter cannot be reached.
+`configuration_error` has the same meaning as for aggregator calls.
+
 **`result`** (async provisioning — `dbaas_async_operation_duration_seconds`):
 `success`, `failed`, `terminated`.
 
@@ -284,8 +296,9 @@ value — it is not recorded in `dbaas_aggregator_requests_total` at all.
 `secret_not_found`, `key_missing`, `key_empty`, `forbidden`, `secret_read_failed`.
 
 **`phase`** (resource phase): `Unknown`, `Processing`, `WaitingForDependency`, `Succeeded`, `BackingOff`,
-`InvalidConfiguration`. `WaitingForDependency` is used only by `InternalDatabase`, while it polls dbaas-aggregator for
-an in-progress async provisioning operation.
+`InvalidConfiguration`. `WaitingForDependency` is used by `InternalDatabase`, while it polls dbaas-aggregator for
+an in-progress async provisioning operation, and by `PhysicalDatabase`, while dbaas-aggregator parks the
+registration until a role migration completes.
 
 **`target_type`** (balancing rules): `microservice` (MicroserviceBalancingRule),
 `rule` (NamespaceBalancingRule), `namespace` (PermanentBalancingRule).

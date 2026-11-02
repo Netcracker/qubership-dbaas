@@ -342,6 +342,7 @@ public class DBaaService {
         return databaseRegistry;
     }
 
+    @Transactional
     public void updateDatabaseConnectionPropertiesAndResourcesById(UUID id, List<Map<String, Object>> connectionProperties, List<DbResource> resources) {
         Database database = logicalDbDbaasRepository.getDatabaseDbaasRepository().findById(id).orElse(null);
         Preconditions.checkNotNull(database, "Database for updating must present");

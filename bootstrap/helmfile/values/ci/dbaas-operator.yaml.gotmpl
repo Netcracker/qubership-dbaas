@@ -1,0 +1,6 @@
+DBAAS_ROTATION_POLL_INTERVAL: "2s"
+DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL: "30s"
+
+{{- $m2mAuthMode := env "M2M_AUTH_MODE" | default "hybrid" }}
+M2M_AUTH_MODE: {{ $m2mAuthMode | quote }}
+KUBERNETES_M2M_ENABLED: {{ ne $m2mAuthMode "legacy" }}

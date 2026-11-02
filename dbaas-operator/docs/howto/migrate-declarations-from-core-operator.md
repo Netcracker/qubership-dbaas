@@ -32,15 +32,15 @@ behavior (role grants, provisioning, cloning) is unchanged.
 > declaration's `metadata.microserviceName`. The new CRDs make it an explicit,
 > validated, **immutable** spec field so the owner is unambiguous and auditable.
 
-For Helm charts, use the latest CoreTPL release that provides the DBaaS helpers and derive
-`spec.operatorNamespace` from `API_DBAAS_ADDRESS` with `coretpl.dbaasNamespace`, as shown below. A
-plain `kubectl apply` manifest uses the literal namespace instead.
+For Helm charts, use the latest CoreTPL release that provides `coretpl.dbaasNamespace` and derive
+`spec.operatorNamespace` from `API_DBAAS_ADDRESS` with that helper, as shown below. A plain
+`kubectl apply` manifest uses the literal namespace instead.
 
 If the same chart must support clusters both with and without the DBaaS Operator CRDs, wrap each
-native resource with the CoreTPL capability helper:
+native resource with a capability check:
 
 ```gotemplate
-{{- if include "coretpl.dbaasOperatorEnabled" $ }}
+{{- if .Capabilities.APIVersions.Has "dbaas.netcracker.com/v1" }}
 ... native DBaaS resource ...
 {{- end }}
 ```

@@ -29,6 +29,11 @@ DBAAS_ROTATION_POLL_INTERVAL: ""
 # the operator's built-in default (10m).
 DBAAS_EXTERNAL_DATABASE_RESYNC_INTERVAL: ""
 
+# PhysicalDatabase resync period as a Go duration (e.g. 30m, 1h). Each resync probes
+# the adapter and repeats the registration, which picks up a rotated adapter password and restores
+# a registration changed outside the resource. Leave empty to use the built-in default (10m).
+DBAAS_PHYSICAL_DATABASE_RESYNC_INTERVAL: ""
+
 # ============== AGGREGATOR AUTHENTICATION ============================
 # Authentication mode for outbound calls to dbaas-aggregator. MUST match the
 # aggregator's own M2M_AUTH_MODE setting, otherwise every call is rejected:
