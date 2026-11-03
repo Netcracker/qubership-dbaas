@@ -1295,7 +1295,6 @@ An error response may occur if there is an issue with the input parameters or an
 
 ### Update existing database connection properties
 The API allows to update existing database connection properties.  
-Related article: https://perch.qubership.org/display/CLOUDCORE/Update+Connection+Properties  
 
 * **URI:**  `PUT {dbaas_host}/api/v3/dbaas/namespaces/{namespace}/databases/update-connection/{type}`
 * **Headers:**  
@@ -1480,7 +1479,6 @@ Allows to configure a logic of balancing logical databases over physical.
 Auto balancing rules allows configure behavior of DbaaS when a physical database of some specific 
 type is chosen for new logical database. This rule currently works for new databases only, no 
 migration of logical databases between physical databases is supported yet.
-Related page: https://perch.qubership.org/display/CLOUDCORE/How+to+configure+namespace+autobalance+rules
 
 * **URI:**  `PUT {dbaas_host}/api/v3/dbaas/{namespace}/physical_databases/balancing/rules/{ruleName}`
 * **Headers:**  
@@ -1585,7 +1583,6 @@ database new logical database should be created. This API allows add such rule f
 it means that all logical databases for microservices in this namespace will be placed in specific 
 physical database according to rule. Such rule is permanent, and it won't be deleted during physical 
 database deletion.  
-Related article: https://perch.qubership.org/display/CLOUDCORE/Physical+DB+permanent+balancing+rules 
 
 > WARNING! Rules can be overridden. Rule's integrity and validity is the responsibility of project(applies) side.
 > It means that rule doesn't merge and there can be only one version of rule. If you change configuration of previous rule and send it, then logical databases will be created by the new changed rule. Therefore, be careful before deleting or modifying the rule.
@@ -1781,7 +1778,6 @@ Delete all permanent balancing rules on namespace.
 Allows adding balancing rules for microservices.  Balancing rules are intended to define in which
 physical database new logical database should be created. This API allows adding such rules for 
 each microservice, or for group of microservices separately.  
-Related article: https://perch.qubership.org/display/CLOUDCORE/On+Microservice+physical+DB+balancing+rule
 
 > *WARNING! Rules can be overridden. Rule's integrity and validity is the responsibility of project(applies) side.*
 > It means that rule doesn't merge and there can be only one version of rule. If you change configuration of previous rule and send it, then logical databases will be created by the new changed rule. Therefore, be careful before deleting or modifying the rule.
@@ -1881,7 +1877,6 @@ Related article: https://perch.qubership.org/display/CLOUDCORE/On+Microservice+p
 This API receives JSON-configs with rules for microservices and returns in response mapping label 
 to physical db (whether all mentioned lables exist), indicates errors if any. Response also 
 contains information about default physical databases for each db type.  
-Related article: https://perch.qubership.org/display/CLOUDCORE/On+microservice+balancing+rule+validation
 
 * **URI:**  `PUT {dbaas_host}/api/v3/dbaas/{namespace}/physical_databases/rules/onMicroservices/validation`
 * **Headers:**  
@@ -3686,7 +3681,6 @@ This API allows you to register the database in DBaaS. The registered database w
 and it is assumed that it already exists in the cluster The purpose for this API is to register 
 databases which were not created through DBaaS. If registered database already exist in DBaaS then 
 it will not be added.  
-Related article:[https://perch.qubership.org/display/CLOUDCORE/Register+logical+database+as+internal](https://perch.qubership.org/display/CLOUDCORE/Register+logical+database+as+internal#Registerlogicaldatabaseasinternal-Withoutusercreation)
 
 * **URI:**  `PUT {dbaas_host}/api/v3/dbaas/migration/databases`
 * **Headers:**  
@@ -3770,8 +3764,6 @@ Since 3.22 this API supports two features:
 - the ability to register an external logical database as an internal. Please note that in this case 
 database's field `physicalDBId` will be either taken from request or resolved automatically, and value for field
 `backupDisabled` will be taken from request.
-
-Related article:[https://perch.qubership.org/display/CLOUDCORE/Register+logical+database+as+internal](https://perch.qubership.org/display/CLOUDCORE/Register+logical+database+as+internal#Registerlogicaldatabaseasinternal-Withusercreation)
 
 * **URI:**  `PUT {dbaas_host}/api/v3/dbaas/migration/databases/with-user-creation`
 * **Headers:**  
@@ -5222,7 +5214,7 @@ Contains classifier by which a database record for updating connection propertie
 | Name                                     | Description                                                                                                                                                                                                                                                                                                                                                                                | Schema                 |
 |------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
 | **classifier**  <br>*required*           | Database classifier.                                                                                                                                                                                                                                                                                                                                                                       | < string, object > map |
-| **connectionProperties**  <br>*required* | New connection properties. Structure of connection properties for different db types may be found at https://perch.qubership.org/pages/viewpage.action?spaceKey=CLOUDCORE&title=DbaaS+Adapters. Should contain "role", because update procedure is done for one role in a time.                                                                                                            | <string, object> map   |
+| **connectionProperties**  <br>*required* | New connection properties. Should contain "role", because update procedure is done for one role in a time.                                                                                                                                                                                                                                                                                 | <string, object> map   |
 | **dbName**  <br>*optional*               | Name of database.                                                                                                                                                                                                                                                                                                                                                                          | string                 |
 | **physicalDatabaseId**  <br>*optional*   | Specifies the new identification of physical database where a logical database is already located. You have to pass this parameter if your goal is to update and specify a new physical database.It is an optional parameter and if not specified then physical database will not change. FYI: You can get the list of all physical databases by "List registered physical databases" API. | string                 |
 | **resources**  <br>*optional*            | The list of the resources which related to the logical database, for example: user, database.You should pass this parameter if you change username or database name. In order to update the list you should get an original list, change one use and pass. FYI: You can get the list of origin database resources by "List of all databases" API with "withResources" query parameter.     | object                 |
