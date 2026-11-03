@@ -114,20 +114,18 @@ The suggested namespace name for DBaaS Aggregator is `dbaas`.
 
 #### Enable Operator-to-Aggregator mTLS
 
-If Operator-to-Aggregator communication must use TLS, the platform administrator must install Istio Ambient Mesh and
-enroll the namespace containing both workloads. Add the Ambient Mesh label to the DBaaS namespace:
+If Operator-to-Aggregator communication must use TLS, the platform administrator must install Istio Ambient Mesh and enroll the namespace containing both workloads.
+Add the Ambient Mesh label to the DBaaS namespace:
 
 ```bash
 kubectl label namespace <dbaas-namespace> istio.io/dataplane-mode=ambient --overwrite
 ```
 
-The namespace label enrolls all workloads in that namespace. Do not add Istio labels to the DBaaS Deployments or pod
-templates.
+The namespace label enrolls all workloads in that namespace. Do not add Istio labels to the DBaaS Deployments or pod templates.
 
 The ztunnel data plane transparently secures communication between enrolled workloads with mTLS.
 
-The namespace label does not install Istio. On a cluster without the Istio Ambient data plane and ztunnel, the label
-does not enable TLS.
+The namespace label does not install Istio. On a cluster without the Istio Ambient data plane and ztunnel, the label does not enable TLS.
 
 ### Configuration
 
