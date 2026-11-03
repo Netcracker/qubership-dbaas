@@ -32,16 +32,6 @@ GOMODCACHE ?=
 SKILLCHECK_PATTERNS ?= agent-packages/*/.apm/skills
 export SKILLCHECK_PATTERNS
 
-# Optional: synchronize this Makefile from the upstream template.
-# Set PLATFORM_CI_TOOLKIT_RAW_URL to the raw URL of linter/templates/Makefile.common.mk.
-sync-precheck-makefile:
-ifdef PLATFORM_CI_TOOLKIT_RAW_URL
-	curl -fsSL -o $(REPO_ROOT)/Makefile.common $(PLATFORM_CI_TOOLKIT_RAW_URL)
-else
-	@echo "Set PLATFORM_CI_TOOLKIT_RAW_URL to the raw URL of linter/templates/Makefile.common.mk"
-	@exit 1
-endif
-
 # Forward environment variables used by the common linter. They are only passed
 # through if set in the caller's environment.
 LINTER_ENV ?= \
