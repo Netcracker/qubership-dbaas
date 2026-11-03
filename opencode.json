@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "watcher": {
+    "ignore": [
+      "node_modules/**", "vendor/**",
+      "dist/**", "build/**", "out/**", ".next/**", ".nuxt/**", "coverage/**",
+      ".git/**", "logs/**", "tmp/**", "temp/**", ".cache/**",
+      ".vscode/**", ".idea/**",
+      "apm_modules/**",
+      "**/target/**", "**/*.class", "**/*.jar", "**/*.war",
+      "dbaas-operator/bin/**", "**/*.exe", "**/*.test", "**/*.out"
+    ]
+  },
+  "permission": {
+    "read": {}
+  }
+}

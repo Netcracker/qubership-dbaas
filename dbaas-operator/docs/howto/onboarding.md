@@ -12,11 +12,11 @@ The complete custom resource reference, status model, and configuration paramete
 
 ## Migration paths
 
-| Current state of the service | Recommended path |
-|---|---|
-| Provisions databases through dbaas-aggregator at runtime | [Automated migration](#automated-migration) with `dbaas-mounted-secret-migration` |
-| Ships Core Operator `kind: DBaaS` declarations | [Automated migration](#automated-migration) with `migrate-core-operator-dbaas-declarations`, or the [declaration mapping guide](migrate-declarations-from-core-operator.md) |
-| Has no existing DBaaS integration | [Manual migration](#manual-migration) |
+| Current state of the service                             | Recommended path                                                                                                                                                            |
+|----------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Provisions databases through dbaas-aggregator at runtime | [Automated migration](#automated-migration) with `dbaas-mounted-secret-migration`                                                                                           |
+| Ships Core Operator `kind: DBaaS` declarations           | [Automated migration](#automated-migration) with `migrate-core-operator-dbaas-declarations`, or the [declaration mapping guide](migrate-declarations-from-core-operator.md) |
+| Has no existing DBaaS integration                        | [Manual migration](#manual-migration)                                                                                                                                       |
 
 ---
 
@@ -64,12 +64,12 @@ The equivalent work performed by hand, and the starting point for a service with
 
 2. **Select a custom resource for each requirement.**
 
-   | Requirement | Custom resource |
-   |------|----|
-   | Provision a new logical database | `InternalDatabase` |
-   | Register a database that already exists elsewhere | `ExternalDatabase` |
-   | Expose credentials as a mountable Secret (see [Obtaining credentials](#obtaining-credentials)) | `DatabaseSecretClaim` |
-   | Grant a microservice a role on a database | `DatabaseAccessPolicy` |
+   | Requirement                                                                                    | Custom resource        |
+   |------------------------------------------------------------------------------------------------|------------------------|
+   | Provision a new logical database                                                               | `InternalDatabase`     |
+   | Register a database that already exists elsewhere                                              | `ExternalDatabase`     |
+   | Expose credentials as a mountable Secret (see [Obtaining credentials](#obtaining-credentials)) | `DatabaseSecretClaim`  |
+   | Grant a microservice a role on a database                                                      | `DatabaseAccessPolicy` |
 
    The balancing rule resources (`MicroserviceBalancingRule`, `NamespaceBalancingRule`,
    `PermanentBalancingRule`) control physical database placement rather than a service's own database.
@@ -164,11 +164,43 @@ describes, and `userRole` selects which role's credentials are written — one c
 holds `connectionProperties.json` with the adapter-specific connection details, and `metadata.json`
 describing the database, so a client can match the Secret to a request without calling the aggregator.
 
+For cross-namespace access, both namespaces must belong to the same composite structure. Keep the database declaration
+and its `DatabaseAccessPolicy` in the owner namespace, and place the `DatabaseSecretClaim` in the consumer's workload
+namespace. Set the claim's `spec.classifier.namespace` explicitly to the owner namespace and its
+`app.kubernetes.io/name` label to the consuming service name, which must differ from `classifier.microserviceName`. The
+operator creates the Secret beside the claim, and dbaas-aggregator resolves the role from the access policy. A claim
+outside the owner's composite stays in `BackingOff` with reason `NamespaceNotInComposite` until the composite is
+registered. Composite membership is deployment-time topology; the operator checks it before retrieving credentials but
+does not delete Secrets as a runtime revocation mechanism. A transient composite lookup failure blocks new retrieval
+and retries.
+For example:
+
+```yaml
+apiVersion: dbaas.netcracker.com/v1
+kind: DatabaseSecretClaim
+metadata:
+  name: orders-db-reader
+  namespace: reporting
+  labels:
+    app.kubernetes.io/name: reporting-service
+spec:
+  operatorNamespace: dbaas-system
+  classifier:
+    microserviceName: orders-service
+    scope: service
+    namespace: orders
+  type: postgresql
+  userRole: ro
+  secretName: orders-db-reader-secret
+```
+
 Ordering does not have to be managed: a claim whose database does not exist yet receives
-`DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. After ten minutes
-the `Ready` reason changes to `DatabaseNotFoundTimeout` and one Warning event is emitted, but polling
-continues and the claim still recovers on its own. When credentials rotate, the operator rewrites the
-Secret in place under the same name.
+`DatabaseNotFound` and keeps polling, so both resources can ship in the same chart. A cross-namespace
+claim whose `DatabaseAccessPolicy` grant has not reached the aggregator yet similarly receives
+`AccessPolicyNotReady` and keeps polling. After ten minutes of `DatabaseNotFound`, the `Ready` reason
+changes to `DatabaseNotFoundTimeout` and one Warning event is emitted, but polling continues and the
+claim still recovers on its own. For `AccessPolicyNotReady`, check the policy's service name and
+requested role. When credentials rotate, the operator rewrites the Secret in place under the same name.
 
 ### Mounting credentials in the application container
 
@@ -229,7 +261,7 @@ The dbaas-agent chart ships that pair, named `dbaas-operator-secrets`, wherever 
 A namespace without Cloud Core has to supply it, applied manually or from the service's own chart.
 [`config/samples/namespaced-secret-rbac.yaml`](../../config/samples/namespaced-secret-rbac.yaml) is a
 ready-to-apply bundle for one namespace; see
-[Secret Access (Namespaced)](../DBaaS%20Operator.md#secret-access-namespaced) for the rationale.
+[Secret Access](../installation/installation.md#secret-access) for the rationale.
 
 ### Starting before the Secret exists
 

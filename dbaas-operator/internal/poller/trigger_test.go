@@ -67,7 +67,7 @@ func TestPatchClaimsForRotation_PatchesMatchingClaim(t *testing.T) {
 	classifier := map[string]any{"microserviceName": "ms", "scope": "service", "namespace": "ns"}
 
 	matched, patched, err := PatchClaimsForRotation(
-		context.Background(), cl, "ns", classifier, "postgresql", testOperatorNamespace, "2026-06-16T12:00:00Z")
+		context.Background(), cl, classifier, "postgresql", testOperatorNamespace, "2026-06-16T12:00:00Z")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,6 +81,55 @@ func TestPatchClaimsForRotation_PatchesMatchingClaim(t *testing.T) {
 	}
 	if v := got.Annotations[dbaasv1.AnnotationRotationTrigger]; v != "2026-06-16T12:00:00Z" {
 		t.Errorf("rotation-trigger annotation = %q, want the supplied value", v)
+	}
+}
+
+func TestPatchClaimsForRotation_PatchesClaimsInConsumerNamespaces(t *testing.T) {
+	const databaseNamespace = "database-owner"
+	claims := []*dbaasv1.DatabaseSecretClaim{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "claim-a", Namespace: "consumer-a"},
+			Spec: dbaasv1.DatabaseSecretClaimSpec{
+				OperatorNamespace: testOperatorNamespace,
+				Classifier: dbaasv1.Classifier{
+					MicroserviceName: "orders", Scope: "service", Namespace: databaseNamespace,
+				},
+				Type: "postgresql",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "claim-b", Namespace: "consumer-b"},
+			Spec: dbaasv1.DatabaseSecretClaimSpec{
+				OperatorNamespace: testOperatorNamespace,
+				Classifier: dbaasv1.Classifier{
+					MicroserviceName: "orders", Scope: "service", Namespace: databaseNamespace,
+				},
+				Type: "postgresql",
+			},
+		},
+	}
+	cl := newFakeClient(claims[0], claims[1])
+	classifier := map[string]any{
+		"microserviceName": "orders", "scope": "service", "namespace": databaseNamespace,
+	}
+
+	matched, patched, err := PatchClaimsForRotation(
+		context.Background(), cl, classifier, "postgresql", testOperatorNamespace, "rotated")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if matched != 2 || patched != 2 {
+		t.Fatalf("matched=%d patched=%d, want 2/2 across consumer namespaces", matched, patched)
+	}
+
+	for _, claim := range claims {
+		var got dbaasv1.DatabaseSecretClaim
+		if err := cl.Get(context.Background(), client.ObjectKeyFromObject(claim), &got); err != nil {
+			t.Fatalf("get patched claim %s/%s: %v", claim.Namespace, claim.Name, err)
+		}
+		if value := got.Annotations[dbaasv1.AnnotationRotationTrigger]; value != "rotated" {
+			t.Errorf("rotation-trigger on %s/%s = %q, want rotated", claim.Namespace, claim.Name, value)
+		}
 	}
 }
 
@@ -107,7 +156,7 @@ func TestPatchClaimsForRotation_MatchesExtraKeysClaim(t *testing.T) {
 		"microserviceName": "ms", "scope": "service", "namespace": "ns", "region": "eu",
 	}
 	matched, patched, err := PatchClaimsForRotation(
-		context.Background(), cl, "ns", classifier, "postgresql", testOperatorNamespace, "v")
+		context.Background(), cl, classifier, "postgresql", testOperatorNamespace, "v")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,7 +167,7 @@ func TestPatchClaimsForRotation_MatchesExtraKeysClaim(t *testing.T) {
 	// The same feed without the extra field must NOT match the extraKeys claim:
 	// the extra field is part of the identity.
 	matched, _, err = PatchClaimsForRotation(
-		context.Background(), cl, "ns",
+		context.Background(), cl,
 		map[string]any{"microserviceName": "ms", "scope": "service", "namespace": "ns"},
 		"postgresql", testOperatorNamespace, "v")
 	if err != nil {
@@ -150,7 +199,7 @@ func TestPatchClaimsForRotation_LiteralExtraKeysWireKey(t *testing.T) {
 		"microserviceName": "ms", "scope": "service", "namespace": "ns", "extraKeys": "foo",
 	}
 	matched, patched, err := PatchClaimsForRotation(
-		context.Background(), cl, "ns", classifier, "postgresql", testOperatorNamespace, "v")
+		context.Background(), cl, classifier, "postgresql", testOperatorNamespace, "v")
 	if err != nil {
 		t.Fatalf("a scalar \"extraKeys\" wire key must not break reverse mapping: %v", err)
 	}
@@ -182,7 +231,7 @@ func TestPatchClaimsForRotation_LargeIntegerExtraKey(t *testing.T) {
 		"accountId": json.Number(big),
 	}
 	matched, _, err := PatchClaimsForRotation(
-		context.Background(), cl, "ns", classifier, "postgresql", testOperatorNamespace, "v")
+		context.Background(), cl, classifier, "postgresql", testOperatorNamespace, "v")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +243,7 @@ func TestPatchClaimsForRotation_LargeIntegerExtraKey(t *testing.T) {
 func TestPatchClaimsForRotation_NoMatchingClaim(t *testing.T) {
 	cl := newFakeClient()
 	matched, patched, err := PatchClaimsForRotation(
-		context.Background(), cl, "ns",
+		context.Background(), cl,
 		map[string]any{"microserviceName": "absent", "scope": "service", "namespace": "ns"},
 		"postgresql", testOperatorNamespace, "v")
 	if err != nil {
@@ -218,7 +267,7 @@ func TestPatchClaimsForRotation_SkipsClaimAssignedToAnotherOperator(t *testing.T
 	classifier := map[string]any{"microserviceName": "ms", "scope": "service", "namespace": "ns"}
 
 	matched, patched, err := PatchClaimsForRotation(
-		context.Background(), cl, "ns", classifier, "postgresql", testOperatorNamespace, "v")
+		context.Background(), cl, classifier, "postgresql", testOperatorNamespace, "v")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

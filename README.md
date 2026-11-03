@@ -13,3 +13,16 @@ This documentation presents the REST API for the “Database as a Service” (DB
 * Installation notes: [installation note.md](./docs/installation/installation.md)
 * List of supported APIs: [rest-api docs](docs/api/rest-api.md)
 * Information about DBaaS features: https://perch.qubership.org/display/CLOUDCORE/DbaaS+Features 
+
+## Tech Stack
+* `dbaas-aggregator` — Java, Quarkus, Hibernate ORM Panache, Flyway, PostgreSQL
+* `dbaas-operator` — Go, Kubebuilder / controller-runtime
+* Deployment — Docker, Helm
+
+Details: [development guidelines](docs/development/README.md).
+
+## Project Structure
+* `dbaas/dbaas-aggregator` — DBaaS REST service
+* `dbaas/dbaas-integration-tests` — integration tests
+* `dbaas-operator` — Kubernetes operator
+* `docs` — documentation

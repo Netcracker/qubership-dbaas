@@ -554,12 +554,10 @@ var _ = Describe("PhysicalDatabase Controller", func() {
 				"spec.operatorNamespace"),
 		)
 
-		It("rejects a change of operatorNamespace", func() {
+		It("accepts a change of operatorNamespace", func() {
 			cr := createCR(resourceName, baseSpec())
 			cr.Spec.OperatorNamespace = "other-namespace"
-			err := k8sClient.Update(ctx, cr)
-			Expect(apierrors.IsInvalid(err)).To(BeTrue(), "error: %v", err)
-			Expect(err.Error()).To(ContainSubstring("spec.operatorNamespace is immutable after creation"))
+			Expect(k8sClient.Update(ctx, cr)).To(Succeed())
 		})
 
 		It("accepts a change of adapterAddress", func() {

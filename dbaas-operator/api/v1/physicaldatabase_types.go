@@ -72,7 +72,7 @@ type AdapterAPIVersions struct {
 type PhysicalDatabaseSpec struct {
 	// operatorNamespace is the namespace where the dbaas-operator instance
 	// responsible for this resource is deployed. It must match that operator's
-	// CLOUD_NAMESPACE and is immutable after creation.
+	// CLOUD_NAMESPACE.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// The Pattern requires an RFC-1123 label, so a value that cannot name a
@@ -80,7 +80,6 @@ type PhysicalDatabaseSpec struct {
 	// is rejected at admission instead of silently never matching a CLOUD_NAMESPACE.
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.operatorNamespace is immutable after creation"
 	OperatorNamespace string `json:"operatorNamespace"`
 
 	// adapterAddress is the adapter base URL. The operator probes the adapter at

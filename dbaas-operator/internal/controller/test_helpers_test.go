@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -64,14 +65,26 @@ type aggregatorSyncFixture struct {
 	body         string
 	capturedBody []byte
 	capturedPath string
-	server       *httptest.Server
-	recorder     *record.FakeRecorder
+	// compositeStatusCode and compositeBody answer the composite structures endpoint,
+	// so a test can configure it separately from the call under test.
+	compositeStatusCode int
+	compositeBody       string
+	compositeCalls      int
+	server              *httptest.Server
+	recorder            *record.FakeRecorder
 }
 
 func newAggregatorSyncFixture() *aggregatorSyncFixture {
 	f := &aggregatorSyncFixture{}
 	f.reset()
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/composite/v1/structures" {
+			f.compositeCalls++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(f.compositeStatusCode)
+			_, _ = w.Write([]byte(f.compositeBody))
+			return
+		}
 		f.capturedBody, _ = io.ReadAll(r.Body)
 		f.capturedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
@@ -89,6 +102,9 @@ func (f *aggregatorSyncFixture) reset() {
 	f.body = ""
 	f.capturedBody = nil
 	f.capturedPath = ""
+	f.compositeStatusCode = http.StatusOK
+	f.compositeBody = "[]"
+	f.compositeCalls = 0
 }
 
 func (f *aggregatorSyncFixture) close() {
@@ -140,7 +156,8 @@ func expectRequeueAfterStep(result ctrl.Result, step int32) {
 }
 
 func deleteIfExists(obj client.Object) {
-	err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+	key := client.ObjectKeyFromObject(obj)
+	err := k8sClient.Get(ctx, key, obj)
 	if err == nil {
 		if len(obj.GetFinalizers()) > 0 {
 			obj.SetFinalizers(nil)
@@ -148,4 +165,13 @@ func deleteIfExists(obj client.Object) {
 		}
 		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).To(Succeed())
 	}
+	Expect(client.IgnoreNotFound(err)).To(Succeed())
+
+	// Specs reuse stable resource names while reconcilers read through the
+	// manager cache. Do not let the next spec observe an object that the API
+	// server has already deleted.
+	Eventually(func() bool {
+		cached := obj.DeepCopyObject().(client.Object)
+		return apierrors.IsNotFound(cacheClient.Get(ctx, key, cached))
+	}).Should(BeTrue())
 }
