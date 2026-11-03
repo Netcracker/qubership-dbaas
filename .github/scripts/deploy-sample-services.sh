@@ -36,6 +36,7 @@ helm upgrade --install "$SPRING_SERVICE_NAME" \
   --set IMAGE_PULL_POLICY="Never" \
   --set MOUNT_SECRETS="$MOUNT_SECRETS" \
   --set M2M_ENABLED="$M2M_ENABLED" \
+  --set M2M_AUTH_MODE="${M2M_AUTH_MODE:-hybrid}" \
   --set API_DBAAS_ADDRESS="$AGG_URL"
 
 helm upgrade --install "$QUARKUS_SERVICE_NAME" \

@@ -43,6 +43,12 @@ dbaas:
         "[baselineOnMigrate]": "true"
         "[baselineVersion]": "0"
 
+# Direct-M2M probe (DbaasM2mProbeController). Off unless the pod mounts a `dbaas` token, so the
+# mounted-secret and REST-fallback phases expose no extra endpoint.
+probe:
+  dbaas-m2m:
+    enabled: ${DBAAS_M2M_PROBE:false}
+
 logging:
   level:
     root: ${LOG_LEVEL:INFO}

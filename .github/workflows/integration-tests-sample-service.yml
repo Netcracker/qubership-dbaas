@@ -330,6 +330,10 @@ jobs:
       - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
         run: |
           .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false true
+        env:
+          # Hands the dispatched M2M_AUTH_MODE to the Spring chart, so a dispatch with `k8s` proves
+          # the strict mode too. Other events get hybrid, as before.
+          M2M_AUTH_MODE: ${{ inputs.m2m-auth-mode || 'hybrid' }}
 
       - name: "Phase C — wait for sample services"
         run: |
@@ -357,6 +361,16 @@ jobs:
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The Spring ITs above exercise the Spring starter's own M2M client. This one exercises
+      # DbaasClientFactory from dbaas-client-light: it acquires the pod's projected `dbaas` token by
+      # itself and calls the aggregator directly, so a non-2xx here fails the phase.
+      - name: "Phase C - probe light DBaaS client (direct M2M)"
+        id: probe_c
+        if: ${{ !cancelled() }}
+        run: |
+          kubectl -n "$TEST_NAMESPACE" exec "deployment/$SPRING_SERVICE_NAME" -- sh -c \
+            'wget -q -O - http://localhost:8080/dbaas-m2m/probe || curl -sf http://localhost:8080/dbaas-m2m/probe'
 
       - name: Upload Surefire reports
         id: upload_surefire

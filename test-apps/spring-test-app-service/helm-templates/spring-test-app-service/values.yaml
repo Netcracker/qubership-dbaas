@@ -23,6 +23,9 @@ API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
 # switches to the M2M OkHttp flavor (basic-auth off), and calls API_DBAAS_ADDRESS directly with a
 # Bearer. Default false keeps the mounted-secret / REST-fallback phases unchanged.
 M2M_ENABLED: false
+# M2M_AUTH_MODE handed to the client when M2M_ENABLED is true: hybrid tries the Kubernetes token and
+# falls back, k8s sends it only. Kept as a value so a run can prove the strict k8s mode.
+M2M_AUTH_MODE: hybrid
 # Caps the JVM heap to a fraction of the container memory limit.
 JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
 

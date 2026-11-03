@@ -30,8 +30,9 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- Pin the dbaas client to the snapshot that carries the mounted-secret feature. -->
-        <dbaas-client.version>9.2.7</dbaas-client.version>
+        <!-- Throwaway E2E check: branch snapshot of qubership-core-java-libs feat/dbaas-light-m2m,
+             published by its "Maven deploy (branch snapshot)" workflow. Main keeps 9.2.7. -->
+        <dbaas-client.version>9.3.0-feat-dbaas-light-m2m-SNAPSHOT</dbaas-client.version>
         <!-- Match the Flyway line the dbaas-client-postgres-flyway module is built against. -->
         <flyway.version>13.3.0</flyway.version>
     </properties>
@@ -87,6 +88,13 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>dbaas-client-resttemplate</artifactId>
+            <version>${dbaas-client.version}</version>
+        </dependency>
+        <!-- Framework-free DBaaS client with self-contained M2M authorization. Only the
+             /dbaas-m2m/probe endpoint uses it; nothing else in the app touches the light path. -->
+        <dependency>
+            <groupId>com.netcracker.cloud</groupId>
+            <artifactId>dbaas-client-light</artifactId>
             <version>${dbaas-client.version}</version>
         </dependency>
 

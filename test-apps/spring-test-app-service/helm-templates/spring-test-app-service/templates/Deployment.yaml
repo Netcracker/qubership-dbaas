@@ -71,7 +71,11 @@ spec:
             - name: API_DBAAS_ADDRESS
               value: '{{ .Values.API_DBAAS_ADDRESS }}'
             - name: M2M_AUTH_MODE
-              value: '{{ if .Values.M2M_ENABLED }}hybrid{{ else }}legacy{{ end }}'
+              value: '{{ if .Values.M2M_ENABLED }}{{ .Values.M2M_AUTH_MODE }}{{ else }}legacy{{ end }}'
+            # Turns on DbaasM2mProbeController, which calls DBaaS through the light client factory
+            # instead of the Spring datasource path. Only meaningful with a projected dbaas token.
+            - name: DBAAS_M2M_PROBE
+              value: '{{ .Values.M2M_ENABLED }}'
             # In the M2M phase, switch the dbaas Spring client from the Basic RestTemplate flavor to
             # the M2M OkHttp client (getDbaasOkHttpClient). This env overrides application.yaml.
             - name: DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH
