@@ -10,3 +10,6 @@
 
 # APM dependencies
 apm_modules/
+
+# Go module cache created by make lint
+.go/
