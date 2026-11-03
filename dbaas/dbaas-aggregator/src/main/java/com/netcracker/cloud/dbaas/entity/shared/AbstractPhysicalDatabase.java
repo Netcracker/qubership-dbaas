@@ -59,6 +59,21 @@ public abstract class AbstractPhysicalDatabase {
     @Column(name = "ro_host")
     protected String roHost;
 
+    // The relation to the adapter entry is copied by the caller, which is the only place that knows both the source
+    // and the target type.
+    protected void copyStateTo(AbstractPhysicalDatabase target) {
+        target.id = id;
+        target.physicalDatabaseIdentifier = physicalDatabaseIdentifier;
+        target.global = global;
+        target.labels = labels;
+        target.type = type;
+        target.registrationDate = registrationDate;
+        target.roles = roles;
+        target.features = features;
+        target.unidentified = unidentified;
+        target.roHost = roHost;
+    }
+
     /**
      * Checks if physical database is identified (see javadoc for {@link AbstractPhysicalDatabase#unidentified}).
      *

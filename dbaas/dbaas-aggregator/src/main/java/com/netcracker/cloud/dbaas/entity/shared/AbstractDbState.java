@@ -65,6 +65,14 @@ public abstract class AbstractDbState implements Serializable {
         this.podName = dbState.podName;
     }
 
+    protected void copyStateTo(AbstractDbState target) {
+        target.id = id;
+        target.state = state;
+        target.databaseState = databaseState;
+        target.description = description;
+        target.podName = podName;
+    }
+
     public enum DatabaseStateStatus {
         PROCESSING,
         CREATED,

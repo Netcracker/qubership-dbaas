@@ -40,4 +40,11 @@ public abstract class AbstractDbResource implements Serializable {
     @io.swagger.v3.oas.annotations.media.Schema(required = true, description = "Name of the resource.")
     @NonNull
     protected String name;
+
+    // Setters, not fields, so that the @NonNull checks on kind and name still run for a copied resource.
+    protected void copyStateTo(AbstractDbResource target) {
+        target.setId(id);
+        target.setKind(kind);
+        target.setName(name);
+    }
 }
