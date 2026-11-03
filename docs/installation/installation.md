@@ -115,26 +115,19 @@ The suggested namespace name for DBaaS Aggregator is `dbaas`.
 #### Enable Operator-to-Aggregator mTLS
 
 If Operator-to-Aggregator communication must use TLS, the platform administrator must install Istio Ambient Mesh and
-enroll the namespaces containing both workloads. Add the Ambient Mesh label to the DBaaS namespace:
+enroll the namespace containing both workloads. Add the Ambient Mesh label to the DBaaS namespace:
 
 ```bash
 kubectl label namespace <dbaas-namespace> istio.io/dataplane-mode=ambient --overwrite
 ```
 
 The namespace label enrolls all workloads in that namespace. Do not add Istio labels to the DBaaS Deployments or pod
-templates. If DBaaS Operator and DBaaS Aggregator run in different namespaces, enroll both namespaces.
+templates.
 
-The ztunnel data plane transparently secures communication between enrolled workloads with mTLS. Keep
-`DBAAS_AGGREGATOR_URL` set to an `http://` URL with port `8080`; DBaaS Aggregator does not expose a separate HTTPS
-endpoint for this connection. A waypoint is not required for transport mTLS.
+The ztunnel data plane transparently secures communication between enrolled workloads with mTLS.
 
 The namespace label does not install Istio. On a cluster without the Istio Ambient data plane and ztunnel, the label
-does not enable TLS. See
-the [Istio workload enrollment documentation](https://istio.io/latest/docs/ambient/usage/add-workloads/) for more
-information.
-
-This configuration is independent of application-level TLS between DBaaS Aggregator and PostgreSQL. Use
-[`INTERNAL_TLS_ENABLED`](./parameters.md#internal_tls_enabled) for the PostgreSQL connection.
+does not enable TLS.
 
 ### Configuration
 
