@@ -22,7 +22,7 @@ Full rules: [aggregator guidelines](../docs/development/aggregator.md) and
 
 ## Don't
 
-- Don't edit or rename existing Flyway migrations.
+- Don't edit or rename existing PostgreSQL Flyway migrations.
 - Don't hand-write DTO converters when a MapStruct mapper covers the case.
 - Don't add `@Transactional` to DAOs or REST controllers.
 

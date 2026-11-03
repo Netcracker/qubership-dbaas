@@ -77,7 +77,7 @@ databases. PostgreSQL `LISTEN`/`NOTIFY` (`service/event/listener/AbstractPgTable
 
 - Write to PostgreSQL; read hot paths from the H2 repositories.
 - PostgreSQL entities live in `entity/pg`, H2 entities in `entity/h2`, and the mapped superclass both sides extend in
-  `entity/shared`. When a mirrored table changes, change the PostgreSQL migration, a matching migration under
+  `entity/shared`. When a mirrored table changes, change the PostgreSQL migration, the H2 schema under
   `db/migration/h2` and the mapped superclass together.
 
 ### Migrations
@@ -86,8 +86,11 @@ databases. PostgreSQL `LISTEN`/`NOTIFY` (`service/event/listener/AbstractPgTable
   the next free number.
 - Java migrations, for data that SQL can't transform, live in `src/main/java/db/migration/postgresql` as
   `V1_NNN__<Description>.java`. They share the same number sequence.
-- Never edit or rename an existing migration: Flyway validates checksums.
+- Never edit or rename an existing PostgreSQL migration: Flyway validates checksums.
 - Migrations are forward-only. Fix a bad migration with a new one.
+- The H2 schema under `db/migration/h2` is the exception. The mirror database is in-memory, so Flyway builds it from
+  scratch on every aggregator start and no deployed schema has to catch up: edit the existing H2 file rather than
+  adding a migration.
 - Guard DDL with `IF NOT EXISTS` and `IF EXISTS`.
 
 ### Entities
