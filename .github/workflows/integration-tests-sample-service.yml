@@ -373,8 +373,21 @@ jobs:
         id: probe_c
         if: ${{ always() && steps.deploy_c.outcome == 'success' }}
         run: |
-          kubectl -n "$TEST_NAMESPACE" exec "deployment/$SPRING_SERVICE_NAME" -- sh -c \
-            'wget -q -O - http://localhost:8080/dbaas-m2m/probe || curl -sf http://localhost:8080/dbaas-m2m/probe'
+          probe=$(kubectl -n "$TEST_NAMESPACE" exec "deployment/$SPRING_SERVICE_NAME" -- sh -c \
+            'wget -q -O - http://localhost:8080/dbaas-m2m/probe || curl -sf http://localhost:8080/dbaas-m2m/probe')
+          echo "$probe"
+          # The probe reports what it sent and what DBaaS accepted. Asserting here keeps a green run
+          # from meaning only "the endpoint answered": the token must be a Kubernetes one for the
+          # dbaas audience, and the same call without it must be refused.
+          echo "$probe" | jq -e '
+            .status == "ok"
+            and (.clientJar | test("dbaas-client-light"))
+            and (.presentedToken.scheme == "Bearer")
+            and (.presentedToken.iss == "https://kubernetes.default.svc.cluster.local")
+            and (.presentedToken.aud | index("dbaas"))
+            and ((.controlRequests.withoutToken == 401) or (.controlRequests.withoutToken == 403))
+            and ((.controlRequests.withGarbageToken == 401) or (.controlRequests.withGarbageToken == 403))
+          ' > /dev/null
 
       - name: Upload Surefire reports
         id: upload_surefire

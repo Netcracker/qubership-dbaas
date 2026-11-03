@@ -2,7 +2,9 @@ package com.netcracker.cloud.dbaas.testapp.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.client.DbaasClientFactory;
+import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.Response;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,12 +27,14 @@ import java.util.Map;
 public class DbaasM2mProbeController {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String PHYSICAL_DATABASES_PATH = "/api/v3/dbaas/postgresql/physical_databases";
 
     @GetMapping("/dbaas-m2m/probe")
     public ResponseEntity<Map<String, Object>> probe() {
         Map<String, Object> probe = new LinkedHashMap<>();
         probe.put("authMode", System.getenv("M2M_AUTH_MODE"));
         probe.put("dbaasAddress", System.getenv("API_DBAAS_ADDRESS"));
+        probe.put("clientJar", DbaasClientFactory.class.getProtectionDomain().getCodeSource().getLocation().toString());
         Map<String, Object> presented = new LinkedHashMap<>();
         try {
             var client = DbaasClientFactory.builder()
@@ -44,12 +48,39 @@ public class DbaasM2mProbeController {
             probe.put("status", "ok");
             probe.put("physicalDatabases", identified == null ? Map.of() : identified.keySet());
             probe.put("presentedToken", presented);
+            probe.put("controlRequests", unauthenticatedRequests());
             return ResponseEntity.ok(probe);
         } catch (Exception e) {
             probe.put("status", "error");
             probe.put("reason", e.getClass().getName() + ": " + e.getMessage());
             probe.put("presentedToken", presented);
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(probe);
+        }
+    }
+
+    /**
+     * The same endpoint asked for without a credential DBaaS can accept. The probe only means
+     * something if DBaaS refuses these: otherwise a 200 above would prove a token was sent, not that
+     * DBaaS required it.
+     */
+    private static Map<String, Object> unauthenticatedRequests() {
+        String url = System.getenv("API_DBAAS_ADDRESS") + PHYSICAL_DATABASES_PATH;
+        OkHttpClient client = new OkHttpClient();
+        return Map.of(
+                "url", url,
+                "withoutToken", statusOf(client, url, null),
+                "withGarbageToken", statusOf(client, url, "Bearer not-a-kubernetes-token"));
+    }
+
+    private static Object statusOf(OkHttpClient client, String url, String authorization) {
+        Request.Builder request = new Request.Builder().url(url);
+        if (authorization != null) {
+            request.header("Authorization", authorization);
+        }
+        try (Response response = client.newCall(request.build()).execute()) {
+            return response.code();
+        } catch (Exception e) {
+            return e.getClass().getSimpleName();
         }
     }
 
