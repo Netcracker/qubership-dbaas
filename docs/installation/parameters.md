@@ -262,6 +262,8 @@ storage. When enabled, the Aggregator validates the PostgreSQL server certificat
 by `CERTIFICATE_FILE_PATH`.
 
 `INTERNAL_TLS_ENABLED` does not enable HTTPS on DBaaS Aggregator. The Aggregator serves HTTP on port `8080`.
+To secure Operator-to-Aggregator communication, enroll the deployment namespace in
+[Istio Ambient Mesh](./installation.md#enable-operator-to-aggregator-mtls).
 
 | Default | Recommended                                                   |
 |---------|---------------------------------------------------------------|
