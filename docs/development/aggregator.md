@@ -76,8 +76,9 @@ databases. PostgreSQL `LISTEN`/`NOTIFY` (`service/event/listener/AbstractPgTable
 (`service/PeriodicH2Reload`) keep it in sync.
 
 - Write to PostgreSQL; read hot paths from the H2 repositories.
-- PostgreSQL entities live in `entity/pg`, H2 entities in `entity/h2`. When a mirrored table changes, change the
-  PostgreSQL migration, the H2 schema (`db/migration/h2/V1.001__Init_H2_Schema.sql`) and the H2 entity together.
+- PostgreSQL entities live in `entity/pg`, H2 entities in `entity/h2`, and the mapped superclass both sides extend in
+  `entity/shared`. When a mirrored table changes, change the PostgreSQL migration, a matching migration under
+  `db/migration/h2` and the mapped superclass together.
 
 ### Migrations
 
