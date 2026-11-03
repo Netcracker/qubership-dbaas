@@ -92,9 +92,12 @@ jobs:
       - name: Compute DBaaS image tag
         env:
           SOURCE_REF: ${{ github.head_ref || github.ref_name }}
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
         run: |
           SAFE_REF="${SOURCE_REF//\//-}"
-          if [ "$SAFE_REF" = "main" ]; then
+          if [ "$SAFE_REF" = "main" ] || [ "$IS_PULL_REQUEST" != "true" ]; then
+            # A dispatch from a feature branch has no branch-built DBaaS images: the tag steps that
+            # resolve or fall back to `latest` run only on pull_request, so pick latest here.
             IMAGE_TAG=latest
           else
             IMAGE_TAG="${SAFE_REF}-snapshot"
@@ -328,6 +331,7 @@ jobs:
       # call with its own Kubernetes token (no dbaas-agent), so a working /postgres* round-trip
       # proves the direct-M2M path in every library.
       - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
+        id: deploy_c
         run: |
           .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false true
         env:
@@ -367,7 +371,7 @@ jobs:
       # itself and calls the aggregator directly, so a non-2xx here fails the phase.
       - name: "Phase C - probe light DBaaS client (direct M2M)"
         id: probe_c
-        if: ${{ !cancelled() }}
+        if: ${{ always() && steps.deploy_c.outcome == 'success' }}
         run: |
           kubectl -n "$TEST_NAMESPACE" exec "deployment/$SPRING_SERVICE_NAME" -- sh -c \
             'wget -q -O - http://localhost:8080/dbaas-m2m/probe || curl -sf http://localhost:8080/dbaas-m2m/probe'
