@@ -106,7 +106,6 @@ jobs:
 
       - name: Resolve aggregator image
         id: aggregator_image
-        if: github.event_name == 'pull_request'
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas
@@ -117,7 +116,6 @@ jobs:
 
       - name: Resolve operator image
         id: operator_image
-        if: github.event_name == 'pull_request'
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas-operator
@@ -126,8 +124,7 @@ jobs:
           timeout-seconds: "0"
           fallback-tag: latest
 
-      - name: Set PR image tags
-        if: github.event_name == 'pull_request'
+      - name: Set resolved DBaaS image tags
         env:
           AGGREGATOR_TAG: ${{ steps.aggregator_image.outputs['resolved-tag'] }}
           OPERATOR_TAG: ${{ steps.operator_image.outputs['resolved-tag'] }}
