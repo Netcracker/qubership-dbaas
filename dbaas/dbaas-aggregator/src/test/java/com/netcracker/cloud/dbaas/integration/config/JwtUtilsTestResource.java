@@ -33,8 +33,6 @@ public class JwtUtilsTestResource implements QuarkusTestResourceLifecycleManager
 
     @SneakyThrows
     public static String getTokenDir() {
-        // KubernetesServiceAccountToken reads the directory from this system property, and it is also the one value
-        // the class loaders of the test JVM share
         String tokenDir = System.getProperty(KubernetesServiceAccountToken.SERVICE_ACCOUNT_DIR_PROP);
         if (tokenDir == null) {
             tokenDir = Files.createTempDirectory("mock-oidc-token").toAbsolutePath().toString();
