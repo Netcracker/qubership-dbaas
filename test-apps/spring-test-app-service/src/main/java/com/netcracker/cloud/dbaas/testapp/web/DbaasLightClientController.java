@@ -6,7 +6,7 @@ import com.netcracker.cloud.security.core.utils.k8s.AudienceName;
 import com.netcracker.cloud.security.core.utils.k8s.M2MAuthMode;
 import com.netcracker.cloud.security.core.utils.k8s.impl.CachingTokenSource;
 import okhttp3.Request;
-import org.springframework.http.HttpStatus;
+import okhttp3.Response;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,11 +39,10 @@ public class DbaasLightClientController {
             DbaasClientFactory.builder()
                     .httpClient(builder -> builder.addInterceptor(chain -> {
                         Request request = chain.request();
-                        String authorization = request.header("Authorization");
-                        report.put("requestUrl", request.url().toString());
-                        report.put("authScheme", schemeOf(authorization));
-                        report.put("presentsProjectedToken", presentsProjectedToken(authorization));
-                        return chain.proceed(request);
+                        recordAttempt(report, request);
+                        Response response = chain.proceed(request);
+                        report.putIfAbsent("dbaasStatus", response.code());
+                        return response;
                     }))
                     .build()
                     .getPhysicalDatabases(DATABASE_TYPE);
@@ -51,9 +50,20 @@ public class DbaasLightClientController {
         } catch (Exception e) {
             report.put("status", "error");
             report.put("reason", e.getClass().getName() + ": " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(report);
         }
         return ResponseEntity.ok(report);
+    }
+
+    /** The first attempt is the credential the client's mode chose; a hybrid fallback must not overwrite it. */
+    private static void recordAttempt(Map<String, Object> report, Request request) {
+        String authorization = request.header("Authorization");
+        if (report.containsKey("requestUrl")) {
+            report.put("fallbackUrl", request.url().toString());
+            return;
+        }
+        report.put("requestUrl", request.url().toString());
+        report.put("authScheme", schemeOf(authorization));
+        report.put("presentsProjectedToken", presentsProjectedToken(authorization));
     }
 
     private static String schemeOf(String authorization) {

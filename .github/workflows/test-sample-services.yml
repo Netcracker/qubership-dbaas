@@ -21,19 +21,19 @@ jobs:
     if: |
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'renovate[bot]'
-    # One cluster per M2M_AUTH_MODE the aggregator supports. legacy accepts only Basic auth, so the
-    # pass that authenticates a client's Kubernetes token at the aggregator has nothing to prove
-    # there and is left out of its passes.
+    # One cluster per M2M_AUTH_MODE the aggregator supports. A legacy cluster refuses a request carrying a
+    # Kubernetes token, so Pass C there asserts that refusal through the light client: the other three classes
+    # resolve their datasource through dbaas.api.address, which Pass C points at that same refusing DBaaS.
     strategy:
       fail-fast: false
       matrix:
         include:
           - mode: legacy
-            passes: [pass-a, postgres-rotation, pass-b]
+            phase-c-tests: SpringTestAppLightClientM2MIT
           - mode: hybrid
-            passes: [pass-a, postgres-rotation, pass-b, phase-c]
+            phase-c-tests: '!GoPostgresSecretRotationIT'
           - mode: k8s
-            passes: [pass-a, postgres-rotation, pass-b, phase-c]
+            phase-c-tests: '!GoPostgresSecretRotationIT'
     name: sample services (M2M ${{ matrix.mode }})
     runs-on: ubuntu-latest
     permissions:
@@ -44,7 +44,6 @@ jobs:
 
     env:
       M2M_AUTH_MODE: ${{ matrix.mode }}
-      PASSES: ${{ join(matrix.passes, ' ') }}
       # Both sample images are built in-job and loaded straight into kind (no registry, no
       # dependency on a separate publish workflow, and the exact PR code is what gets tested).
       GO_SERVICE_NAME: go-test-app-service
@@ -261,6 +260,7 @@ jobs:
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
           -Dtest='!GoPostgresSecretRotationIT'
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/pass-a
           test
         env:
@@ -284,6 +284,7 @@ jobs:
           -Drotation.cluster.dba.password="$ROTATION_DBAAS_PASSWORD"
           -Drotation.timeout.seconds=120
           -Dtest=GoPostgresSecretRotationIT
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/postgres-rotation
           test
         env:
@@ -323,6 +324,7 @@ jobs:
           -Dclouds.cloud.name=kind
           -Dtest='!GoPostgresSecretRotationIT'
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/pass-b
           test
         env:
@@ -332,14 +334,13 @@ jobs:
       # Redeploy all three apps pointing DIRECTLY at the real aggregator, no mounted secrets, with a
       # `dbaas`-audience projected token (M2M_ENABLED=true). Each client authenticates its aggregator
       # call with its own Kubernetes token (no dbaas-agent), so a working /postgres* round-trip
-      # proves the direct-M2M path in every library.
+      # proves the direct-M2M path in every library. A legacy DBaaS turns that token away, and there
+      # the light client asserts the refusal and the fallback to dbaas-agent that follows it.
       - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
-        if: contains(matrix.passes, 'phase-c')
         run: |
           .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false true
 
       - name: "Phase C — wait for sample services"
-        if: contains(matrix.passes, 'phase-c')
         run: |
           # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
           # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
@@ -348,20 +349,24 @@ jobs:
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
-          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
-          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
-          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
+          # A legacy DBaaS refuses the only credential these apps have here, so the apps that are not
+          # probed in that mode are not required to come up.
+          services=("$GO_SERVICE_NAME" "$SPRING_SERVICE_NAME" "$QUARKUS_SERVICE_NAME")
+          if [ "$M2M_AUTH_MODE" = "legacy" ]; then services=("$SPRING_SERVICE_NAME"); fi
+          for service in "${services[@]}"; do
+            kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$service" --timeout=300s
+          done
 
       - name: "Phase C — run integration tests (direct M2M)"
         id: tests_c
-        if: contains(matrix.passes, 'phase-c')
         working-directory: test-apps/test-apps-integration-tests
         run: >
           mvn --batch-mode
           -DskipIT=false
-          -Dtest='!GoPostgresSecretRotationIT'
+          -Dtest='${{ matrix.phase-c-tests }}'
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/phase-c
           test
         env:
@@ -403,7 +408,7 @@ jobs:
           shopt -s nullglob
           reports=()
           all_reports_present=true
-          for group in $PASSES; do
+          for group in pass-a postgres-rotation pass-b phase-c; do
             group_reports=(test-apps/test-apps-integration-tests/target/surefire-reports/"$group"/TEST-*.xml)
             if [ "${#group_reports[@]}" -eq 0 ]; then
               all_reports_present=false
@@ -508,35 +513,27 @@ jobs:
           if-no-files-found: ignore
 
       - name: Aggregate Surefire reports
-        id: collect_reports
         if: always()
         # build-test-report.py reads <ARTIFACTS_DIR>/<group>/surefire-reports/TEST-*.xml and uses the
         # directory name as the row label, so each pass is copied under a name that reads well in the
-        # report table. Which passes ran comes from the matrix, so a mode that skips a pass does not
-        # expect one either.
+        # report table. EXPECTED_GROUPS below must list exactly these names.
         run: |
           set -euo pipefail
           shopt -s nullglob
           src=test-apps/test-apps-integration-tests/target/surefire-reports
           mkdir -p artifacts   # keep the report step's input directory present even if no pass ran
-          declare -A LABEL=(
-            [pass-a]=pass-a-mounted-secret
-            [postgres-rotation]=postgres-rotation
-            [pass-b]=pass-b-rest-fallback
-            [phase-c]=phase-c-direct-m2m
-          )
-          expected=()
-          for pass in $PASSES; do
-            to="${LABEL[$pass]}"
-            expected+=("$to")
+          for pair in "pass-a:pass-a-mounted-secret" \
+                      "postgres-rotation:postgres-rotation" \
+                      "pass-b:pass-b-rest-fallback" \
+                      "phase-c:phase-c-direct-m2m"; do
+            from="${pair%%:*}"; to="${pair##*:}"
             # Copy only when the pass actually produced reports. Maven creates the directory before
             # it writes anything, so copying an empty one would claim the pass ran.
-            xmls=("$src/$pass"/TEST-*.xml)
+            xmls=("$src/$from"/TEST-*.xml)
             [ "${#xmls[@]}" -gt 0 ] || continue
             mkdir -p "artifacts/$to/surefire-reports"
             cp "${xmls[@]}" "artifacts/$to/surefire-reports/"
           done
-          echo "groups=$(IFS=,; echo "${expected[*]}")" >> "$GITHUB_OUTPUT"
           find artifacts -name 'TEST-*.xml' | sort
 
       - name: Build test report
@@ -549,15 +546,13 @@ jobs:
           GROUP_LABEL: Pass
           # A pass with no reports never ran — it must show up in the report and fail the job,
           # otherwise a pass that died during deploy would leave the run looking green.
-          EXPECTED_GROUPS: ${{ steps.collect_reports.outputs.groups }}
+          EXPECTED_GROUPS: pass-a-mounted-secret,postgres-rotation,pass-b-rest-fallback,phase-c-direct-m2m
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ARTIFACT_URL: ${{ steps.upload_surefire.outputs.artifact-url }}
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          test -n "$EXPECTED_GROUPS" || { echo "::error::No expected passes for M2M_AUTH_MODE=$M2M_AUTH_MODE"; exit 1; }
-          python3 .github/scripts/build-test-report.py
+        run: python3 .github/scripts/build-test-report.py
 
       - name: Email test report
         if: always() && steps.build_report.outcome == 'success' && steps.build_report.outputs.status != 'success'
