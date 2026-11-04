@@ -20,9 +20,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * dbaas-client-light authorizes its own requests to DBaaS. The sample service builds a client through
- * DbaasClientFactory and reports the address and the credential it used, and each mode is checked against what that
- * mode owes: a legacy request routed to dbaas-agent without a Kubernetes identity, a Kubernetes request carrying the
- * token this pod was projected for the {@code dbaas} audience straight to DBaaS.
+ * DbaasClientFactory and reports the address, the credential and the answer it got, and each combination is checked
+ * against what it owes: a legacy request routed to dbaas-agent without a Kubernetes identity, a Kubernetes request
+ * carrying the token this pod was projected for the {@code dbaas} audience straight to DBaaS, and that request refused
+ * when the cluster runs in legacy mode, where DBaaS accepts no Kubernetes token - a refusal the client answers through
+ * dbaas-agent rather than by failing.
  */
 class SpringTestAppLightClientM2MIT {
 
@@ -32,10 +34,10 @@ class SpringTestAppLightClientM2MIT {
     private static final int HTTP_PORT = 8080;
 
     private static final Gson GSON = new Gson();
+    private static final String SERVER_M2M_AUTH_MODE = ClusterHelper.config("dbaas.server.m2m.auth.mode", "hybrid");
 
     private static LocalPortForward sampleService;
     private static JsonObject report;
-    private static String requestPath;
 
     @BeforeAll
     static void readLightClientReport() throws IOException {
@@ -43,8 +45,6 @@ class SpringTestAppLightClientM2MIT {
         String reportUrl = ClusterHelper.url(sampleService, REPORT_PATH);
         ClusterHelper.awaitReachable(reportUrl, SAMPLE_SERVICE);
         report = GSON.fromJson(ClusterHelper.execute(get(reportUrl, null), 200), JsonObject.class);
-        assertEquals("ok", text(report, "status"), "the light client failed to call DBaaS: " + report);
-        requestPath = URI.create(text(report, "requestUrl")).getPath();
     }
 
     @AfterAll
@@ -62,6 +62,7 @@ class SpringTestAppLightClientM2MIT {
         assertTrue(text(report, "requestUrl").startsWith(target), "the client must send its requests to dbaas-agent: " + report);
         assertEquals("Bearer", text(report, "authScheme"), "the client must authorize its request: " + report);
         assertFalse(reported("presentsProjectedToken"), "a legacy request carries no Kubernetes token: " + report);
+        assertEquals("ok", text(report, "status"), "DBaaS must answer a legacy request in any mode: " + report);
     }
 
     @Test
@@ -78,7 +79,29 @@ class SpringTestAppLightClientM2MIT {
     }
 
     @Test
+    void dbaasAnswersTheLightClientWhileItAcceptsKubernetesTokens() {
+        assumeTrue(!isLegacy() && serverAcceptsKubernetesTokens(),
+                "only a request with a Kubernetes token, and only where DBaaS accepts one");
+        assertEquals(200, dbaasStatus(), "DBaaS accepts the projected token in this mode: " + report);
+        assertEquals("ok", text(report, "status"), "the light client call must succeed: " + report);
+    }
+
+    @Test
+    void dbaasRefusesTheProjectedTokenAndTheClientFallsBackToItsAgent() {
+        assumeTrue(!isLegacy() && !serverAcceptsKubernetesTokens(),
+                "only a request with a Kubernetes token, and only where DBaaS refuses one");
+        assertTrue(reported("presentsProjectedToken"),
+                "the client must be refused for presenting the projected token, not for sending nothing: " + report);
+        assertEquals(401, dbaasStatus(), "a legacy DBaaS must refuse a Kubernetes token: " + report);
+        assertEquals("ok", text(report, "status"),
+                "a hybrid client answers itself through its legacy path once DBaaS refuses the token: " + report);
+        assertTrue(text(report, "fallbackUrl").startsWith(text(report, "agentAddress")),
+                "the fallback must go through dbaas-agent, not back to the DBaaS address that refused it: " + report);
+    }
+
+    @Test
     void dbaasRefusesTheSameRequestWithoutThatToken() throws IOException {
+        String requestPath = URI.create(text(report, "requestUrl")).getPath();
         try (LocalPortForward dbaas = ClusterHelper.toService(DBAAS_SERVICE, HTTP_PORT)) {
             String url = ClusterHelper.url(dbaas, requestPath);
             ClusterHelper.awaitReachable(url, DBAAS_SERVICE);
@@ -90,6 +113,14 @@ class SpringTestAppLightClientM2MIT {
 
     private static boolean isLegacy() {
         return "LEGACY".equals(text(report, "authMode"));
+    }
+
+    private static boolean serverAcceptsKubernetesTokens() {
+        return !"legacy".equalsIgnoreCase(SERVER_M2M_AUTH_MODE);
+    }
+
+    private static int dbaasStatus() {
+        return report.get("dbaasStatus").getAsInt();
     }
 
     private static Request get(String url, String authorization) {
