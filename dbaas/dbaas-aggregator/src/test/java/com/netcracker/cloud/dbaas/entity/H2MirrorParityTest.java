@@ -28,11 +28,11 @@ import java.util.TreeMap;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The H2 entities mirror the PostgreSQL tables they are loaded from, and both sides extend one mapped superclass per
- * table. These tests keep the mirror in step with PostgreSQL: a field that lands on one side only, or one that a
- * mirror copy loses, fails here instead of surfacing as a null on a read served from the H2 cache.
+ * Both sides of a mirrored table extend one mapped superclass, so a field can reach one side only or be dropped by a
+ * mirror copy. Either fails here rather than surfacing as a null on a read served from the H2 cache.
  */
 class H2MirrorParityTest {
 
@@ -62,6 +62,30 @@ class H2MirrorParityTest {
         checks.add(() -> assertSame(copy, copy.getDatabaseRegistry().get(0).getDatabase()));
 
         assertAll(checks);
+    }
+
+    @Test
+    void testAsPgEntity_RoundTripsEveryDatabaseField() {
+        final Database source = database();
+
+        final var copy = source.asH2Entity().asPgEntity();
+
+        List<Executable> checks = new ArrayList<>(mirrorChecks(source, copy));
+        checks.addAll(mirrorChecks(source.getDbState(), copy.getDbState()));
+        checks.addAll(relationChecks(source.getResources(), copy.getResources(), "resources"));
+        checks.addAll(relationChecks(source.getDatabaseRegistry(), copy.getDatabaseRegistry(), "databaseRegistry"));
+        checks.add(() -> assertSame(copy, copy.getDatabaseRegistry().get(0).getDatabase()));
+
+        assertAll(checks);
+    }
+
+    @Test
+    void testAsPgEntity_RoundTripsEveryPhysicalDatabaseField() {
+        final PhysicalDatabase source = physicalDatabase();
+
+        final var copy = source.asH2Entity().asPgEntity();
+
+        assertAll(mirrorChecks(source, copy));
     }
 
     @Test
@@ -179,8 +203,8 @@ class H2MirrorParityTest {
     }
 
     /**
-     * One check per mapped field, so a copy that loses a field reports that field by name, plus the fields the fixture
-     * left unset, which would hide such a loss.
+     * One check per mapped field so a lost one is named in the failure. The fixture is checked for nulls first: a field
+     * left unset would match on both sides and hide the loss.
      */
     private static List<Executable> mirrorChecks(Object source, Object copy) {
         List<Executable> checks = new ArrayList<>();
@@ -193,6 +217,9 @@ class H2MirrorParityTest {
     }
 
     private static List<Executable> relationChecks(List<?> source, List<?> copy, String relation) {
+        if (copy == null) {
+            return List.of(() -> fail(relation + " not copied"));
+        }
         assertEquals(source.size(), copy.size(), relation + " count");
         List<Executable> checks = new ArrayList<>();
         for (int position = 0; position < source.size(); position++) {

@@ -33,11 +33,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 /**
  * The H2 schema under {@code db/migration/h2} is a hand-written copy of the PostgreSQL one, so a mirrored column can go
  * missing from it with no Java change to show for it. This test loads that schema into an in-memory H2 and checks that
- * every column the H2 entities map is present in it. A column named in the failure belongs in a new migration under
- * {@code db/migration/h2}.
+ * every column the H2 entities map is declared there; a missing one belongs in that same file, which is edited in
+ * place.
  *
- * <p>Column types are not compared. The copy uses H2 types that do not always match the JDBC type Hibernate maps a
- * field to, and a type the mirror reports differently for is harmless as long as the column is there.
+ * <p>Column types are not compared: the mirror uses H2 types that need not match the JDBC type Hibernate maps a field
+ * to, and a type it reports differently for is harmless as long as the column is there.
  */
 class H2MirrorSchemaTest {
 
@@ -111,9 +111,8 @@ class H2MirrorSchemaTest {
     }
 
     /**
-     * A column of the table the entity is mapped to. Collections live in their own table, so they are not a column of
-     * this one; a to-one association is its foreign key, named by {@code @JoinColumn} or by the field and the
-     * referenced primary key.
+     * Columns of the table the entity is mapped to: collections are in their own table, and a to-one association is a
+     * foreign key named by {@code @JoinColumn} or by the Hibernate default {@code <field>_id}.
      */
     private static Set<String> mappedColumns(Class<?> entity) {
         Set<String> columns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -138,9 +137,6 @@ class H2MirrorSchemaTest {
         return columns;
     }
 
-    /**
-     * An unset {@code name} on {@code @Column} or {@code @JoinColumn} is an empty string, which means the field name.
-     */
     private static String nameOrDefault(String name, String fieldName) {
         return name == null || name.isEmpty() ? fieldName : name;
     }
