@@ -43,8 +43,7 @@ class H2MirrorParityTest {
     private static final Set<String> POSTGRES_ONLY_FIELDS = Set.of("lastRotatedAt");
 
     /**
-     * Relations are compared through the entity they point at, so the parent of a PostgreSQL entity is never compared
-     * against the parent of its mirror.
+     * Compared through the entity they point at, never against the mirror's own parent.
      */
     private static final Set<String> RELATION_FIELDS =
             Set.of("databaseRegistry", "resources", "dbState", "adapter", "database");
@@ -202,14 +201,10 @@ class H2MirrorParityTest {
         return physicalDatabase;
     }
 
-    /**
-     * One check per mapped field so a lost one is named in the failure. The fixture is checked for nulls first: a field
-     * left unset would match on both sides and hide the loss.
-     */
     private static List<Executable> mirrorChecks(Object source, Object copy) {
         List<Executable> checks = new ArrayList<>();
-        checks.add(() -> assertEquals(Set.of(), unsetFields(source),
-                source.getClass().getSimpleName() + " fields left unset"));
+        checks.add(() -> assertEquals(Set.of(), unsetFields(source), source.getClass().getSimpleName()
+                + " fields left unset; a null on both sides would hide a lost copy"));
         for (Field field : copiedFields(source.getClass())) {
             checks.add(() -> assertEquals(read(field, source), read(field, copy), field.getName()));
         }

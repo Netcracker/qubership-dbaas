@@ -29,6 +29,7 @@ import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * The H2 schema under {@code db/migration/h2} is a hand-written copy of the PostgreSQL one, so a mirrored column can go
@@ -41,10 +42,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  */
 class H2MirrorSchemaTest {
 
-    /**
-     * Any H2 entity, to locate and name the package the mirrors live in.
-     */
-    private static final Class<?> MIRROR_SAMPLE = com.netcracker.cloud.dbaas.entity.h2.Database.class;
+    private static final String MIRROR_PACKAGE = "com.netcracker.cloud.dbaas.entity.h2";
+
+    private static final String TO_ONE_FK_SUFFIX = "_id";
 
     private static final String H2_JDBC_URL = "jdbc:h2:mem:mirror_schema_parity;DB_CLOSE_DELAY=-1";
 
@@ -53,7 +53,6 @@ class H2MirrorSchemaTest {
         Flyway.configure().dataSource(H2_JDBC_URL, "sa", "").locations("db/migration/h2").load().migrate();
 
         List<Class<?>> entities = h2Entities();
-        assertFalse(entities.isEmpty(), "no H2 entities in " + MIRROR_SAMPLE.getPackageName());
 
         try (Connection connection = DriverManager.getConnection(H2_JDBC_URL, "sa", "")) {
             Map<String, Set<String>> schema = columnsOf(connection);
@@ -88,9 +87,12 @@ class H2MirrorSchemaTest {
     }
 
     private static List<Class<?>> h2Entities() throws Exception {
-        Path packageLocation = Path.of(MIRROR_SAMPLE.getResource("Database.class").toURI()).getParent();
+        var packageLocation = H2MirrorSchemaTest.class.getClassLoader()
+                .getResource(MIRROR_PACKAGE.replace('.', '/'));
+        assertNotNull(packageLocation, "no compiled classes for " + MIRROR_PACKAGE);
+
         List<Path> classFiles;
-        try (var files = Files.list(packageLocation)) {
+        try (var files = Files.list(Path.of(packageLocation.toURI()))) {
             classFiles = files.filter(file -> file.getFileName().toString().endsWith(".class")).toList();
         }
 
@@ -100,20 +102,16 @@ class H2MirrorSchemaTest {
             if (simpleName.contains("$")) {
                 continue;
             }
-            Class<?> candidate = Class.forName(MIRROR_SAMPLE.getPackageName() + "." + simpleName);
+            Class<?> candidate = Class.forName(MIRROR_PACKAGE + "." + simpleName);
             if (candidate.isAnnotationPresent(Entity.class)) {
                 entities.add(candidate);
             }
         }
 
-        assertFalse(entities.isEmpty(), "no H2 entities found in " + packageLocation);
+        assertFalse(entities.isEmpty(), "no H2 entities in " + MIRROR_PACKAGE);
         return entities;
     }
 
-    /**
-     * Columns of the table the entity is mapped to: collections are in their own table, and a to-one association is a
-     * foreign key named by {@code @JoinColumn} or by the Hibernate default {@code <field>_id}.
-     */
     private static Set<String> mappedColumns(Class<?> entity) {
         Set<String> columns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (Class<?> current = entity; current != Object.class; current = current.getSuperclass()) {
@@ -127,7 +125,8 @@ class H2MirrorSchemaTest {
                 }
                 if (field.isAnnotationPresent(ManyToOne.class) || field.isAnnotationPresent(OneToOne.class)) {
                     JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
-                    columns.add(nameOrDefault(joinColumn == null ? null : joinColumn.name(), field.getName() + "_id"));
+                    columns.add(nameOrDefault(joinColumn == null ? null : joinColumn.name(),
+                            field.getName() + TO_ONE_FK_SUFFIX));
                 } else {
                     Column column = field.getAnnotation(Column.class);
                     columns.add(nameOrDefault(column == null ? null : column.name(), field.getName()));
