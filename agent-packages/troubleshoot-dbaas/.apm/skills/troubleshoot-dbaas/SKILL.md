@@ -106,8 +106,7 @@ dbaas-aggregator and dbaas-operator are packaged in application `dbaas` as servi
 `dbaas-operator`, each a Helm chart. Recommend a persistent change in the source that owns the value, then regenerate
 and redeploy. Never recommend editing a generated or live object: the generated
 `Namespaces/<dbaas-namespace-folder>/Applications/dbaas.yml`, the Effective Set `deployment-parameters.yaml`, rendered
-Helm output, or a Deployment, StatefulSet, ConfigMap, or Secret that the chart renders. The next generation or
-deployment reverts the edit.
+Helm output, or a chart-rendered Deployment, StatefulSet, ConfigMap, or Secret; regeneration or redeployment reverts it.
 
 In an EnvGene-managed deployment, the sources are files in the Instance repository, referenced from
 `Inventory/env_definition.yml`. `<dbaas-namespace-folder>` is the folder name under `Namespaces/` in the generated
@@ -115,9 +114,8 @@ Environment Instance, derived from the deploy postfix; it can differ from the Ku
 
 - Ordinary parameters: an Environment-Specific ParameterSet referenced from
   `envTemplate.envSpecificParamsets.<dbaas-namespace-folder>`, flat under `appName: dbaas`. Both services receive
-  every parameter, and only the chart that defines a value uses it. A ParameterSet cannot give the two services
-  different values for the same key; EnvGene overrides service-level parameters only through a Resource Profile
-  Override.
+  every parameter; only a chart that reads the key uses it. A ParameterSet cannot give the two services different
+  values for the same key; only a Resource Profile Override can set service-level values.
 
   ```yaml
   # Inventory/env_definition.yml
@@ -131,8 +129,8 @@ Environment Instance, derived from the deploy postfix; it can differ from the Ku
   applications:
     - appName: dbaas
       parameters:
-        M2M_AUTH_MODE: hybrid
-        DBAAS_LOG_LEVEL: DEBUG
+        M2M_AUTH_MODE: "<mode>"
+        DBAAS_LOG_LEVEL: "<level>"
   ```
 
 - Resource parameters (`MEM_ARGS`, `MEMORY_REQUEST`, `MEMORY_LIMIT`, `CPU_REQUEST`, `CPU_LIMIT`, `REPLICAS`, and the
@@ -154,9 +152,9 @@ Environment Instance, derived from the deploy postfix; it can differ from the Ku
         - name: dbaas-aggregator
           parameters:
             - name: REPLICAS
-              value: 2
+              value: "<replica-count>"
             - name: MEMORY_LIMIT
-              value: 2Gi
+              value: "<memory-limit>"
   ```
 
 - Sensitive parameters (`*_PASSWORD`, an authentication token, a private key, or other secret material): never write

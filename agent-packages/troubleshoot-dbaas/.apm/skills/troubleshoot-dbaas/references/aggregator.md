@@ -21,8 +21,7 @@ missing deployment parameter stops the Helm render.
 
 **How to check:**
 
-1. Find the parameter named in the error in the parameters supplied to service `dbaas-aggregator`. It is absent or
-   empty.
+1. Find the parameter named in the error among the values supplied to service `dbaas-aggregator`; it is absent or empty.
 
 **How to fix:**
 
