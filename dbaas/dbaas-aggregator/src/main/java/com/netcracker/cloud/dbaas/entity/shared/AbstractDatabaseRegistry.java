@@ -45,8 +45,6 @@ public abstract class AbstractDatabaseRegistry implements Serializable {
     @Schema(required = true, description = "Type of database, for example postgresql or mongodb")
     protected String type;
 
-    // The relation to Database is copied by the caller, which is the only place that knows both the source and the
-    // target type.
     protected void copyStateTo(AbstractDatabaseRegistry target) {
         target.id = id;
         target.timeDbCreation = timeDbCreation;

@@ -120,7 +120,6 @@ public abstract class AbstractDatabase implements Serializable {
         this.connectionProperties.addAll(connectionPropertiesForNewRole);
     }
 
-    // Relations are copied by the caller, which is the only place that knows both the source and the target type.
     protected void copyStateTo(AbstractDatabase target) {
         target.id = id;
         target.oldClassifier = oldClassifier;
