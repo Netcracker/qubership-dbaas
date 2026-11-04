@@ -30,8 +30,9 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- Pin the dbaas client to the snapshot that carries the mounted-secret feature. -->
-        <dbaas-client.version>9.2.7</dbaas-client.version>
+        <!-- DbaasLightClientController needs DbaasClientFactory, which no release carries yet.
+             Repin to the release once qubership-core-java-libs 9.3.0 is out. -->
+        <dbaas-client.version>9.3.0-SNAPSHOT</dbaas-client.version>
         <!-- Match the Flyway line the dbaas-client-postgres-flyway module is built against. -->
         <flyway.version>13.3.0</flyway.version>
     </properties>
@@ -87,6 +88,12 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>dbaas-client-resttemplate</artifactId>
+            <version>${dbaas-client.version}</version>
+        </dependency>
+        <!-- No other dbaas module brings the light client in, and nothing else in the app uses it. -->
+        <dependency>
+            <groupId>com.netcracker.cloud</groupId>
+            <artifactId>dbaas-client-light</artifactId>
             <version>${dbaas-client.version}</version>
         </dependency>
 
