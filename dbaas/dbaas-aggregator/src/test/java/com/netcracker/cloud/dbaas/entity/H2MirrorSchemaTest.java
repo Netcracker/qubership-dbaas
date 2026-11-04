@@ -46,6 +46,8 @@ class H2MirrorSchemaTest {
 
     private static final String TO_ONE_FK_SUFFIX = "_id";
 
+    private static final String MIGRATED_SCHEMA = "PUBLIC";
+
     private static final String H2_JDBC_URL = "jdbc:h2:mem:mirror_schema_parity;DB_CLOSE_DELAY=-1";
 
     @Test
@@ -60,9 +62,12 @@ class H2MirrorSchemaTest {
             Map<String, Set<String>> missing = new TreeMap<>();
             for (Class<?> entity : entities) {
                 String table = entity.getAnnotation(Table.class).name();
+                Set<String> declared = schema.get(table);
+                assertNotNull(declared, table + " is not created by the H2 schema");
+
                 Set<String> absent = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                 for (String column : mappedColumns(entity)) {
-                    if (!schema.getOrDefault(table, Set.of()).contains(column)) {
+                    if (!declared.contains(column)) {
                         absent.add(column);
                     }
                 }
@@ -77,7 +82,7 @@ class H2MirrorSchemaTest {
 
     private static Map<String, Set<String>> columnsOf(Connection connection) throws SQLException {
         Map<String, Set<String>> columns = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        try (ResultSet rows = connection.getMetaData().getColumns(null, null, "%", "%")) {
+        try (ResultSet rows = connection.getMetaData().getColumns(null, MIGRATED_SCHEMA, "%", "%")) {
             while (rows.next()) {
                 columns.computeIfAbsent(rows.getString("TABLE_NAME"), table -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
                         .add(rows.getString("COLUMN_NAME"));
