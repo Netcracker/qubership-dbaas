@@ -2,20 +2,15 @@ package com.netcracker.it.testapps.springtestapp;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import com.netcracker.it.testapps.helpers.ClusterHelper;
 import io.fabric8.kubernetes.client.LocalPortForward;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,21 +32,17 @@ class SpringTestAppLightClientM2MIT {
     private static final int HTTP_PORT = 8080;
 
     private static final Gson GSON = new Gson();
-    private static final OkHttpClient OK_HTTP_CLIENT = new OkHttpClient();
-    private static final KubernetesClient KUBERNETES_CLIENT = new KubernetesClientBuilder().build();
 
-    private static String namespace;
     private static LocalPortForward sampleService;
     private static JsonObject report;
     private static String requestPath;
 
     @BeforeAll
     static void readLightClientReport() throws IOException {
-        namespace = requiredPropertyOrEnv("clouds.cloud.namespaces.namespace");
-        sampleService = forward(SAMPLE_SERVICE);
-        String reportUrl = "http://127.0.0.1:" + sampleService.getLocalPort() + REPORT_PATH;
-        awaitReachable(reportUrl);
-        report = GSON.fromJson(execute(get(reportUrl, null), 200), JsonObject.class);
+        sampleService = ClusterHelper.toService(SAMPLE_SERVICE, HTTP_PORT);
+        String reportUrl = ClusterHelper.url(sampleService, REPORT_PATH);
+        ClusterHelper.awaitReachable(reportUrl, SAMPLE_SERVICE);
+        report = GSON.fromJson(ClusterHelper.execute(get(reportUrl, null), 200), JsonObject.class);
         assertEquals("ok", text(report, "status"), "the light client failed to call DBaaS: " + report);
         requestPath = URI.create(text(report, "requestUrl")).getPath();
     }
@@ -88,52 +79,17 @@ class SpringTestAppLightClientM2MIT {
 
     @Test
     void dbaasRefusesTheSameRequestWithoutThatToken() throws IOException {
-        try (LocalPortForward dbaas = forward(DBAAS_SERVICE)) {
-            String url = "http://127.0.0.1:" + dbaas.getLocalPort() + requestPath;
-            awaitReachable(url);
-            assertEquals(401, status(get(url, null)),
+        try (LocalPortForward dbaas = ClusterHelper.toService(DBAAS_SERVICE, HTTP_PORT)) {
+            String url = ClusterHelper.url(dbaas, requestPath);
+            ClusterHelper.awaitReachable(url, DBAAS_SERVICE);
+            assertEquals(401, ClusterHelper.status(get(url, null)),
                     "DBaaS must refuse the endpoint the light client called, or the test proves nothing");
-            assertEquals(401, status(get(url, "Bearer not-a-kubernetes-token")), "DBaaS must refuse a token it cannot verify");
+            assertEquals(401, ClusterHelper.status(get(url, "Bearer not-a-kubernetes-token")), "DBaaS must refuse a token it cannot verify");
         }
     }
 
     private static boolean isLegacy() {
         return "LEGACY".equals(text(report, "authMode"));
-    }
-
-    private static LocalPortForward forward(String service) {
-        return KUBERNETES_CLIENT.services().inNamespace(namespace).withName(service).portForward(HTTP_PORT);
-    }
-
-    /**
-     * A port-forward refuses connections for a moment after it is opened.
-     */
-    private static void awaitReachable(String url) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
-        while (System.nanoTime() < deadline) {
-            try {
-                status(get(url, null));
-                return;
-            } catch (IOException e) {
-                sleep(1);
-            }
-        }
-        throw new AssertionError("No answer from " + url);
-    }
-
-    private static String execute(Request request, int expectedStatus) throws IOException {
-        try (Response response = OK_HTTP_CLIENT.newCall(request).execute()) {
-            ResponseBody payload = response.body();
-            String body = payload == null ? "" : payload.string();
-            assertEquals(expectedStatus, response.code(), "unexpected response from " + request.url() + ": " + body);
-            return body;
-        }
-    }
-
-    private static int status(Request request) throws IOException {
-        try (Response response = OK_HTTP_CLIENT.newCall(request).execute()) {
-            return response.code();
-        }
     }
 
     private static Request get(String url, String authorization) {
@@ -154,25 +110,4 @@ class SpringTestAppLightClientM2MIT {
         return report.get(field).getAsBoolean();
     }
 
-    private static String requiredPropertyOrEnv(String name) {
-        String value = System.getProperty(name);
-        if (value == null || value.isBlank()) {
-            value = System.getenv(name);
-        }
-        if (value == null || value.isBlank()) {
-            value = System.getenv("ENV_" + name);
-        }
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Missing required property/env: " + name);
-        }
-        return value;
-    }
-
-    private static void sleep(int seconds) {
-        try {
-            Thread.sleep(TimeUnit.SECONDS.toMillis(seconds));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
 }
