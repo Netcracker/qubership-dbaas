@@ -4,6 +4,8 @@ Conventions for contributing to qubership-dbaas.
 
 - [Aggregator](aggregator.md): code rules, layering, security, REST API, database, error handling
 - [Testing and CI](testing-and-ci.md): test levels, integration-test tags, CI, deployment
+- [Backup & Restore V2 design](backup-and-restore-v2.md): internal behavior, data model, sequence diagrams, adapter
+  and aggregator requirements
 - [dbaas-operator/AGENTS.md](../../dbaas-operator/AGENTS.md): Go operator conventions
 
 ## Technology Stack
