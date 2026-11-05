@@ -1,0 +1,12 @@
+{
+  "createdFiles": [
+    "chart/templates/dbaas-operator-resources.yaml"
+  ],
+  "deletedFiles": [],
+  "modifiedFiles": [
+    "chart/templates/dbaas-configuration.json"
+  ],
+  "status": "changed",
+  "unchangedFiles": [],
+  "warnings": []
+}

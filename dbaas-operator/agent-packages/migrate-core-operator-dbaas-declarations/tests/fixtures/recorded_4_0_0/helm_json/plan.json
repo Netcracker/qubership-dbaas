@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    {
+      "root": "chart",
+      "kind": "helm",
+      "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
+      "serviceName": "svc",
+      "namespace": "{{ .Values.NAMESPACE }}",
+      "outputFile": "templates/dbaas-operator-resources.yaml",
+      "sources": [
+        {
+          "path": "chart/templates/dbaas-configuration.json",
+          "sha256": "7e5e73a3a67ba53b88a8e7c57adede4d1c53cfca4b0e600d7be3080400533eeb"
+        }
+      ],
+      "helmValues": {
+        "NAMESPACE": "deploy-ns"
+      }
+    }
+  ]
+}

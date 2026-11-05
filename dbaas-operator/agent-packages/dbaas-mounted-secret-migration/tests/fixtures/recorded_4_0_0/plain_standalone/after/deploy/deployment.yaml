@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+spec:
+  template:
+    spec:
+      containers:
+        - name: orders
+          image: orders:latest
+          volumeMounts:
+            - name: orders-postgresql-service-default-secret
+              mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials
+              readOnly: true
+      volumes:
+        - name: orders-postgresql-service-default-secret
+          secret:
+            secretName: orders-postgresql-service-default-credentials

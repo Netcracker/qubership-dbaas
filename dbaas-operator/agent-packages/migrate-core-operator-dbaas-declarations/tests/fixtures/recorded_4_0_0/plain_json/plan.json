@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    {
+      "root": "deploy",
+      "kind": "plain",
+      "operatorNamespace": "dbaas-system",
+      "serviceName": "svc",
+      "namespace": "deploy-ns",
+      "outputFile": "dbaas-operator-resources.yaml",
+      "sources": [
+        {
+          "path": "deploy/dbaas-configuration.json",
+          "sha256": "7e5e73a3a67ba53b88a8e7c57adede4d1c53cfca4b0e600d7be3080400533eeb"
+        }
+      ]
+    }
+  ]
+}

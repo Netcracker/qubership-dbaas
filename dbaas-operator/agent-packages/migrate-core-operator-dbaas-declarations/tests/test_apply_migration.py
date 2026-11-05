@@ -1569,5 +1569,301 @@ class CapabilityGuardTest(unittest.TestCase):
             self.assertEqual(out.count("{{- end }}"), 2)
 
 
+def declaration_yaml(service: str, db_type: str = "postgresql") -> str:
+    return (
+        "apiVersion: nc.core.dbaas/v3\n"
+        "kind: DatabaseDeclaration\n"
+        "declarations:\n"
+        "  - classifierConfig:\n"
+        "      classifier:\n"
+        f"        microserviceName: {service}\n"
+        "        scope: service\n"
+        f"    type: {db_type}\n"
+    )
+
+
+POLICY_YAML = "apiVersion: nc.core.dbaas/v3\nkind: DbPolicy\ndisableGlobalPermissions: true\n"
+OUTPUT = "templates/dbaas-operator-resources.yaml"
+
+
+@unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
+class RerunTest(unittest.TestCase):
+    """A helm root migrated once is a fixed point: running the writer again,
+    with the same plan or with a plan rebuilt from the migrated repository,
+    reports "unchanged" and writes nothing."""
+
+    def assert_rebuilt_plan_is_unchanged(self, repo: Path, tmp: Path, source_rel: str) -> None:
+        source_path = repo / source_rel
+        output_path = repo / "chart" / OUTPUT
+        migrated = (source_path.read_bytes(), output_path.read_bytes())
+        rebuilt = helm_root_plan(repo, source_rel, OUTPUT, outputSha256=sha256(output_path))
+        code, report = run(repo, rebuilt, "apply", tmp)
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report["status"], "unchanged", report)
+        self.assertEqual((source_path.read_bytes(), output_path.read_bytes()), migrated)
+
+    def test_a_document_that_starts_with_a_separator_is_unchanged_on_rerun(self) -> None:
+        # The fallback guard of a span that starts with "---" lands on the line
+        # above the separator; the rerun used to reject it as a partial guard.
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", "# owned by orders\n---\n" + declaration_yaml("orders"))
+            code, report = run(repo, helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT), "apply", tmp)
+            self.assertEqual(code, 0, report)
+            self.assertEqual(
+                (repo / "chart/templates/dbaas.yaml").read_text(encoding="utf-8"),
+                f"# owned by orders\n{CAPABILITY_FALLBACK_GUARD_OPEN}\n---\n{declaration_yaml('orders')}{{{{- end }}}}\n",
+            )
+
+            self.assert_rebuilt_plan_is_unchanged(repo, tmp, "chart/templates/dbaas.yaml")
+
+    def test_every_document_of_a_multi_document_source_is_unchanged_on_rerun(self) -> None:
+        source = (
+            "# header comment\n"
+            + declaration_yaml("orders")
+            + "---\n# second declaration\n"
+            + declaration_yaml("orders", "mongodb")
+            + "--- # policy\n"
+            + POLICY_YAML
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", source)
+            code, report = run(repo, helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT), "apply", tmp)
+            self.assertEqual(code, 0, report)
+            preserved = (repo / "chart/templates/dbaas.yaml").read_text(encoding="utf-8")
+            self.assertEqual(preserved.count(CAPABILITY_FALLBACK_GUARD_OPEN), 3, preserved)
+            for line in source.splitlines():
+                self.assertIn(line, preserved.splitlines())
+
+            self.assert_rebuilt_plan_is_unchanged(repo, tmp, "chart/templates/dbaas.yaml")
+
+    def test_one_fallback_guard_around_every_document_is_unchanged_on_rerun(self) -> None:
+        # Writer 4.0.0 wrapped a fully migrated multi-document source in one
+        # guard; per document, that guard reads as a partial guard.
+        source = (
+            f"{CAPABILITY_FALLBACK_GUARD_OPEN}\n---\n"
+            + declaration_yaml("orders")
+            + "---\n"
+            + declaration_yaml("orders", "mongodb")
+            + "{{- end }}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", source)
+            code, report = run(repo, helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT), "apply", tmp)
+            self.assertEqual(code, 0, report)
+            self.assertEqual(report["status"], "changed")
+            self.assertEqual((repo / "chart/templates/dbaas.yaml").read_text(encoding="utf-8"), source)
+            self.assertEqual(
+                sorted(entry["type"] for entry in report["internalDatabases"]), ["mongodb", "postgresql"]
+            )
+
+            self.assert_rebuilt_plan_is_unchanged(repo, tmp, "chart/templates/dbaas.yaml")
+
+    def test_a_fallback_guard_around_a_source_guard_is_unchanged_on_rerun(self) -> None:
+        source = "---\n{{- if .Values.enabled }}\n" + POLICY_YAML + "{{- end }}\n"
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", source)
+            code, report = run(repo, helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT), "apply", tmp)
+            self.assertEqual(code, 0, report)
+
+            self.assert_rebuilt_plan_is_unchanged(repo, tmp, "chart/templates/dbaas.yaml")
+            output = (repo / "chart" / OUTPUT).read_text(encoding="utf-8")
+            self.assertEqual(output.count("{{- if .Values.enabled }}"), 1, output)
+
+    def test_a_json_source_wrapped_by_an_earlier_run_is_unchanged_on_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.json", json.dumps(DECLARATION))
+            code, report = run(repo, helm_root_plan(repo, "chart/templates/dbaas.json", OUTPUT), "apply", tmp)
+            self.assertEqual(code, 0, report)
+
+            self.assert_rebuilt_plan_is_unchanged(repo, tmp, "chart/templates/dbaas.json")
+
+    def test_a_wrapped_json_source_with_a_bom_is_unchanged_on_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            source = repo / "chart/templates/dbaas.json"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"\xef\xbb\xbf" + json.dumps(DECLARATION).encode("utf-8"))
+            code, report = run(repo, helm_root_plan(repo, "chart/templates/dbaas.json", OUTPUT), "apply", tmp)
+            self.assertEqual(code, 0, report)
+            # The first run drops the BOM when it wraps a JSON source; put it
+            # back to cover a wrapped file that carries one.
+            source.write_bytes(b"\xef\xbb\xbf" + source.read_bytes())
+
+            self.assert_rebuilt_plan_is_unchanged(repo, tmp, "chart/templates/dbaas.json")
+
+    def test_applying_the_same_helm_plan_twice_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", "---\n" + declaration_yaml("orders"))
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT)
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report)
+            migrated = (repo / "chart" / OUTPUT).read_bytes()
+
+            code2, report2 = run(repo, plan, "apply", tmp)
+
+            self.assertEqual(code2, 0, report2)
+            self.assertEqual(report2["status"], "unchanged", report2)
+            self.assertEqual((repo / "chart" / OUTPUT).read_bytes(), migrated)
+
+    def test_the_same_plan_after_a_source_edit_is_still_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", declaration_yaml("orders"))
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT)
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report)
+            write(repo, "chart/templates/dbaas.yaml", declaration_yaml("orders", "mongodb"))
+
+            code2, report2 = run(repo, plan, "apply", tmp)
+
+            self.assertEqual(code2, 3, report2)
+
+    def test_a_stale_plan_is_exit_3_when_validation_also_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", declaration_yaml("orders"))
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT)
+            code, report = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, report)
+            # A comment changes the source hash and nothing the writer would
+            # write, and the chart no longer renders.
+            source = repo / "chart/templates/dbaas.yaml"
+            source.write_text(source.read_text(encoding="utf-8") + "# reviewed\n", encoding="utf-8")
+            write(repo, "chart/templates/broken.yaml", '{{ fail "broken after apply" }}\n')
+
+            code2, report2 = run(repo, plan, "apply", tmp)
+
+            self.assertEqual(code2, 3, report2)
+
+    def test_a_source_guard_above_the_separator_wraps_the_generated_resource(self) -> None:
+        source = "{{- if .Values.enabled }}\n---\n" + POLICY_YAML + "{{- end }}\n"
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", source)
+            code, report = run(repo, helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT), "apply", tmp)
+            self.assertEqual(code, 0, report)
+            output = (repo / "chart" / OUTPUT).read_text(encoding="utf-8")
+            self.assertIn("{{- if .Values.enabled }}\napiVersion: dbaas.netcracker.com/v1\n", output)
+
+
+@unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
+class InternalDatabaseInventoryTest(unittest.TestCase):
+    """The result lists every generated InternalDatabase for the
+    mounted-secret migration, in --check, --apply, and an unchanged rerun."""
+
+    def test_check_apply_and_rerun_describe_the_written_output(self) -> None:
+        source = "---\n" + POLICY_YAML + "---\n" + declaration_yaml("orders")
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "chart/templates/dbaas.yaml", source)
+            plan = helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT)
+
+            code, checked = run(repo, plan, "check", tmp)
+            self.assertEqual(code, 0, checked)
+            code, applied = run(repo, plan, "apply", tmp)
+            self.assertEqual(code, 0, applied)
+            output_path = repo / "chart" / OUTPUT
+            rebuilt = helm_root_plan(repo, "chart/templates/dbaas.yaml", OUTPUT, outputSha256=sha256(output_path))
+            code, rerun = run(repo, rebuilt, "apply", tmp)
+            self.assertEqual(code, 0, rerun)
+
+            self.assertEqual(
+                [checked["status"], applied["status"], rerun["status"]], ["valid", "changed", "unchanged"]
+            )
+            self.assertEqual(checked["internalDatabases"], applied["internalDatabases"])
+            self.assertEqual(rerun["internalDatabases"], applied["internalDatabases"])
+            [entry] = applied["internalDatabases"]
+            self.assertEqual(
+                {key: value for key, value in entry.items() if key not in ("repoRoot", "name")},
+                {
+                    "contractVersion": 1,
+                    "root": "chart",
+                    "rootKind": "helm",
+                    "outputFile": "chart/templates/dbaas-operator-resources.yaml",
+                    "rootRelativeOutputFile": OUTPUT,
+                    "outputSha256": sha256(output_path),
+                    "documentIndex": 2,
+                    "metadataNamespace": "{{ .Values.NAMESPACE }}",
+                    "operatorNamespace": '{{ include "coretpl.dbaasNamespace" $ }}',
+                    "capabilityGuard": "dbaas.netcracker.com/v1",
+                    "documentGuard": None,
+                    "type": "postgresql",
+                    "classifier": {"microserviceName": "orders", "scope": "service"},
+                    "canonicalIdentity": '{"microserviceName":"orders","scope":"service"}|postgresql',
+                    "source": {
+                        "path": "chart/templates/dbaas.yaml",
+                        "sha256": sha256(repo / "chart/templates/dbaas.yaml"),
+                    },
+                },
+            )
+            self.assertEqual(Path(entry["repoRoot"]), repo.resolve())
+            self.assertIn(f"name: {entry['name']}\n", output_path.read_text(encoding="utf-8"))
+
+    def test_a_deleted_plain_source_has_no_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            write(repo, "deploy/dbaas.json", json.dumps(DECLARATION))
+            plan = root_plan(repo, "deploy", "deploy/dbaas.json", "dbaas-operator-resources.yaml")
+
+            code, report = run(repo, plan, "apply", tmp)
+
+            self.assertEqual(code, 0, report)
+            [entry] = report["internalDatabases"]
+            self.assertEqual(entry["source"], {"path": "deploy/dbaas.json", "sha256": None})
+            self.assertIsNone(entry["capabilityGuard"])
+
+
+RECORDED_4_0_0 = PACKAGE_ROOT / "tests" / "fixtures" / "recorded_4_0_0"
+
+
+def tree_bytes(root: Path) -> dict[str, bytes]:
+    return {str(path.relative_to(root)): path.read_bytes() for path in sorted(root.rglob("*")) if path.is_file()}
+
+
+@unittest.skipUnless(shutil.which("helm") and yaml is not None, "helm and PyYAML are required")
+class RecordedVersion400Test(unittest.TestCase):
+    """A 4.0.0 plan, applied to the repository 4.0.0 recorded it against, writes
+    what the 4.0.0 writer wrote and reports what it reported."""
+
+    def assert_matches_recording(self, case: str) -> None:
+        recording = RECORDED_4_0_0 / case
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = tmp / "repo"
+            shutil.copytree(recording / "before", repo)
+            plan = json.loads((recording / "plan.json").read_text(encoding="utf-8"))
+
+            code, report = run(repo, plan, "apply", tmp)
+
+            self.assertEqual(code, 0, report)
+            self.assertEqual(tree_bytes(repo), tree_bytes(recording / "after"))
+            recorded = json.loads((recording / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual({key: report[key] for key in recorded}, recorded)
+
+    def test_a_recorded_helm_plan_writes_what_4_0_0_wrote(self) -> None:
+        self.assert_matches_recording("helm_json")
+
+    def test_a_recorded_plain_plan_writes_what_4_0_0_wrote(self) -> None:
+        self.assert_matches_recording("plain_json")
+
+
 if __name__ == "__main__":
     unittest.main()

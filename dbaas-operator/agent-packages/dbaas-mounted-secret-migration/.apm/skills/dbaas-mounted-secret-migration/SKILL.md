@@ -3,7 +3,8 @@ name: dbaas-mounted-secret-migration
 description: >-
   Migrate Qubership DBaaS-backed Go, Spring, and Quarkus microservices from runtime REST provisioning
   to deployment-time InternalDatabase and DatabaseSecretClaim resources with mounted Secrets. Use only
-  when the user asks to migrate an existing service to this mounted-secret workflow.
+  when the user asks to migrate an existing service to this mounted-secret workflow, including as the
+  second step of a migration the user requested together with migrate-core-operator-dbaas-declarations.
 ---
 
 # Migrate DBaaS provisioning to mounted Secrets
@@ -12,6 +13,39 @@ Inventory every logical database identity before building a plan. Generate one
 `InternalDatabase` for each unique `(classifier, type)` and one `DatabaseSecretClaim` for each
 unique `(classifier, type, requested userRole)`. Keep dynamic tenant provisioning on the existing
 runtime path.
+
+## Scope
+
+This skill migrates runtime REST provisioning to mounted Secrets. It owns client compatibility,
+`DatabaseSecretClaim`, and the workload volumes, mounts, and environment. Converting Core Operator
+declarations belongs to the separate `migrate-core-operator-dbaas-declarations` skill. Do not
+invoke that skill unless the user asked for both migrations.
+
+- **Mounted-secret migration alone**: the writer generates each `InternalDatabase` itself, and
+  supersedes legacy declarations as step 3 describes. Omit the datasource field
+  `internalDatabase`, or set it to `{"mode": "generate"}`.
+- **Combined migration**, when the user asked for both: `migrate-core-operator-dbaas-declarations`
+  runs first and lists each `InternalDatabase` it wrote in the `internalDatabases` field of its
+  result. Give the datasource with the same identity `internalDatabase: {"mode": "existing", ...}`
+  (step 4), so the writer generates only the claims and workload changes. Leave the legacy
+  declarations out of `supersededDeclarations`; the declaration migration already preserved them
+  under the capability guard. Start only after the declaration migration reports `changed` or
+  `unchanged`.
+
+Use these request forms to determine the scope:
+
+- Mounted-secret migration only: "Migrate this service from runtime DBaaS provisioning to mounted
+  database secrets."
+- Both migrations: "Migrate this service to DBaaS Operator resources and mounted database secrets.
+  Run the core operator declaration migration first, then run the mounted-secret migration using
+  the generated InternalDatabase resources."
+
+When an identity's client is not compatible (step 1), leave it out of the plan. In a combined
+migration, keep the declaration migration's `InternalDatabase` in place: do not roll it back, and do
+not generate claims or mounts ahead of the client. Report the migration as partially complete and
+name each identity that still has no claim. When no identity is compatible, do not run the writer.
+After the client is upgraded, rebuild the plan from the repository and reuse the same
+`InternalDatabase`.
 
 Detect the framework and read its reference:
 
@@ -203,6 +237,25 @@ those namespaces differ.
 }
 ```
 
+In a combined migration, a datasource reuses the declaration migration's `InternalDatabase` with
+the `internalDatabase` field. Copy the values from the matching `internalDatabases` entry of that
+migration's result: `rootRelativeOutputFile` to `path`, `outputSha256` to `sha256`, `name`, and
+`documentIndex`. The root must be the same root, with the same namespace and operator namespace:
+
+```json
+"internalDatabase": {
+  "mode": "existing",
+  "path": "templates/dbaas-operator-resources.yaml",
+  "sha256": "<outputSha256>",
+  "name": "orders-db",
+  "documentIndex": 1
+}
+```
+
+The writer reads that file and blocks when it changed since the result was produced (exit 3), or
+when the resource is missing or does not match (exit 4): see references/contracts.md's "Reusing an
+InternalDatabase" section. It never modifies the file.
+
 Helm roots default `capabilityGuard` to `"dbaas.netcracker.com/v1"`; the example states it
 explicitly for clarity. The guard is mandatory for Helm roots. `operatorModeEnvironment` remains
 optional. See references/contracts.md's "Capability guard" section for the guarded behavior.
@@ -253,7 +306,9 @@ python scripts/apply_migration.py --repo-root <repo> --plan <plan.json> --apply
 Read the JSON result on stdout. Exit 0 covers a `valid` (`--check`), `changed`, or `unchanged`
 (`--apply`) result; 2 is an invalid plan, 3 a stale source hash, 4 an unsupported input or missing
 dependency (including `helm` for a helm root), 5 a generated-output validation failure. Every
-blocking entry names the file and the reason.
+blocking entry names the file and the reason. Applying the same plan again reports `unchanged`. A
+plan rebuilt from the migrated repository does too, once it records the current source hashes and
+the output's `outputSha256`.
 
 ## 5. Cases the writer refuses rather than guesses at
 
@@ -265,7 +320,8 @@ templated classifier identity with no `resourceName`, or one with no live `.Rele
 expression; a superseded declaration carrying `physicalDatabaseId`, `versioningConfig`,
 `initialInstantiation`, or a non-default `lazy` (see step 3); a migration source path that is also
 the generated output path; a plain-manifest output that still contains a Helm expression after
-generation; a missing `helm` binary for a helm root. A standalone Helm action (`if`/`else`/`range`/
+generation; a missing `helm` binary for a helm root; a reused `InternalDatabase` that is missing,
+changed since the plan was built, or different from its datasource. A standalone Helm action (`if`/`else`/`range`/
 `with`/`end`/an assignment) elsewhere in the manifest, or wrapping only unrelated content, no longer
 blocks the run by itself -- masking, not a blanket rejection, is what makes editing around it safe.
 

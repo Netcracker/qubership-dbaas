@@ -1,0 +1,43 @@
+{
+  "roots": [
+    {
+      "root": "deploy",
+      "kind": "plain",
+      "outputFile": "dbaas-mounted-secret-resources.yaml",
+      "operatorNamespace": "dbaas-system",
+      "workloadNamespace": "orders-ns",
+      "originService": "orders",
+      "datasources": [
+        {
+          "id": "orders-postgresql-service",
+          "type": "postgresql",
+          "classifier": {
+            "microserviceName": "orders",
+            "scope": "service"
+          },
+          "requestedRoles": [
+            ""
+          ],
+          "parameters": {},
+          "migrationFeasibility": "SUPPORTED"
+        }
+      ],
+      "claims": [
+        {
+          "datasourceId": "orders-postgresql-service",
+          "role": "",
+          "workloadFile": "deployment.yaml",
+          "workloadKind": "Deployment",
+          "workloadName": "orders",
+          "containers": [
+            "orders"
+          ],
+          "initContainers": []
+        }
+      ],
+      "sourceHashes": {
+        "deployment.yaml": "704b4d43b01404eab623d2dc58197ce8cc1da9e828541051597d13d4fb267800"
+      }
+    }
+  ]
+}

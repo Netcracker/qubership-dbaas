@@ -1,0 +1,43 @@
+{
+  "roots": [
+    {
+      "root": "chart",
+      "kind": "helm",
+      "outputFile": "templates/dbaas-mounted-secret-resources.yaml",
+      "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
+      "workloadNamespace": "{{ .Values.NAMESPACE }}",
+      "originService": "orders",
+      "datasources": [
+        {
+          "id": "orders-postgresql-service",
+          "type": "postgresql",
+          "classifier": {
+            "microserviceName": "orders",
+            "scope": "service"
+          },
+          "requestedRoles": [
+            ""
+          ],
+          "parameters": {},
+          "migrationFeasibility": "SUPPORTED"
+        }
+      ],
+      "claims": [
+        {
+          "datasourceId": "orders-postgresql-service",
+          "role": "",
+          "workloadFile": "templates/deployment.yaml",
+          "workloadKind": "Deployment",
+          "workloadName": "orders",
+          "containers": [
+            "orders"
+          ],
+          "initContainers": []
+        }
+      ],
+      "sourceHashes": {
+        "templates/deployment.yaml": "362009da6f52b0105eff91def1905d9119fd4834d96a4e54884c8e7472882bad"
+      }
+    }
+  ]
+}

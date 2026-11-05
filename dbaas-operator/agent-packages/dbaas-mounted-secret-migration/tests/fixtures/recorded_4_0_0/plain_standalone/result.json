@@ -1,0 +1,18 @@
+{
+  "createdFiles": [
+    "deploy/dbaas-mounted-secret-resources.yaml"
+  ],
+  "deletedFiles": [],
+  "modifiedFiles": [
+    "deploy/deployment.yaml"
+  ],
+  "status": "changed",
+  "unchangedFiles": [],
+  "validation": [
+    {
+      "details": "",
+      "name": "validate-generated",
+      "status": "passed"
+    }
+  ]
+}

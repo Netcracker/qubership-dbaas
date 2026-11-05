@@ -1,0 +1,17 @@
+{{- if not (.Capabilities.APIVersions.Has "dbaas.netcracker.com/v1") }}
+{
+  "apiVersion": "nc.core.dbaas/v3",
+  "kind": "DatabaseDeclaration",
+  "declarations": [
+    {
+      "classifierConfig": {
+        "classifier": {
+          "microserviceName": "svc",
+          "scope": "service"
+        }
+      },
+      "type": "postgresql"
+    }
+  ]
+}
+{{- end }}

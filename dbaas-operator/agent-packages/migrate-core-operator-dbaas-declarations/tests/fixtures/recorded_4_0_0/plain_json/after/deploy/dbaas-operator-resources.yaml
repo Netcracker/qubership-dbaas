@@ -1,0 +1,12 @@
+---
+apiVersion: dbaas.netcracker.com/v1
+kind: InternalDatabase
+metadata:
+  name: service-postgresql-db-1-1
+  namespace: deploy-ns
+spec:
+  operatorNamespace: dbaas-system
+  classifier:
+    microserviceName: svc
+    scope: service
+  type: postgresql
