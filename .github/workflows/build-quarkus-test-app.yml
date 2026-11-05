@@ -11,12 +11,12 @@ on:
       - main
     paths:
       - 'test-apps/quarkus-test-app-service/**'
-      - '.github/workflows/quarkus-build-sample-service.yml'
+      - '.github/workflows/build-quarkus-test-app.yml'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'test-apps/quarkus-test-app-service/**'
-      - '.github/workflows/quarkus-build-sample-service.yml'
+      - '.github/workflows/build-quarkus-test-app.yml'
   workflow_dispatch:
 
 jobs:

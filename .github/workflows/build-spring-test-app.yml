@@ -11,12 +11,12 @@ on:
       - main
     paths:
       - 'test-apps/spring-test-app-service/**'
-      - '.github/workflows/spring-build-sample-service.yml'
+      - '.github/workflows/build-spring-test-app.yml'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'test-apps/spring-test-app-service/**'
-      - '.github/workflows/spring-build-sample-service.yml'
+      - '.github/workflows/build-spring-test-app.yml'
   workflow_dispatch:
 
 jobs:

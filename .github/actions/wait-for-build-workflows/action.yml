@@ -52,7 +52,7 @@ runs:
 
         operator_build_required=true
         if [ -n "$changed_files" ]; then
-          # Keep this filter aligned with pull_request.paths-ignore in go-build.yml.
+          # Keep this filter aligned with pull_request.paths-ignore in build-go.yml.
           operator_build_files=$(printf '%s\n' "$changed_files" \
             | grep -Ev '^dbaas-operator/(docs|dev)/' || true)
           if [ -z "$operator_build_files" ]; then
@@ -66,14 +66,14 @@ runs:
           runs=$(gh api \
             "repos/$REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" \
             --jq '[.workflow_runs[] | select(
-              .path == ".github/workflows/maven-build.yaml" or
-              .path == ".github/workflows/go-build.yml"
+              .path == ".github/workflows/build-maven.yml" or
+              .path == ".github/workflows/build-go.yml"
             )]')
 
           maven_run=$(printf '%s' "$runs" | jq -c \
-            '[.[] | select(.path == ".github/workflows/maven-build.yaml")] | sort_by(.created_at) | last')
+            '[.[] | select(.path == ".github/workflows/build-maven.yml")] | sort_by(.created_at) | last')
           go_run=$(printf '%s' "$runs" | jq -c \
-            '[.[] | select(.path == ".github/workflows/go-build.yml")] | sort_by(.created_at) | last')
+            '[.[] | select(.path == ".github/workflows/build-go.yml")] | sort_by(.created_at) | last')
 
           maven_status=$(printf '%s' "$maven_run" | jq -r '.status // "missing"')
           go_status=$(printf '%s' "$go_run" | jq -r '.status // "missing"')

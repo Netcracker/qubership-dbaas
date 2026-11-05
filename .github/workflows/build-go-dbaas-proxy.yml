@@ -11,12 +11,12 @@ on:
       - main
     paths:
       - 'test-apps/dbaas-proxy/**'
-      - '.github/workflows/go-build-dbaas-proxy.yml'
+      - '.github/workflows/build-go-dbaas-proxy.yml'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'test-apps/dbaas-proxy/**'
-      - '.github/workflows/go-build-dbaas-proxy.yml'
+      - '.github/workflows/build-go-dbaas-proxy.yml'
   workflow_dispatch:
 
 permissions: {}
@@ -32,8 +32,8 @@ jobs:
       contents: read
       packages: write
       pull-requests: write
-    # Build/test only, matching go-build-sample-service.yml: the image is built in-job by the
-    # integration-tests workflow and loaded into kind, so nothing is published from here.
+    # Build/test only, matching build-go-test-app.yml: the image is built in-job by the
+    # test-integration workflow and loaded into kind, so nothing is published from here.
     uses: netcracker/qubership-core-infra/.github/workflows/generic-go-build.yaml@91f0316488bc6ab88d060261caa1ebddd6706094 # v2.7.0
     with:
       skip-docker: true
