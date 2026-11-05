@@ -102,72 +102,44 @@ an infrastructure failure.
 
 ## Parameters and where they live
 
-dbaas-aggregator and dbaas-operator are packaged in application `dbaas` as services `dbaas-aggregator` and
-`dbaas-operator`, each a Helm chart. Recommend a persistent change in the source that owns the value, then regenerate
-and redeploy. Never recommend editing a generated or live object: the generated
-`Namespaces/<dbaas-namespace-folder>/Applications/dbaas.yml`, the Effective Set `deployment-parameters.yaml`, rendered
-Helm output, or a chart-rendered Deployment, StatefulSet, ConfigMap, or Secret; regeneration or redeployment reverts it.
+dbaas-aggregator and dbaas-operator are services of application `dbaas`, and each service is a Helm chart. Recommend a
+persistent change in the source configuration that owns the value, then regenerate and redeploy application `dbaas`:
 
-In an EnvGene-managed deployment, the sources are files in the Instance repository, referenced from
-`Inventory/env_definition.yml`. `<dbaas-namespace-folder>` is the folder name under `Namespaces/` in the generated
-Environment Instance, derived from the deploy postfix; it can differ from the Kubernetes namespace name.
+- Ordinary parameters belong to application `dbaas`. Application parameters are shared by both services, and only the
+  chart that reads a key uses it. The resource parameters below can be overridden per service through a resource
+  profile override.
+- `MEM_ARGS`, `MEMORY_REQUEST`, `MEMORY_LIMIT`, `CPU_REQUEST`, `CPU_LIMIT`, `REPLICAS`, and the dbaas-operator `HPA_*`
+  values belong in a service-level resource profile override for service `dbaas-aggregator` or `dbaas-operator`.
+- Sensitive values (`*_PASSWORD`, an authentication token, a private key, or other secret material) use the deployment
+  credential mechanism. Never write a literal secret value into a ParameterSet.
 
-- Ordinary parameters: an Environment-Specific ParameterSet referenced from
-  `envTemplate.envSpecificParamsets.<dbaas-namespace-folder>`, flat under `appName: dbaas`. Both services receive
-  every parameter; only a chart that reads the key uses it. A ParameterSet cannot give the two services different
-  values for the same key; only a Resource Profile Override can set service-level values.
+The example shows only the DBaaS application and service names in an EnvGene resource profile override:
 
-  ```yaml
-  # Inventory/env_definition.yml
-  envTemplate:
-    envSpecificParamsets:
-      <dbaas-namespace-folder>:
-        - dbaas-overrides
-  ---
-  # Inventory/parameters/dbaas-overrides.yml
-  name: dbaas-overrides
-  applications:
-    - appName: dbaas
-      parameters:
-        M2M_AUTH_MODE: "<mode>"
-        DBAAS_LOG_LEVEL: "<level>"
-  ```
+```yaml
+name: dbaas-resources
+applications:
+  - name: dbaas
+    services:
+      - name: dbaas-aggregator
+        parameters:
+          - name: MEMORY_LIMIT
+            value: "<memory-limit>"
+```
 
-- Resource parameters (`MEM_ARGS`, `MEMORY_REQUEST`, `MEMORY_LIMIT`, `CPU_REQUEST`, `CPU_LIMIT`, `REPLICAS`, and the
-  operator's `HPA_*`): the charts ship them as resource-profile baselines (`resource-profiles/`), and a baseline
-  overrides a ParameterSet value. Set them in an Environment-Specific Resource Profile Override referenced from
-  `envTemplate.envSpecificResourceProfiles.<dbaas-namespace-folder>`. Its value is one file name, not a list.
+For file placement, environment association, and additional fields, see the EnvGene documentation:
 
-  ```yaml
-  # Inventory/env_definition.yml
-  envTemplate:
-    envSpecificResourceProfiles:
-      <dbaas-namespace-folder>: dbaas-resources
-  ---
-  # Inventory/resource_profiles/dbaas-resources.yml
-  name: dbaas-resources
-  applications:
-    - name: dbaas
-      services:
-        - name: dbaas-aggregator
-          parameters:
-            - name: REPLICAS
-              value: "<replica-count>"
-            - name: MEMORY_LIMIT
-              value: "<memory-limit>"
-  ```
-
-- Sensitive parameters (`*_PASSWORD`, an authentication token, a private key, or other secret material): never write
-  a literal secret value into a ParameterSet. Supply it through the Credential or Credential Reference mechanism that
-  the target EnvGene configuration uses; local credentials, VALS references, and ESO references differ in form. See
-  `Netcracker/qubership-envgene@main:docs/features/external-creds.md`.
-
-After changing a source, regenerate the Environment Instance and the Effective Set, then redeploy `dbaas`. EnvGene
-references: `Netcracker/qubership-envgene@main:docs/how-to/environment-specific-parameters.md` and
-`Netcracker/qubership-envgene@main:docs/how-to/configure-resource-profiles.md`.
+- [Configure resource profiles](https://github.com/Netcracker/qubership-envgene/blob/main/docs/how-to/configure-resource-profiles.md)
+- [Environment-specific parameters](https://github.com/Netcracker/qubership-envgene/blob/main/docs/how-to/environment-specific-parameters.md)
+- [Credential processing](https://github.com/Netcracker/qubership-envgene/blob/main/docs/features/credential-processing.md)
 
 If the supplied evidence proves that EnvGene is not used, update the equivalent source-controlled application values in
-that deployment system; do not edit generated or live Kubernetes objects.
+that deployment system.
+
+Never recommend editing generated EnvGene files, such as the Environment Instance or the Effective Set
+`deployment-parameters.yaml`, rendered Helm output, or a Deployment, StatefulSet, ConfigMap, or Secret that the chart
+renders. The next generation or deployment reverts the edit. Secret `dbaas-storage-credentials` is not rendered as a
+Secret manifest; the DBaaS preparation hook creates it, and later deployments treat the existing Secret as the runtime
+source. Follow `Components and resources` and `references/aggregator.md`.
 
 Do not rely on copied default values in this skill. Read the defaults and profile overrides from the current source:
 
