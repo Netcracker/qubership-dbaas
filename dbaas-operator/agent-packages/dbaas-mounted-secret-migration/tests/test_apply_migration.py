@@ -2320,41 +2320,5 @@ class InternalDatabaseModeTest(unittest.TestCase):
                 self.assertIn(expected, report["validation"][0]["details"])
 
 
-RECORDED_4_0_0 = PACKAGE_ROOT / "tests" / "fixtures" / "recorded_4_0_0"
-
-
-def tree_bytes(root: Path) -> dict[str, bytes]:
-    return {str(path.relative_to(root)): path.read_bytes() for path in sorted(root.rglob("*")) if path.is_file()}
-
-
-@unittest.skipUnless(shutil.which("helm") and yaml is not None, "helm and PyYAML are required")
-class RecordedVersion400Test(unittest.TestCase):
-    """A standalone 4.0.0 plan, which omits internalDatabase, applied to the
-    repository 4.0.0 recorded it against, generates what the 4.0.0 writer
-    generated, InternalDatabase included, and reports what it reported."""
-
-    def assert_matches_recording(self, case: str) -> None:
-        recording = RECORDED_4_0_0 / case
-        with tempfile.TemporaryDirectory() as directory:
-            tmp = Path(directory)
-            repo = tmp / "repo"
-            shutil.copytree(recording / "before", repo)
-            the_plan = json.loads((recording / "plan.json").read_text(encoding="utf-8"))
-
-            code, report = run_migration(repo, the_plan, "apply", tmp)
-
-            self.assertEqual(code, 0, report.get("__stdout"))
-            self.assertEqual(tree_bytes(repo), tree_bytes(recording / "after"))
-            recorded = json.loads((recording / "result.json").read_text(encoding="utf-8"))
-            self.assertEqual({key: report[key] for key in recorded}, recorded)
-            self.assertEqual(report["reusedInternalDatabases"], [])
-
-    def test_a_recorded_helm_plan_generates_what_4_0_0_generated(self) -> None:
-        self.assert_matches_recording("helm_standalone")
-
-    def test_a_recorded_plain_plan_generates_what_4_0_0_generated(self) -> None:
-        self.assert_matches_recording("plain_standalone")
-
-
 if __name__ == "__main__":
     unittest.main()

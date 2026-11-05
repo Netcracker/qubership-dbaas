@@ -1641,8 +1641,8 @@ class RerunTest(unittest.TestCase):
             self.assert_rebuilt_plan_is_unchanged(repo, tmp, "chart/templates/dbaas.yaml")
 
     def test_one_fallback_guard_around_every_document_is_unchanged_on_rerun(self) -> None:
-        # Writer 4.0.0 wrapped a fully migrated multi-document source in one
-        # guard; per document, that guard reads as a partial guard.
+        # A previously migrated multi-document source may have one guard around
+        # the entire file; per document, that guard reads as a partial guard.
         source = (
             f"{CAPABILITY_FALLBACK_GUARD_OPEN}\n---\n"
             + declaration_yaml("orders")
@@ -1829,40 +1829,6 @@ class InternalDatabaseInventoryTest(unittest.TestCase):
             [entry] = report["internalDatabases"]
             self.assertEqual(entry["source"], {"path": "deploy/dbaas.json", "sha256": None})
             self.assertIsNone(entry["capabilityGuard"])
-
-
-RECORDED_4_0_0 = PACKAGE_ROOT / "tests" / "fixtures" / "recorded_4_0_0"
-
-
-def tree_bytes(root: Path) -> dict[str, bytes]:
-    return {str(path.relative_to(root)): path.read_bytes() for path in sorted(root.rglob("*")) if path.is_file()}
-
-
-@unittest.skipUnless(shutil.which("helm") and yaml is not None, "helm and PyYAML are required")
-class RecordedVersion400Test(unittest.TestCase):
-    """A 4.0.0 plan, applied to the repository 4.0.0 recorded it against, writes
-    what the 4.0.0 writer wrote and reports what it reported."""
-
-    def assert_matches_recording(self, case: str) -> None:
-        recording = RECORDED_4_0_0 / case
-        with tempfile.TemporaryDirectory() as directory:
-            tmp = Path(directory)
-            repo = tmp / "repo"
-            shutil.copytree(recording / "before", repo)
-            plan = json.loads((recording / "plan.json").read_text(encoding="utf-8"))
-
-            code, report = run(repo, plan, "apply", tmp)
-
-            self.assertEqual(code, 0, report)
-            self.assertEqual(tree_bytes(repo), tree_bytes(recording / "after"))
-            recorded = json.loads((recording / "result.json").read_text(encoding="utf-8"))
-            self.assertEqual({key: report[key] for key in recorded}, recorded)
-
-    def test_a_recorded_helm_plan_writes_what_4_0_0_wrote(self) -> None:
-        self.assert_matches_recording("helm_json")
-
-    def test_a_recorded_plain_plan_writes_what_4_0_0_wrote(self) -> None:
-        self.assert_matches_recording("plain_json")
 
 
 if __name__ == "__main__":

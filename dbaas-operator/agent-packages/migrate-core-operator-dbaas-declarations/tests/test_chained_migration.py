@@ -290,7 +290,7 @@ def copy_alone(package_root: Path, tmp: Path, runner: Path) -> Path:
 
 
 def standalone_mounted_plan(repo: Path) -> dict[str, Any]:
-    """A mounted-secret plan with no internalDatabase field, as a 4.0.0 plan has."""
+    """A standalone mounted-secret plan with no internalDatabase field."""
 
     plan = mounted_plan(repo, [], [])
     plan["roots"][0]["datasources"] = [{
