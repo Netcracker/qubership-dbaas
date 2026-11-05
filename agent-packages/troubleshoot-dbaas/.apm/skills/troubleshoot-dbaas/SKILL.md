@@ -135,12 +135,6 @@ For file placement, environment association, and additional fields, see the EnvG
 If the supplied evidence proves that EnvGene is not used, update the equivalent source-controlled application values in
 that deployment system.
 
-Never recommend editing generated EnvGene files, such as the Environment Instance or the Effective Set
-`deployment-parameters.yaml`, rendered Helm output, or a Deployment, StatefulSet, ConfigMap, or Secret that the chart
-renders. The next generation or deployment reverts the edit. Secret `dbaas-storage-credentials` is not rendered as a
-Secret manifest; the DBaaS preparation hook creates it, and later deployments treat the existing Secret as the runtime
-source. Follow `Components and resources` and `references/aggregator.md`.
-
 Do not rely on copied default values in this skill. Read the defaults and profile overrides from the current source:
 
 - dbaas-aggregator: `Netcracker/qubership-dbaas@main:helm-templates/dbaas-aggregator/values.yaml`, its
