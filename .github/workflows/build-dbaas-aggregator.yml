@@ -1,5 +1,5 @@
 ---
-name: Maven build
+name: DBaaS Aggregator Build
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
       maven-command: 'verify'
 
   maven-build-gate:
-    name: Maven Build Gate
+    name: DBaaS Aggregator Build Gate
     if: ${{ always() && github.event_name == 'pull_request' }}
     needs: [mvn]
     runs-on: ubuntu-latest
@@ -26,8 +26,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Require Maven build
+      - name: Require DBaaS Aggregator build
         if: needs.mvn.result != 'success'
         run: |
-          echo "::error::Maven build did not succeed"
+          echo "::error::DBaaS Aggregator build did not succeed"
           exit 1

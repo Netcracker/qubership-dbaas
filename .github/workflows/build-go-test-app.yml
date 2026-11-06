@@ -11,18 +11,18 @@ on:
       - main
     paths:
       - 'test-apps/go-test-app-service/**'
-      - '.github/workflows/go-build-sample-service.yml'
+      - '.github/workflows/build-go-test-app.yml'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'test-apps/go-test-app-service/**'
-      - '.github/workflows/go-build-sample-service.yml'
+      - '.github/workflows/build-go-test-app.yml'
   workflow_dispatch:
 
 jobs:
   build:
     name: Build and test go test app service
-    # Build/test only — the image is built in-job by the integration-tests workflow and loaded
+    # Build/test only — the image is built in-job by the test-integration workflow and loaded
     # into kind, so this workflow no longer builds or publishes a Docker image. (Omitting
     # docker-config-file is not enough: it defaults to docker-dev-config.json and would build the
     # aggregator image; skip-docker disables the docker-build job entirely.)
