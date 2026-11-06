@@ -1,7 +1,7 @@
-name: Go Build
+name: DBaaS Operator Build
 
 run-name: >
-  Build —
+  Build DBaaS Operator —
   ${{ github.event_name == 'push' && format('push [{0}]', github.event.head_commit.message) || '' }}
   ${{ github.event_name == 'pull_request' && format('PR ({0}) [{1}]', github.head_ref, github.event.pull_request.title) || '' }}
 
@@ -15,7 +15,7 @@ on:
 
 jobs:
   changes:
-    name: Detect Go build changes
+    name: Detect DBaaS Operator build changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -148,7 +148,7 @@ jobs:
           fi
 
   go-build-gate:
-    name: Go Build Gate
+    name: DBaaS Operator Build Gate
     if: ${{ always() && github.event_name == 'pull_request' }}
     needs: [changes, build, test-agent-packages, verify-generated]
     runs-on: ubuntu-latest

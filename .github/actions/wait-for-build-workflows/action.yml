@@ -25,10 +25,10 @@ inputs:
 
 outputs:
   aggregator-build:
-    description: Maven Build result used for image resolution (success or skipped).
+    description: DBaaS Aggregator Build result used for image resolution (success or skipped).
     value: ${{ steps.wait.outputs['aggregator-build'] }}
   operator-build:
-    description: Go Build result used for image resolution (success or skipped).
+    description: DBaaS Operator Build result used for image resolution (success or skipped).
     value: ${{ steps.wait.outputs['operator-build'] }}
 
 runs:
@@ -52,12 +52,12 @@ runs:
 
         operator_build_required=true
         if [ -n "$changed_files" ]; then
-          # Keep this filter aligned with pull_request.paths-ignore in build-go.yml.
+          # Keep this filter aligned with pull_request.paths-ignore in build-dbaas-operator.yml.
           operator_build_files=$(printf '%s\n' "$changed_files" \
             | grep -Ev '^dbaas-operator/(docs|dev)/' || true)
           if [ -z "$operator_build_files" ]; then
             operator_build_required=false
-            echo "Go Build is skipped because all changed files match its paths-ignore rules."
+            echo "DBaaS Operator Build is skipped because all changed files match its paths-ignore rules."
           fi
         fi
 
@@ -66,14 +66,14 @@ runs:
           runs=$(gh api \
             "repos/$REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" \
             --jq '[.workflow_runs[] | select(
-              .path == ".github/workflows/build-maven.yml" or
-              .path == ".github/workflows/build-go.yml"
+              .path == ".github/workflows/build-dbaas-aggregator.yml" or
+              .path == ".github/workflows/build-dbaas-operator.yml"
             )]')
 
           maven_run=$(printf '%s' "$runs" | jq -c \
-            '[.[] | select(.path == ".github/workflows/build-maven.yml")] | sort_by(.created_at) | last')
+            '[.[] | select(.path == ".github/workflows/build-dbaas-aggregator.yml")] | sort_by(.created_at) | last')
           go_run=$(printf '%s' "$runs" | jq -c \
-            '[.[] | select(.path == ".github/workflows/build-go.yml")] | sort_by(.created_at) | last')
+            '[.[] | select(.path == ".github/workflows/build-dbaas-operator.yml")] | sort_by(.created_at) | last')
 
           maven_status=$(printf '%s' "$maven_run" | jq -r '.status // "missing"')
           go_status=$(printf '%s' "$go_run" | jq -r '.status // "missing"')
@@ -100,7 +100,7 @@ runs:
               if [ "$go_status" = "completed" ] \
                   && [ "$go_conclusion" != "success" ] \
                   && [ "$go_conclusion" != "skipped" ]; then
-                echo "::error::Go Build finished with conclusion: $go_conclusion"
+                echo "::error::DBaaS Operator Build finished with conclusion: $go_conclusion"
                 exit 1
               fi
             fi

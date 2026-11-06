@@ -59,9 +59,9 @@ passed. Check the reports.
 
 ## CI
 
-- `build-maven.yml` builds the aggregator and runs its tests on every pull request.
-- `build-go.yml` builds and tests the operator, and checks that generated code and CRDs are up to date.
-- `test-integration.yml` deploys the stack to Kind and runs the integration tests. On pull requests it runs only for
+- `build-dbaas-aggregator.yml` builds the aggregator and runs its tests on every pull request.
+- `build-dbaas-operator.yml` builds and tests the operator, and checks that generated code and CRDs are up to date.
+- `test-it.yml` deploys the stack to Kind and runs the integration tests. On pull requests it runs only for
   `chore(deps)` titles; start it manually when another change needs it.
-- Releases are manual, through `release-manual.yml`.
+- Releases are manual, through `release-dbaas.yml`.
 - Pull request titles and commits follow Conventional Commits; CI checks both.
