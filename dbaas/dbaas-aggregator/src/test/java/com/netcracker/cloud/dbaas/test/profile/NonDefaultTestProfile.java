@@ -2,6 +2,7 @@ package com.netcracker.cloud.dbaas.test.profile;
 
 import com.netcracker.cloud.dbaas.integration.config.HybridM2MAuthModeProducer;
 import com.netcracker.cloud.dbaas.integration.config.JwtUtilsTestResource;
+import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import lombok.NoArgsConstructor;
 
@@ -19,7 +20,7 @@ public class NonDefaultTestProfile implements QuarkusTestProfile {
         properties.put("dbaas.process-orchestrator.enabled", "true");
         properties.put("quarkus.scheduler.enabled", "true");
         properties.put("quarkus.log.category.\"com.netcracker.cloud.dbaas.service.processengine.tasks\".level", "debug");
-        properties.put("com.netcracker.cloud.security.kubernetes.service.account.token.dir", JwtUtilsTestResource.getTokenDir());
+        properties.put(KubernetesServiceAccountToken.SERVICE_ACCOUNT_DIR_PROP, JwtUtilsTestResource.getTokenDir());
         return properties;
     }
 

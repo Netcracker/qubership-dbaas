@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.integration.config;
 
+import com.netcracker.cloud.security.core.utils.k8s.KubernetesServiceAccountToken;
 import com.netcracker.cloud.dbaas.integration.utils.TestJwtUtils;
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 import io.quarkus.test.oidc.server.OidcWiremockTestResource;
@@ -10,7 +11,6 @@ import java.nio.file.Files;
 import java.util.Map;
 
 public class JwtUtilsTestResource implements QuarkusTestResourceLifecycleManager {
-    private static String tokenDir;
     public static TestJwtUtils JWT_UTILS;
     private final OidcWiremockTestResource oidcWiremock = new OidcWiremockTestResource();
 
@@ -33,8 +33,12 @@ public class JwtUtilsTestResource implements QuarkusTestResourceLifecycleManager
 
     @SneakyThrows
     public static String getTokenDir() {
-        if(tokenDir == null) {
+        // KubernetesServiceAccountToken reads the directory from this system property, and it is also the one value
+        // the class loaders of the test JVM share
+        String tokenDir = System.getProperty(KubernetesServiceAccountToken.SERVICE_ACCOUNT_DIR_PROP);
+        if (tokenDir == null) {
             tokenDir = Files.createTempDirectory("mock-oidc-token").toAbsolutePath().toString();
+            System.setProperty(KubernetesServiceAccountToken.SERVICE_ACCOUNT_DIR_PROP, tokenDir);
         }
         return tokenDir;
     }
