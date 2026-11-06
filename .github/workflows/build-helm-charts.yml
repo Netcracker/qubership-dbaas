@@ -1,7 +1,7 @@
 ---
-name: Build and Push
+name: Build Helm Charts
 
-run-name: Build and Push (placeholder)
+run-name: Build Helm Charts (placeholder)
 
 on:
   workflow_dispatch:
@@ -18,4 +18,4 @@ jobs:
       contents: read
     steps:
       - name: Report placeholder
-        run: echo "Build and push workflow implementation is pending."
+        run: echo "Helm chart build workflow implementation is pending."
