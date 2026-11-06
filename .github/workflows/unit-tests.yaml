@@ -1,0 +1,75 @@
+name: Unit Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: test-go
+            image: golang:1.27
+            cache_path: .go/pkg/mod
+            cache_files: "**/go.sum"
+          - target: test-python
+            image: python:3.14
+            cache_path: .pip-cache
+            cache_files: "**/requirements*.txt"
+          - target: test-java
+            image: maven:3-eclipse-temurin-25
+            cache_path: .m2/repository
+            cache_files: "**/pom.xml"
+    # Language-specific test image; the common linter image is used for lint only.
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.cache_path }}
+          key: ${{ matrix.target }}-${{ runner.os }}-${{ hashFiles(matrix.cache_files) }}
+          restore-keys: |
+            ${{ matrix.target }}-${{ runner.os }}-
+
+      - name: Configure Git authentication for private Go modules
+        run: |
+          git config --global url."https://token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Configure Maven settings for GitHub Packages
+        if: matrix.target == 'test-java'
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${{ github.actor }}</username>
+                <password>${{ secrets.GITHUB_TOKEN }}</password>
+              </server>
+            </servers>
+          </settings>
+          XML
+
+      - name: Run unit tests
+        run: make ${{ matrix.target }}
+        env:
+          CI: "true"
+          GOMODCACHE: "${{ github.workspace }}/.go/pkg/mod"
+          PIP_CACHE_DIR: "${{ github.workspace }}/.pip-cache"
+          MAVEN_OPTS: "-Dmaven.repo.local=${{ github.workspace }}/.m2/repository"

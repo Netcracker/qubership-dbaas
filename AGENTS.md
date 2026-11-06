@@ -74,6 +74,17 @@ test-apps/                       Sample services and kuttl tests
 docs/                            API specs, how-tos, installation, diagrams
 ```
 
+### Verify after changes
+
+After any code or config change, run from the repository root:
+
+```bash
+make verify
+```
+
+That runs Super-Linter (and skillcheck when skills are present) plus Go, Python, and Java tests via `common.mk`. Do not consider the change done until `make verify` succeeds. Use `make lint` or `make test` alone only when you are iterating on one side of the check.
+
+---
 ## PR Checklist
 
 - Title follows Conventional Commits.
