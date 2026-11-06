@@ -39,6 +39,8 @@ Two constraints apply. The skill supports Go, Spring, and Quarkus, and reports o
 out of scope. It also does not produce a complete cutover: identities whose tenant is derived from
 the request context remain on the runtime path, and the REST fallback is retained deliberately.
 
+By itself, the skill generates the `InternalDatabase` resources as well as the claims and mounts.
+
 ### Core Operator declarations to custom resources
 
 `migrate-core-operator-dbaas-declarations` converts `DatabaseDeclaration` to `InternalDatabase` and
@@ -48,8 +50,49 @@ the request context remain on the runtime path, and the REST fallback is retaine
 apm install Netcracker/qubership-dbaas/dbaas-operator/agent-packages/migrate-core-operator-dbaas-declarations
 ```
 
-Either skill is invoked by name from the service repository. The generated resources should be
-compared against the source manifests before they are applied.
+The skill converts declarations only. Its writer result lists every generated `InternalDatabase` in
+`internalDatabases`, which the mounted-secret migration can reuse.
+
+### Running one skill or both
+
+The two skills are independent: each installs and runs on its own, and neither invokes the other.
+An agent runs both only when you ask for both migrations. Install both packages before a combined
+migration; installing either package does not install the other.
+
+| Request | What runs |
+| --- | --- |
+| Declaration migration | `migrate-core-operator-dbaas-declarations` only |
+| Mounted-secret migration | `dbaas-mounted-secret-migration` only, generating its own `InternalDatabase` resources |
+| Both migrations | The declaration migration, then the mounted-secret migration reusing its `InternalDatabase` resources |
+
+Example prompts:
+
+- Declaration migration only: "Migrate the Core Operator DBaaS declarations in this repository to
+  DBaaS Operator resources."
+- Mounted-secret migration only: "Migrate this service from runtime DBaaS provisioning to mounted
+  database secrets."
+- Both migrations: "Migrate this service to DBaaS Operator resources and mounted database secrets.
+  Run the core operator declaration migration first, then run the mounted-secret migration using
+  the generated InternalDatabase resources."
+
+A combined migration runs in this order:
+
+1. `migrate-core-operator-dbaas-declarations` converts the declarations.
+1. The agent reads the `internalDatabases` list from that writer's result.
+1. The agent builds the mounted-secret plan with `internalDatabase.mode: existing` for each listed
+   database.
+1. `dbaas-mounted-secret-migration` adds the `DatabaseSecretClaim` resources and the workload
+   mounts. It reuses the listed `InternalDatabase` resources and never generates a second resource
+   for the same database.
+
+When the declaration migration fails, the mounted-secret migration does not start. When a client
+library cannot read mounted Secrets, the mounted-secret migration generates no claim or mount for
+that database and keeps the converted declarations; the agent reports the migration as partially
+complete. Run the mounted-secret migration again after upgrading the client: it adds only the
+missing claims and mounts.
+
+Each skill is invoked from the service repository. The generated resources should be compared
+against the source manifests before they are applied.
 
 ---
 

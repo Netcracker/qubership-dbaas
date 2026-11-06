@@ -1,6 +1,6 @@
 ---
 name: migrate-core-operator-dbaas-declarations
-description: "Migrate legacy Core Operator DBaaS declarations to dbaas-operator resources. Use only when the user asks to migrate DatabaseDeclaration/DbPolicy resources to InternalDatabase/DatabaseAccessPolicy."
+description: "Migrate legacy Core Operator DBaaS declarations to dbaas-operator InternalDatabase and DatabaseAccessPolicy resources. Use only when the user asks for the Core Operator declaration migration, or to migrate DatabaseDeclaration/DbPolicy resources to InternalDatabase/DatabaseAccessPolicy. Covers declarations only, not mounted database secrets."
 ---
 
 # Migrate Core Operator DBaaS declarations
@@ -15,10 +15,68 @@ latest available CoreTPL release that includes `coretpl.dbaasNamespace`, refresh
 vendored dependencies, and verify that the helper is available. Stop if it is unavailable. Plain
 manifests do not use CoreTPL and require a verified literal operator namespace.
 
-`scripts/apply_migration.py` is the only process allowed to create, modify, or delete files in the
-consumer repository. It is deterministic: given the same plan and repository state it produces the
-same result every time. Never hand-edit a migrated file afterward -- if the output needs a change,
-change the plan (or the source) and re-run the writer.
+This CoreTPL preparation is the one change made before the writer runs. It is limited to each Helm
+root's `Chart.yaml`, its `Chart.lock`, and the vendored archives in its `charts/` directory. Edit
+the CoreTPL dependency entry in `Chart.yaml` yourself, then run `helm dependency update
+<chart-root>` against the chart repository the repository already uses; Helm creates or refreshes
+`Chart.lock` and the vendored archives. Finish it before the first `--check`; the writer renders
+these files but never writes them.
+
+`scripts/apply_migration.py` is the only process allowed to create, modify, or delete any other
+file in the consumer repository. It is deterministic: given the same plan and repository state it
+produces the same result every time. Never hand-edit a migrated file afterward -- if the output
+needs a change, change the plan (or the source) and re-run the writer.
+
+## Scope
+
+This skill migrates declarations only. It owns `InternalDatabase`, `DatabaseAccessPolicy`, the
+capability guards around legacy declarations, and CoreTPL preparation. Client compatibility,
+`DatabaseSecretClaim`, and workload mounts belong to the separate `dbaas-mounted-secret-migration`
+skill.
+
+Do not invoke `dbaas-mounted-secret-migration` unless the user asked for both migrations, for
+example "Migrate this service to DBaaS Operator resources and mounted database secrets". A request
+for the declaration migration alone ends after this skill's result is reported.
+
+Use these request forms to determine the scope:
+
+- Declaration migration only: "Migrate the Core Operator DBaaS declarations in this repository to
+  DBaaS Operator resources."
+- Both migrations: "Migrate this service to DBaaS Operator resources and mounted database secrets.
+  Run the core operator declaration migration first, then run the mounted-secret migration using
+  the generated InternalDatabase resources."
+
+Every `valid`, `changed`, and `unchanged` result lists the generated resources in
+`internalDatabases` (shape in the module docstring of `scripts/apply_migration.py`). That list is
+the supported handoff to the mounted-secret migration. Save the result outside the consumer
+repository, next to the plan, and include the list in the report.
+
+## Combined migration
+
+Follow these steps only when the user asked for both migrations:
+
+1. Run this skill's workflow below to the end. Continue only after `--apply` reports `changed` or
+   `unchanged`; when it blocks, stop and report it without starting the mounted-secret migration.
+2. Read `internalDatabases` from the saved result.
+3. Build the `dbaas-mounted-secret-migration` plan. Give each datasource whose identity matches an
+   entry's `canonicalIdentity` the field `internalDatabase: {"mode": "existing", ...}`, copying
+   `rootRelativeOutputFile` to `path`, `outputSha256` to `sha256`, `name`, and `documentIndex`. Use
+   the same root, namespace, and operator namespace. Leave the legacy declarations out of
+   `supersededDeclarations`: this skill already preserved them under the capability guard.
+4. Run `dbaas-mounted-secret-migration` with that plan. It generates only claims and workload
+   changes, blocks when a reused resource is missing or differs, and never writes a second
+   `InternalDatabase` for an identity.
+
+An identity that the mounted-secret migration reports as `BLOCKED` because its client cannot read
+mounted Secrets, or as dynamic, stays out of its plan. Keep this skill's result as it is: do not
+roll it back and do not generate claims ahead of the client. Report the migration as partially
+complete and name each identity that has an `InternalDatabase` but no claim.
+
+After the client is upgraded, rebuild this skill's plan from the repository (current source hashes
+and `outputSha256`). The writer reports `unchanged` and returns the same `internalDatabases`. Then
+rebuild the mounted-secret plan with the newly supported identity in `existing` mode and the current
+`outputSha256` of the mounted-secret output. A plain root has no sources left to plan from: take
+`path`, `sha256`, and `name` from its current output file instead.
 
 ## Workflow: inventory, plan, check, apply
 
@@ -47,6 +105,10 @@ change the plan (or the source) and re-run the writer.
    including rendering a helm root with `helm template` -- without touching the real repository.
 4. **Apply.** Once `--check` reports `valid`, run the same command with `--apply`. Do nothing else
    to the affected files; a warning in the result is not permission to proceed around a block.
+   Applying the same helm-root plan again, or a plan rebuilt from the migrated repository, reports
+   `unchanged`. A plain root deletes its sources, so its plan cannot be applied twice.
+5. **Report.** Report the result, including `internalDatabases`. Continue with "Combined
+   migration" only when the user asked for both migrations.
 
 Treat the JSON envelope as a draft, not a final answer: `status: "changed"` and exit 0 only mean the
 writer did exactly what the plan said, not that the plan said the right thing. Resolve every
@@ -67,7 +129,9 @@ Supported source shapes:
   documents are never spliced apart below that granularity;
 - a Helm guard is preserved only when it wraps one entire document. Leading comments/blank lines
   before `{{- if ... }}` and trailing comments/blank lines after `{{- end }}` are preserved; a
-  guard that does not bracket the whole document blocks the run.
+  guard that does not bracket the whole document blocks the run. A `{{- if ... }}` line directly
+  above a document's `---` separator belongs to that document; the writer's own operator-absent
+  guard takes this position.
 
 Always blocking, before anything is written:
 

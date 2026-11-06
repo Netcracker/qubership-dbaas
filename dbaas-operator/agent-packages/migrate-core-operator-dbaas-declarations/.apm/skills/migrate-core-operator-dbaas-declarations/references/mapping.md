@@ -53,6 +53,13 @@ When it is set, the legacy source is preserved -- its original bytes, comments a
 {{- end }}
 ```
 
+Each migrated document gets its own operator-absent guard. When a document starts with its own
+`---` separator, the guard line sits directly above that separator. A later run reads such a
+document, including one whose operator-absent guard wraps the source's own whole-document guard, as
+already migrated: it keeps the source as it is and generates the same output, so the run reports
+`unchanged`. A JSON source wrapped this way is read the same way, and so is a source whose
+documents an earlier writer version wrapped together in one operator-absent guard.
+
 The writer's own `--check`/`--apply` validation renders the chart twice when `capabilityGuard` is
 set: once with `--api-versions <capabilityGuard>` (the branch the generated resource actually lives
 in must render and pass the same target-CRD validation as always -- a guard that never evaluates
