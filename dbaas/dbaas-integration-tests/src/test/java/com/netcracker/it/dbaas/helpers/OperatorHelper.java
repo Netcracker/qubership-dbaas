@@ -57,6 +57,8 @@ public class OperatorHelper {
     public static final String REASON_POLICY_APPLIED = "PolicyApplied";
     public static final String REASON_PROVISIONING_STARTED = "ProvisioningStarted";
     public static final String REASON_BALANCING_RULE_APPLIED = "BalancingRuleApplied";
+    public static final String REASON_NAMESPACE_NOT_IN_COMPOSITE = "NamespaceNotInComposite";
+    public static final String REASON_ACCESS_POLICY_NOT_READY = "AccessPolicyNotReady";
 
     public static String NAMESPACE;
 
