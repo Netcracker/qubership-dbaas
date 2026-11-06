@@ -599,8 +599,7 @@ public class DBBackupsService {
                 deltaDatabases.size(), backup.getId(), backup.getNamespace()
         );
 
-        deltaDatabases = deletionService.markRegistriesForDrop(backup.getNamespace(), deltaDatabases);
-        deletionService.dropRegistriesSafe(backup.getNamespace(), deltaDatabases);
+        deletionService.markAndDropRegistriesSafe(backup.getNamespace(), deltaDatabases);
 
         log.info("Delta cleaned during restoration of backup {} in namespace {}", backup.getId(), backup.getNamespace());
 
@@ -663,8 +662,7 @@ public class DBBackupsService {
             log.info("Clean {} databases in target namespace {} during restoration of backup {}",
                     targetDatabasesToDrop.size(), targetNamespace, backup.getId());
             log.debug("databases to drop = {}", targetDatabasesToDrop);
-            targetDatabasesToDrop = deletionService.markRegistriesForDrop(targetNamespace, targetDatabasesToDrop);
-            deletionService.dropRegistriesSafe(targetNamespace, targetDatabasesToDrop);
+            deletionService.markAndDropRegistriesSafe(targetNamespace, targetDatabasesToDrop);
             saveRestoreDbWithAnotherName(targetNamespace, result, notMarkedForDropInBackup);
         }
         log.info("Saving databases in database collection");
