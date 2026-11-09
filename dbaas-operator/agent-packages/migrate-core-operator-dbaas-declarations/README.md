@@ -13,8 +13,10 @@ including `deployments/`, `<service-name>-deployments/`, and Helm chart folders.
 The skill migrates declarations only and does not invoke `dbaas-mounted-secret-migration`. Its
 writer result lists every generated `InternalDatabase` in `internalDatabases`. When you ask for both
 migrations, the agent runs this skill first and then `dbaas-mounted-secret-migration`, which reuses
-those resources and adds the `DatabaseSecretClaim` resources and workload mounts. Install that
-package separately for a combined migration.
+the resources whose `documentGuard` is null and adds their `DatabaseSecretClaim` resources and
+workload mounts. A resource with a non-null `documentGuard` stays in place without a claim and is
+reported as blocked for the automated mounted-secret migration. Install that package separately for
+a combined migration.
 
 ## Contents
 

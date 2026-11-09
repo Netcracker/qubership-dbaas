@@ -26,11 +26,11 @@ invoke that skill unless the user asked for both migrations.
   `internalDatabase`, or set it to `{"mode": "generate"}`.
 - **Combined migration**, when the user asked for both: `migrate-core-operator-dbaas-declarations`
   runs first and lists each `InternalDatabase` it wrote in the `internalDatabases` field of its
-  result. Give the datasource with the same identity `internalDatabase: {"mode": "existing", ...}`
-  (step 4), so the writer generates only the claims and workload changes. Leave the legacy
-  declarations out of `supersededDeclarations`; the declaration migration already preserved them
-  under the capability guard. Start only after the declaration migration reports `changed` or
-  `unchanged`.
+  result. For an entry whose `documentGuard` is null, give the datasource with the same identity
+  `internalDatabase: {"mode": "existing", ...}` (step 4), so the writer generates only the claims
+  and workload changes. Leave the legacy declarations out of `supersededDeclarations`; the
+  declaration migration already preserved them under the capability guard. Start only after the
+  declaration migration reports `changed` or `unchanged`.
 
 Use these request forms to determine the scope:
 
@@ -47,11 +47,12 @@ name each identity that still has no claim. When no identity is compatible, do n
 After the client is upgraded, rebuild the plan from the repository and reuse the same
 `InternalDatabase`.
 
-Leave an identity out of a combined plan the same way when its `internalDatabases` entry has a
-non-null `documentGuard`. That `InternalDatabase` renders only under the source declaration's own
-Helm condition, and the writer cannot put the claims and mounts under the same condition, so it
-blocks the reuse (exit 4). Report the identity as not migrated together with its `documentGuard`.
-Its claim and mount have to be added by hand under that condition.
+Treat an identity as `BLOCKED` for the automated mounted-secret migration when its
+`internalDatabases` entry has a non-null `documentGuard`. That `InternalDatabase` renders only under
+the source declaration's own Helm condition, and the writer cannot put the claims and mounts under
+the same condition. Leave the identity out of the plan, keep the `InternalDatabase`, and report the
+identity and its `documentGuard`. Do not hand-edit files that this writer owns. A separate manual
+migration for that identity is outside this skill.
 
 Detect the framework and read its reference:
 

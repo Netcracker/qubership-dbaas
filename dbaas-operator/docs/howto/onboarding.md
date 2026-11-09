@@ -51,7 +51,7 @@ apm install Netcracker/qubership-dbaas/dbaas-operator/agent-packages/migrate-cor
 ```
 
 The skill converts declarations only. Its writer result lists every generated `InternalDatabase` in
-`internalDatabases`, which the mounted-secret migration can reuse.
+`internalDatabases`. The mounted-secret migration can reuse entries whose `documentGuard` is null.
 
 ### Running one skill or both
 
@@ -63,7 +63,7 @@ migration; installing either package does not install the other.
 | --- | --- |
 | Declaration migration | `migrate-core-operator-dbaas-declarations` only |
 | Mounted-secret migration | `dbaas-mounted-secret-migration` only, generating its own `InternalDatabase` resources |
-| Both migrations | The declaration migration, then the mounted-secret migration reusing its `InternalDatabase` resources |
+| Both migrations | Declaration migration, then mounted-secret migration reusing supported, unguarded resources |
 
 Example prompts:
 
@@ -80,10 +80,10 @@ A combined migration runs in this order:
 1. `migrate-core-operator-dbaas-declarations` converts the declarations.
 1. The agent reads the `internalDatabases` list from that writer's result.
 1. The agent builds the mounted-secret plan with `internalDatabase.mode: existing` for each listed
-   database.
+   database whose `documentGuard` is null.
 1. `dbaas-mounted-secret-migration` adds the `DatabaseSecretClaim` resources and the workload
-   mounts. It reuses the listed `InternalDatabase` resources and never generates a second resource
-   for the same database.
+   mounts. It reuses those `InternalDatabase` resources and never generates a second resource for
+   the same database.
 
 When the declaration migration fails, the mounted-secret migration does not start. When a client
 library cannot read mounted Secrets, the mounted-secret migration generates no claim or mount for
@@ -94,9 +94,10 @@ missing claims and mounts.
 A combined migration does not cover a declaration wrapped in its own Helm condition, such as
 `{{- if .Values.databaseEnabled }}`. The declaration migration converts it and keeps the condition
 around the `InternalDatabase`, but the mounted-secret migration cannot put the claim and mount under
-the same condition, so the agent leaves that database out and reports it as not migrated. Add its
-claim and mount by hand under the same condition, or remove the condition from the declaration
-before you run the migrations.
+the same condition, so the agent leaves that database out and reports it as blocked. The automated
+flow makes no claim or workload change for that identity. Handle it as a separate manual migration,
+or remove the source condition before running either skill only when making the database
+unconditional preserves the chart's intended behavior.
 
 Each skill is invoked from the service repository. The generated resources should be compared
 against the source manifests before they are applied.

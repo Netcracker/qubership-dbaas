@@ -58,8 +58,8 @@ Follow these steps only when the user asked for both migrations:
 1. Run this skill's workflow below to the end. Continue only after `--apply` reports `changed` or
    `unchanged`; when it blocks, stop and report it without starting the mounted-secret migration.
 2. Read `internalDatabases` from the saved result.
-3. Build the `dbaas-mounted-secret-migration` plan. Give each datasource whose identity matches an
-   entry's `canonicalIdentity` the field `internalDatabase: {"mode": "existing", ...}`, copying
+3. Build the `dbaas-mounted-secret-migration` plan. For each matching entry whose `documentGuard` is
+   null, give the datasource the field `internalDatabase: {"mode": "existing", ...}`, copying
    `rootRelativeOutputFile` to `path`, `outputSha256` to `sha256`, `name`, and `documentIndex`. Use
    the same root, namespace, and operator namespace. Leave the legacy declarations out of
    `supersededDeclarations`: this skill already preserved them under the capability guard.

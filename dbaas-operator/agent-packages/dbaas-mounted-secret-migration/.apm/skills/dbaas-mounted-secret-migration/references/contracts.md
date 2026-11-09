@@ -102,9 +102,10 @@ The writer finds the resource by `name` in the file at `path`, relative to the r
 - `spec.namePrefix` and `spec.settings`, against the datasource's `parameters`.
 
 A non-null `documentGuard` in an `internalDatabases` entry names a Helm condition that the
-declaration migration kept around the resource, so reusing that entry blocks. Leave its datasource
-out of the plan and report the identity as not migrated; its `InternalDatabase` stays in place
-without a claim.
+declaration migration kept around the resource, so the automated mounted-secret migration does not
+support reusing that entry. Leave its datasource out of the plan, report the identity as `BLOCKED`,
+and keep its `InternalDatabase` in place without a claim. Do not hand-edit files named in another
+datasource's plan; a separate manual migration for the guarded identity is outside the writer.
 
 Ownership is decided per `(classifier, type)` identity. Several datasources may share an identity
 only when every one of them uses `existing` with the same `path`, `sha256`, `name`, and

@@ -28,11 +28,12 @@ To also mount the database Secrets into the workloads, ask for both migrations, 
 "Migrate this service to DBaaS Operator resources and mounted database secrets. Run the core
 operator declaration migration first, then run the mounted-secret migration using the generated
 InternalDatabase resources." The agent then runs the declaration migration, reads
-`internalDatabases`, and runs `dbaas-mounted-secret-migration` with `internalDatabase.mode: existing`,
-so that no `InternalDatabase` is generated twice. A client library that cannot read mounted Secrets
-blocks the claims and mounts for its database, and the declaration migration's resources stay in
-place. See [Running one skill or both](onboarding.md#running-one-skill-or-both) for every request
-and [Automated migration](onboarding.md#automated-migration) for installation.
+`internalDatabases`, and runs `dbaas-mounted-secret-migration` with `internalDatabase.mode: existing`
+for entries whose `documentGuard` is null, so that no `InternalDatabase` is generated twice. A
+client library that cannot read mounted Secrets, or an entry with a non-null `documentGuard`, blocks
+the claims and mounts for its database, and the declaration migration's resources stay in place.
+See [Running one skill or both](onboarding.md#running-one-skill-or-both) for every request and
+[Automated migration](onboarding.md#automated-migration) for installation.
 
 ---
 
