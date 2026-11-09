@@ -1,4 +1,4 @@
-{{- if and .Values.DBAAS_OPERATOR_ENABLED .Values.MONITORING_ENABLED }}
+{{- if and .Values.DBAAS_OPERATOR_ENABLED (eq (.Values.MONITORING_ENABLED | toString | lower) "true") }}
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:

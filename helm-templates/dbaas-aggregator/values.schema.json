@@ -591,13 +591,314 @@
     },
     "MONITORING_ENABLED": {
       "$id": "#/properties/MONITORING_ENABLED",
-      "type": "boolean",
+      "$ref": "#/definitions/booleanOrString",
       "title": "The MONITORING_ENABLED schema",
       "description": "Set to true to import dashboards to Grafana and configure integration with Prometheus. Requires Platform System Monitor CRDs to be deployed to target k8s/openshift cluster",
       "examples": [
         true,
         false
       ]
+    },
+    "INTERNAL_TLS_ENABLED": {
+      "$id": "#/properties/INTERNAL_TLS_ENABLED",
+      "$ref": "#/definitions/booleanOrString",
+      "title": "The INTERNAL_TLS_ENABLED schema",
+      "description": "Is TLS enabled",
+      "examples": [
+        false
+      ],
+      "internal": true
+    },
+    "priorityClassName": {
+      "$id": "#/properties/priorityClassName",
+      "type": "string",
+      "title": "The priorityClassName schema",
+      "description": "Defines priority of the pod. https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#priorityclass",
+      "default": "",
+      "examples": [
+        "high-priority"
+      ]
+    },
+    "MANAGED_BY": {
+      "$id": "#/properties/MANAGED_BY",
+      "type": "string",
+      "title": "The MANAGED_BY schema",
+      "description": "Deployer that manages the resources. Rendered as the app.kubernetes.io/managed-by label; the label is omitted when empty.",
+      "examples": [
+        "saasDeployer"
+      ],
+      "internal": true
+    },
+    "DEPLOYMENT_STRATEGY_TYPE": {
+      "$id": "#/properties/DEPLOYMENT_STRATEGY_TYPE",
+      "type": "string",
+      "title": "The DEPLOYMENT_STRATEGY_TYPE schema",
+      "description": "Specify Deployment Strategy type for deploying service",
+      "internal": false,
+      "envSpecific": false,
+      "examples": [
+        "recreate",
+        "best_effort_controlled_rollout",
+        "ramped_slow_rollout",
+        "custom_rollout"
+      ],
+      "enum": [
+        "",
+        "recreate",
+        "best_effort_controlled_rollout",
+        "ramped_slow_rollout",
+        "custom_rollout"
+      ]
+    },
+    "DEPLOYMENT_STRATEGY_MAXSURGE": {
+      "$id": "#/properties/DEPLOYMENT_STRATEGY_MAXSURGE",
+      "type": "string",
+      "title": "DEPLOYMENT_STRATEGY_MAXSURGE scheme",
+      "description": "Specify .spec.strategy.rollingUpdate.maxSurge parameter",
+      "internal": false,
+      "envSpecific": false,
+      "examples": [
+        "50%",
+        "2"
+      ]
+    },
+    "DEPLOYMENT_STRATEGY_MAXUNAVAILABLE": {
+      "$id": "#/properties/DEPLOYMENT_STRATEGY_MAXUNAVAILABLE",
+      "type": "string",
+      "title": "DEPLOYMENT_STRATEGY_MAXUNAVAILABLE scheme",
+      "description": "Specify .spec.strategy.rollingUpdate.maxUnavailable parameter",
+      "internal": false,
+      "envSpecific": false,
+      "examples": [
+        "50%",
+        "2"
+      ]
+    },
+    "ISSUER_GROUP": {
+      "$id": "#/properties/ISSUER_GROUP",
+      "type": "string",
+      "title": "The ISSUER_GROUP schema",
+      "description": "Parameter specifies issuer group for TLS certificate",
+      "default": "cert-manager.io"
+    },
+    "ISSUER_KIND": {
+      "$id": "#/properties/ISSUER_KIND",
+      "type": "string",
+      "title": "The ISSUER_KIND schema",
+      "description": "Parameter specifies issuer kind for TLS certificate",
+      "default": "ClusterIssuer"
+    },
+    "ISSUER_NAME": {
+      "$id": "#/properties/ISSUER_NAME",
+      "type": "string",
+      "title": "The ISSUER_NAME schema",
+      "description": "Parameter specifies issuer name for TLS certificate",
+      "default": ""
+    },
+    "CERTIFICATE_FILE_PASSWORD": {
+      "$id": "#/properties/CERTIFICATE_FILE_PASSWORD",
+      "type": "string",
+      "title": "The CERTIFICATE_FILE_PASSWORD schema",
+      "description": "Parameter specifies password for certificate keystore file",
+      "default": "changeit"
+    },
+    "EXECUTION_MODE": {
+      "$id": "#/properties/EXECUTION_MODE",
+      "type": "string",
+      "title": "Disaster Recovery execution mode",
+      "description": "The flag allows to set Disaster Recovery execution mode",
+      "examples": [
+        "active"
+      ]
+    },
+    "NC_DIAGNOSTIC_MODE": {
+      "$id": "#/properties/NC_DIAGNOSTIC_MODE",
+      "type": "string",
+      "title": "The NC_DIAGNOSTIC_MODE schema",
+      "description": "Type of CDT diagnostic mode",
+      "examples": [
+        "dev",
+        "prod",
+        "off"
+      ],
+      "internal": true
+    },
+    "NC_DIAGNOSTIC_AGENT_SERVICE": {
+      "$id": "#/properties/NC_DIAGNOSTIC_AGENT_SERVICE",
+      "type": "string",
+      "title": "The NC_DIAGNOSTIC_AGENT_SERVICE schema",
+      "description": "Diagnostic agent location",
+      "examples": [
+        "nc-diagnostic-agent"
+      ],
+      "internal": true
+    },
+    "HPA_ENABLED": {
+      "$id": "#/properties/HPA_ENABLED",
+      "description": "Defines whether horizontal autoscaling enabled for microservice",
+      "envSpecific": true,
+      "internal": true,
+      "title": "The HPA_ENABLED scheme",
+      "type": "boolean"
+    },
+    "HPA_MIN_REPLICAS": {
+      "$id": "#/properties/HPA_MIN_REPLICAS",
+      "description": "Defines the lower limit for the number of replicas to which the autoscaler can scale down",
+      "envSpecific": true,
+      "internal": true,
+      "title": "The HPA_MIN_REPLICAS scheme",
+      "type": "integer"
+    },
+    "HPA_MAX_REPLICAS": {
+      "$id": "#/properties/HPA_MAX_REPLICAS",
+      "type": "integer",
+      "title": "The HPA_MAX_REPLICAS scheme",
+      "description": "Defines the upper limit for the number of replicas to which the autoscaler can scale up. It cannot be less that HPA_MIN_REPLICAS.",
+      "internal": true,
+      "envSpecific": true
+    },
+    "HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT": {
+      "$id": "#/properties/HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT",
+      "description": "Target average CPU utilization for horizontal pod autoscaling",
+      "envSpecific": true,
+      "examples": [
+        75
+      ],
+      "internal": true,
+      "title": "The HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT scheme",
+      "type": "integer"
+    },
+    "HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS",
+      "description": "Defines behavior.scaleUp.stabilizationWindowSeconds property in HPA resource",
+      "envSpecific": true,
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS scheme",
+      "type": "integer"
+    },
+    "HPA_SCALING_UP_SELECT_POLICY": {
+      "$id": "#/properties/HPA_SCALING_UP_SELECT_POLICY",
+      "description": "Defines behavior.scaleUp.selectPolicy property in HPA resource",
+      "envSpecific": true,
+      "examples": [
+        "Max"
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_UP_SELECT_POLICY scheme",
+      "type": "string"
+    },
+    "HPA_SCALING_UP_PERCENT_VALUE": {
+      "$id": "#/properties/HPA_SCALING_UP_PERCENT_VALUE",
+      "$ref": "#/definitions/integerOrString",
+      "description": "Defines behavior.scaleUp.policies[].value property in HPA resource for Percent type",
+      "envSpecific": true,
+      "examples": [
+        100
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_UP_PERCENT_VALUE scheme"
+    },
+    "HPA_SCALING_UP_PERCENT_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_UP_PERCENT_PERIOD_SECONDS",
+      "description": "Defines behavior.scaleUp.policies[].periodSeconds property in HPA resource for Percent type",
+      "envSpecific": true,
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_UP_PERCENT_PERIOD_SECONDS scheme",
+      "type": "integer"
+    },
+    "HPA_SCALING_UP_PODS_VALUE": {
+      "$id": "#/properties/HPA_SCALING_UP_PODS_VALUE",
+      "$ref": "#/definitions/integerOrString",
+      "description": "Defines behavior.scaleUp.policies[].value property in HPA resource for Pods type",
+      "envSpecific": true,
+      "examples": [
+        2
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_UP_PODS_VALUE scheme"
+    },
+    "HPA_SCALING_UP_PODS_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_UP_PODS_PERIOD_SECONDS",
+      "description": "Defines behavior.scaleUp.policies[].periodSeconds property in HPA resource for Pods type",
+      "envSpecific": true,
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_UP_PODS_PERIOD_SECONDS scheme",
+      "type": "integer"
+    },
+    "HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS",
+      "description": "Defines behavior.scaleDown.stabilizationWindowSeconds property in HPA resource",
+      "envSpecific": true,
+      "examples": [
+        300
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS scheme",
+      "type": "integer"
+    },
+    "HPA_SCALING_DOWN_SELECT_POLICY": {
+      "$id": "#/properties/HPA_SCALING_DOWN_SELECT_POLICY",
+      "description": "Defines behavior.scaleDown.selectPolicy property in HPA resource",
+      "envSpecific": true,
+      "examples": [
+        "Max"
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_DOWN_SELECT_POLICY scheme",
+      "type": "string"
+    },
+    "HPA_SCALING_DOWN_PERCENT_VALUE": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PERCENT_VALUE",
+      "$ref": "#/definitions/integerOrString",
+      "description": "Defines behavior.scaleDown.policies[].value property in HPA resource for Percent type",
+      "envSpecific": true,
+      "examples": [
+        100
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_DOWN_PERCENT_VALUE scheme"
+    },
+    "HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS",
+      "description": "Defines behavior.scaleDown.policies[].periodSeconds property in HPA resource for Percent type",
+      "envSpecific": true,
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS scheme",
+      "type": "integer"
+    },
+    "HPA_SCALING_DOWN_PODS_VALUE": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PODS_VALUE",
+      "$ref": "#/definitions/integerOrString",
+      "description": "Defines behavior.scaleDown.policies[].value property in HPA resource for Pods type",
+      "envSpecific": true,
+      "examples": [
+        2
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_DOWN_PODS_VALUE scheme"
+    },
+    "HPA_SCALING_DOWN_PODS_PERIOD_SECONDS": {
+      "$id": "#/properties/HPA_SCALING_DOWN_PODS_PERIOD_SECONDS",
+      "description": "Defines behavior.scaleDown.policies[].periodSeconds property in HPA resource for Pods type",
+      "envSpecific": true,
+      "examples": [
+        60
+      ],
+      "internal": true,
+      "title": "The HPA_SCALING_DOWN_PODS_PERIOD_SECONDS scheme",
+      "type": "integer"
     }
   },
   "additionalProperties": true

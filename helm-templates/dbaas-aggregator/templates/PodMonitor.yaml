@@ -1,0 +1,28 @@
+{{ if eq (.Values.MONITORING_ENABLED | toString | lower) "true" }}
+---
+kind: PodMonitor
+apiVersion: monitoring.coreos.com/v1
+metadata:
+  name: '{{ .Values.SERVICE_NAME }}-pod-monitor'
+  labels:
+    k8s-app: '{{ .Values.SERVICE_NAME }}-pod-monitor'
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}-pod-monitor'
+    app.kubernetes.io/part-of: platform-monitoring
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/processed-by-operator: victoriametrics-operator
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}'
+spec:
+  podMetricsEndpoints:
+    - interval: 30s
+      port: {{ if eq (.Values.INTERNAL_TLS_ENABLED | toString | lower) "true" }}  tls {{ else }} web {{ end }}
+      scheme: {{ if eq (.Values.INTERNAL_TLS_ENABLED | toString | lower) "true" }} https {{ else }} http {{ end }}
+      path: "/prometheus"
+  jobLabel: k8s-app
+  namespaceSelector:
+    matchNames:
+      - '{{ .Values.NAMESPACE }}'
+  selector:
+    matchLabels:
+      name: '{{ .Values.SERVICE_NAME }}'
+{{ end }}

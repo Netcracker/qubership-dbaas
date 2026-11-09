@@ -1,0 +1,11 @@
+{
+    "components" : [
+      {
+        "name": "qubership-dbaas-transfer",
+        "file": "docker-transfer/Dockerfile",
+        "context": ".",
+        "changeset": [""]
+      }
+    ],
+    "platforms" : "linux/amd64,linux/arm64"
+  }

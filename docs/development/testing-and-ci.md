@@ -63,5 +63,11 @@ passed. Check the reports.
 - `build-dbaas-operator.yml` builds and tests the operator, and checks that generated code and CRDs are up to date.
 - `test-it.yml` deploys the stack to Kind and runs the integration tests. On pull requests it runs only for
   `chore(deps)` titles; start it manually when another change needs it.
-- Releases are manual, through `release-dbaas.yml`.
+- `build-helm-charts.yml` lints and renders the aggregator, operator, and derived `dbaas-crd` charts on pull requests
+  that change them. On every push to `main` it also publishes the `qubership-dbaas-transfer:main` image that carries
+  the charts.
+- Releases are manual, through `release-dbaas.yml`: it creates the `vX.Y.Z` tag, deploys the Maven artifacts, builds the
+  service images, and publishes the `vX.Y.Z` GitHub Release. Its last job runs `release-helm-charts.yml`, which creates
+  the plain `X.Y.Z` tag and GitHub Release for the charts and builds the `qubership-dbaas-transfer:X.Y.Z` image. To
+  retry a failed chart release, run `release-helm-charts.yml` manually with the same version.
 - Pull request titles and commits follow Conventional Commits; CI checks both.

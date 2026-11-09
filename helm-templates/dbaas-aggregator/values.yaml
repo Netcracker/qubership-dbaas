@@ -1,17 +1,33 @@
 # ============== DEPLOYMENT VARIABLES ============================
 APPLICATION_NAME: dbaas
 SERVICE_NAME: dbaas-aggregator
+INTERNAL_TLS_ENABLED: "false"
 CLOUD_TOPOLOGY_KEY: kubernetes.io/hostname
+MONITORING_ENABLED: false
 READONLY_CONTAINER_FILE_SYSTEM_ENABLED: false
 REPLICA_ROLLING_TIMEOUT_SECONDS: 600
 LIVENESS_PROBE_INITIAL_DELAY_SECONDS: 120
 REGION_DBAAS: database
 NODE_SELECTOR_DBAAS_KEY: region
 DBAAS_RECREATE_DEPLOYMENT_STRATEGY: false
+# Rollout strategy for the deployment platform: recreate, best_effort_controlled_rollout,
+# ramped_slow_rollout or custom_rollout. Empty keeps the DBAAS_RECREATE_DEPLOYMENT_STRATEGY behavior.
+DEPLOYMENT_STRATEGY_TYPE: ''
+DEPLOYMENT_STRATEGY_MAXSURGE: '25%'
+DEPLOYMENT_STRATEGY_MAXUNAVAILABLE: '25%'
+# Name of a PriorityClass applied to the aggregator pods. Empty keeps the default priority.
+priorityClassName: ''
+# Deployer that manages the resources (rendered as the app.kubernetes.io/managed-by label).
+MANAGED_BY: ''
 
 # ============== SERVICE VARIABLES ============================
 LOG_LEVEL: "INFO"
 DBAAS_LOG_LEVEL: "INFO"
+
+# DR execution mode reported to the datastore connection logic ("active" pins the connection to the primary).
+EXECUTION_MODE: active
+NC_DIAGNOSTIC_MODE: 'off'
+NC_DIAGNOSTIC_AGENT_SERVICE: nc-diagnostic-agent
 
 DISABLE_DEPRECATED_API: false
 
@@ -25,6 +41,33 @@ DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED: false
 
 DBAAS_SECURITY_NAMESPACE_ISOLATION_ENABLED: true
 M2M_AUTH_MODE: legacy
+
+# ============== TLS (INTERNAL_TLS_ENABLED) ============================
+# Issuer used by the Certificate template when TLS is enabled.
+ISSUER_GROUP: "cert-manager.io"
+ISSUER_KIND: "ClusterIssuer"
+ISSUER_NAME: ""
+# Password of the certificate keystore file (TlsPasswordSecret).
+CERTIFICATE_FILE_PASSWORD: "changeit"
+
+# ============== HPA (HPA_ENABLED) ============================
+# When disabled the chart still renders a no-op HorizontalPodAutoscaler stub.
+# HPA_MIN_REPLICAS / HPA_MAX_REPLICAS are only used when HPA_ENABLED is true; leave them unset to
+# default to REPLICAS / the platform maximum.
+HPA_ENABLED: false
+HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT: 75
+HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS: 0
+HPA_SCALING_UP_SELECT_POLICY: Max
+HPA_SCALING_UP_PERCENT_VALUE: ''
+HPA_SCALING_UP_PERCENT_PERIOD_SECONDS: 0
+HPA_SCALING_UP_PODS_VALUE: ''
+HPA_SCALING_UP_PODS_PERIOD_SECONDS: 0
+HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS: 300
+HPA_SCALING_DOWN_SELECT_POLICY: Max
+HPA_SCALING_DOWN_PERCENT_VALUE: ''
+HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS: 0
+HPA_SCALING_DOWN_PODS_VALUE: ''
+HPA_SCALING_DOWN_PODS_PERIOD_SECONDS: 0
 
 MEM_ARGS: "-Xms128m -Xmx128m -Xss512k -XX:MetaspaceSize=136m -XX:MaxMetaspaceSize=136m -XX:ReservedCodeCacheSize=64M -XX:CompressedClassSpaceSize=32M -XX:MinMetaspaceExpansion=1M -XX:MaxMetaspaceExpansion=8M -XX:CodeCacheExpansionSize=256k -XX:MaxDirectMemorySize=10m -XX:+UseParallelGC -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=40 -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90"
 MEMORY_LIMIT: "520Mi"

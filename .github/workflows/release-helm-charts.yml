@@ -1,21 +1,50 @@
 ---
 name: Release Helm Charts
 
-run-name: Release Helm Charts (placeholder)
+# Releases the Helm charts and builds qubership-dbaas-transfer:<version>, the
+# image the internal GitLab release pipeline takes the charts from.
+# release-dbaas.yml calls it as its last job, so the charts come from the same
+# run as the service release. Run it manually only to retry a failed chart
+# release with the same version.
+# The reusable workflow cuts release-<version> from the checked-out commit and
+# creates the plain <version> tag with its GitHub Release; it fails if that tag
+# already exists.
 
 on:
+  workflow_call:
+    inputs:
+      release:
+        description: 'Release version'
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release version'
+        required: true
+        type: string
 
-permissions: {}
+permissions:
+  contents: read
+
+run-name: ${{ github.repository }} Release ${{ inputs.release }}
+concurrency:
+  # One group per release version: different versions run in parallel, and a
+  # retry of the same version waits instead of canceling a run that may have
+  # already published charts or images. A fixed prefix, because github.workflow
+  # names the caller when release-dbaas.yml calls this workflow.
+  group: release-helm-charts-${{ inputs.release }}
+  cancel-in-progress: false
 
 jobs:
-  placeholder:
-    name: Placeholder
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
+  helm-charts-release:
+    name: Release Helm Charts
     permissions:
-      contents: read
-    steps:
-      - name: Report placeholder
-        run: echo "Helm chart release workflow implementation is pending."
+      contents: write
+      packages: write
+    uses: netcracker/qubership-workflow-hub/.github/workflows/re-infra-helm-release.yaml@8b1f50086b028c0ad22dafd33352e2166189b742 # v2.7.0
+    with:
+      release: ${{ inputs.release }}
+      docker-config-file: ".github/docker-build-config.json"
+      helm-charts-config-file: ".github/helm-charts-release-config.yaml"
+      max-parallel: 4

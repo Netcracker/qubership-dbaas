@@ -1,0 +1,44 @@
+{{- if eq (.Values.INTERNAL_TLS_ENABLED | toString | lower) "true" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    deployer.cleanup/allow: 'true'
+  name: {{ .Values.SERVICE_NAME }}-certificate
+spec:
+  dnsNames:
+    - localhost
+    - '{{ .Values.SERVICE_NAME }}'
+    - '{{ cat .Values.SERVICE_NAME "." .Values.NAMESPACE | nospace }}'
+    - '{{ cat .Values.SERVICE_NAME "." .Values.NAMESPACE ".svc" | nospace }}'
+    - '{{ cat .Values.SERVICE_NAME "." .Values.NAMESPACE ".svc.cluster.local" | nospace }}'
+  duration: 2160h0m0s
+  issuerRef:
+    group: '{{ .Values.ISSUER_GROUP }}'
+    kind: '{{ .Values.ISSUER_KIND }}'
+    name: '{{ .Values.ISSUER_NAME }}'
+  keystores:
+    pkcs12:
+      create: true
+      passwordSecretRef:
+        key: tls-password
+        name: tls-password-secret
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    rotationPolicy: Always
+    size: 2048
+  renewBefore: 1440h0m0s
+  secretName: {{ .Values.SERVICE_NAME }}-tls
+  secretTemplate:
+    labels:
+      app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+      app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+      {{- if .Values.MANAGED_BY }}
+      app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+      {{- end }}
+      core.netcracker.com/tls-secret-type: m2m
+  usages:
+    - server auth
+    - client auth
+{{- end }}
