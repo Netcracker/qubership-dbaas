@@ -98,8 +98,13 @@ The writer finds the resource by `name` in the file at `path`, relative to the r
 - `spec.operatorNamespace`, which must equal the root's `operatorNamespace` exactly;
 - the capability guard around the resource, which must be the root's `capabilityGuard` (none for a
   plain root); any other Helm condition around it also blocks, because the claims would render
-  without it;
+  without it, and the error names that condition;
 - `spec.namePrefix` and `spec.settings`, against the datasource's `parameters`.
+
+A non-null `documentGuard` in an `internalDatabases` entry names a Helm condition that the
+declaration migration kept around the resource, so reusing that entry blocks. Leave its datasource
+out of the plan and report the identity as not migrated; its `InternalDatabase` stays in place
+without a claim.
 
 Ownership is decided per `(classifier, type)` identity. Several datasources may share an identity
 only when every one of them uses `existing` with the same `path`, `sha256`, `name`, and

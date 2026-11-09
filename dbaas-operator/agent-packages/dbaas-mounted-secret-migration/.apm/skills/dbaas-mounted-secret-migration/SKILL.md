@@ -47,6 +47,12 @@ name each identity that still has no claim. When no identity is compatible, do n
 After the client is upgraded, rebuild the plan from the repository and reuse the same
 `InternalDatabase`.
 
+Leave an identity out of a combined plan the same way when its `internalDatabases` entry has a
+non-null `documentGuard`. That `InternalDatabase` renders only under the source declaration's own
+Helm condition, and the writer cannot put the claims and mounts under the same condition, so it
+blocks the reuse (exit 4). Report the identity as not migrated together with its `documentGuard`.
+Its claim and mount have to be added by hand under that condition.
+
 Detect the framework and read its reference:
 
 - [Go](references/frameworks/go.md)

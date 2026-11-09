@@ -68,9 +68,12 @@ Follow these steps only when the user asked for both migrations:
    `InternalDatabase` for an identity.
 
 An identity that the mounted-secret migration reports as `BLOCKED` because its client cannot read
-mounted Secrets, or as dynamic, stays out of its plan. Keep this skill's result as it is: do not
-roll it back and do not generate claims ahead of the client. Report the migration as partially
-complete and name each identity that has an `InternalDatabase` but no claim.
+mounted Secrets, or as dynamic, stays out of its plan. So does an identity whose entry has a
+non-null `documentGuard`: its `InternalDatabase` renders only under the source declaration's own
+Helm condition, and the mounted-secret migration cannot reuse it. Keep this skill's result as it
+is: do not roll it back and do not generate claims ahead of the client. Report the migration as
+partially complete and name each identity that has an `InternalDatabase` but no claim, with its
+`documentGuard` where it has one.
 
 After the client is upgraded, rebuild this skill's plan from the repository (current source hashes
 and `outputSha256`). The writer reports `unchanged` and returns the same `internalDatabases`. Then

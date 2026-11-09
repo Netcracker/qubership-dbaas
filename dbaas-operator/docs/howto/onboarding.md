@@ -91,6 +91,13 @@ that database and keeps the converted declarations; the agent reports the migrat
 complete. Run the mounted-secret migration again after upgrading the client: it adds only the
 missing claims and mounts.
 
+A combined migration does not cover a declaration wrapped in its own Helm condition, such as
+`{{- if .Values.databaseEnabled }}`. The declaration migration converts it and keeps the condition
+around the `InternalDatabase`, but the mounted-secret migration cannot put the claim and mount under
+the same condition, so the agent leaves that database out and reports it as not migrated. Add its
+claim and mount by hand under the same condition, or remove the condition from the declaration
+before you run the migrations.
+
 Each skill is invoked from the service repository. The generated resources should be compared
 against the source manifests before they are applied.
 

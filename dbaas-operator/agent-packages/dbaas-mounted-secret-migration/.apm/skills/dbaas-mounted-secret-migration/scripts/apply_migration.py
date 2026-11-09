@@ -1851,9 +1851,9 @@ def _read_generated_documents(text: str, path: str) -> list[dict[str, Any]]:
     """Parse a file of generated resources, one ``---``-separated document each.
 
     Every entry carries the parsed ``value``, the capability the document is
-    wrapped in (``capability``, or ``None``), and whether any other Helm action
-    remains inside it (``conditional``). Regions holding only comments or
-    blank lines are skipped and consume no index.
+    wrapped in (``capability``, or ``None``), and the first other standalone
+    Helm action that remains inside it (``condition``, or ``None``). Regions
+    holding only comments or blank lines are skipped and consume no index.
     """
 
     documents = []
@@ -1868,14 +1868,19 @@ def _read_generated_documents(text: str, path: str) -> list[dict[str, Any]]:
         if match and first != last and _HELM_BLOCK_END.match(lines[last].strip()):
             capability = match.group(1)
             lines = lines[first + 1:last]
-        conditional = any(
-            line.strip().startswith("{{") and _STANDALONE_HELM_LINE.match(line.strip()) for line in lines
+        condition = next(
+            (
+                line.strip()
+                for line in lines
+                if line.strip().startswith("{{") and _STANDALONE_HELM_LINE.match(line.strip())
+            ),
+            None,
         )
         try:
             value = yaml.safe_load(_mask_for_reading("\n".join(lines)))
         except yaml.YAMLError as exc:
             raise unsupported(f"{path}: existing InternalDatabase file is not valid YAML: {exc}") from None
-        documents.append({"value": value, "capability": capability, "conditional": conditional})
+        documents.append({"value": value, "capability": capability, "condition": condition})
     return documents
 
 
@@ -1987,9 +1992,11 @@ def _existing_database_problems(
         problems.append(
             f"it is guarded by capability {doc['capability']!r}, not the root's capabilityGuard {capability_guard!r}"
         )
-    if doc["conditional"]:
+    if doc["condition"]:
         problems.append(
-            "it renders under a Helm condition besides the capability guard, so its claims could render without it"
+            f"it renders under a Helm condition besides the capability guard ({doc['condition']}), so its claims "
+            "could render without it. Reusing a guarded InternalDatabase is not supported: leave this datasource "
+            "out of the plan and report its identity as not migrated"
         )
     params = ds["parameters"]
     if str(spec.get("namePrefix") or "") != str(params.get("namePrefix") or ""):

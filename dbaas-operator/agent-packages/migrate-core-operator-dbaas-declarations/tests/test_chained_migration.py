@@ -47,6 +47,30 @@ DECLARATIONS = (
     "        scope: service\n"
     "    type: mongodb\n"
 )
+DATABASE_GUARD = "{{- if .Values.databaseEnabled }}"
+GUARDED_DECLARATIONS = (
+    "{{- if .Values.databaseEnabled }}\n"
+    "apiVersion: nc.core.dbaas/v3\n"
+    "kind: DatabaseDeclaration\n"
+    "declarations:\n"
+    "  - classifierConfig:\n"
+    "      classifier:\n"
+    "        microserviceName: orders\n"
+    "        scope: service\n"
+    "    type: postgresql\n"
+    "{{- end }}\n"
+    "---\n"
+    "apiVersion: nc.core.dbaas/v3\n"
+    "kind: DatabaseDeclaration\n"
+    "declarations:\n"
+    "  - classifierConfig:\n"
+    "      classifier:\n"
+    "        microserviceName: orders\n"
+    "        scope: service\n"
+    "    type: mongodb\n"
+)
+VALUES = "NAMESPACE: orders-ns\n"
+GUARDED_VALUES = "NAMESPACE: orders-ns\ndatabaseEnabled: true\n"
 DEPLOYMENT = (
     "apiVersion: apps/v1\n"
     "kind: Deployment\n"
@@ -68,13 +92,13 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def scaffold(tmp: Path) -> Path:
+def scaffold(tmp: Path, declarations: str = DECLARATIONS, values: str = VALUES) -> Path:
     repo = tmp / "repo"
     files = {
         "chart/Chart.yaml": "apiVersion: v2\nname: orders\nversion: 0.1.0\n",
-        "chart/values.yaml": "NAMESPACE: orders-ns\n",
+        "chart/values.yaml": values,
         "chart/templates/_coretpl.tpl": '{{- define "coretpl.dbaasNamespace" -}}dbaas-operator{{- end -}}\n',
-        "chart/templates/dbaas-declaration.yaml": DECLARATIONS,
+        "chart/templates/dbaas-declaration.yaml": declarations,
         "chart/templates/deployment.yaml": DEPLOYMENT,
     }
     for rel, content in files.items():
@@ -227,6 +251,46 @@ class ChainedMigrationTest(unittest.TestCase):
             self.assertEqual(
                 (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8"), DEPLOYMENT
             )
+
+    def test_reusing_a_database_under_its_own_helm_condition_blocks_and_keeps_the_declaration_result(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, GUARDED_DECLARATIONS, GUARDED_VALUES)
+            handoff = self.migrate_declarations(repo, tmp)
+            [guarded] = [entry for entry in handoff if entry["type"] == "postgresql"]
+            self.assertEqual(guarded["documentGuard"], DATABASE_GUARD)
+            declared = (repo / "chart" / DECLARATION_OUTPUT).read_bytes()
+
+            code, report = run(MOUNTED_RUNNER, repo, mounted_plan(repo, handoff, ["postgresql"]), "apply", tmp)
+
+            self.assertEqual(code, 4, report["__stdout"])
+            self.assertIn(DATABASE_GUARD, report["__stdout"])
+            self.assertEqual((repo / "chart" / DECLARATION_OUTPUT).read_bytes(), declared)
+            self.assertFalse((repo / "chart" / MOUNTED_OUTPUT).exists())
+            self.assertEqual(
+                (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8"), DEPLOYMENT
+            )
+
+    def test_leaving_out_the_guarded_database_migrates_the_unguarded_one(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp, GUARDED_DECLARATIONS, GUARDED_VALUES)
+            handoff = self.migrate_declarations(repo, tmp)
+            [unguarded] = [entry for entry in handoff if entry["type"] == "mongodb"]
+            self.assertIsNone(unguarded["documentGuard"])
+            declared = (repo / "chart" / DECLARATION_OUTPUT).read_bytes()
+
+            code, report = run(MOUNTED_RUNNER, repo, mounted_plan(repo, handoff, ["mongodb"]), "apply", tmp)
+
+            self.assertEqual(code, 0, report["__stdout"])
+            self.assertEqual((repo / "chart" / DECLARATION_OUTPUT).read_bytes(), declared)
+            self.assertEqual(
+                kinds(repo / "chart" / DECLARATION_OUTPUT),
+                [("InternalDatabase", "mongodb"), ("InternalDatabase", "postgresql")],
+            )
+            self.assertEqual(kinds(repo / "chart" / MOUNTED_OUTPUT), [("DatabaseSecretClaim", "mongodb")])
 
     def test_a_rerun_after_a_client_upgrade_adds_only_the_new_claim(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
