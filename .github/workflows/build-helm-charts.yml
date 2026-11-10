@@ -4,8 +4,9 @@ name: Build Helm Charts
 # Validates the Aggregator and Operator charts and builds the
 # qubership-dbaas-transfer image that carries them (docker-transfer/Dockerfile).
 # A push to main publishes :main. A manual run publishes :<branch>, with "/" in
-# the branch name replaced by "_". Pull requests that change a chart run only
-# the validation. Release images are built by release-helm-charts.yml.
+# the branch name replaced by "_". Pull requests that change a chart or the
+# image build build the image without pushing it. Release images are built by
+# release-helm-charts.yml.
 
 on:
   push:
@@ -85,7 +86,6 @@ jobs:
   build-transfer:
     name: Build qubership-dbaas-transfer
     needs: [validate-charts]
-    if: github.event_name != 'pull_request'
     # Push and nightly runs both publish qubership-dbaas-transfer:<branch>; one
     # group per ref keeps them sequential, and an active publish is never canceled.
     concurrency:
@@ -103,7 +103,7 @@ jobs:
 
       - name: Resolve image configuration
         id: config
-        uses: netcracker/qubership-workflow-hub/actions/docker-config-resolver@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+        uses: netcracker/qubership-workflow-hub/actions/config-resolver@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
         with:
           file-path: .github/docker-build-config.json
 
@@ -123,6 +123,7 @@ jobs:
           component: ${{ steps.config.outputs.config }}
           platforms: ${{ fromJson(steps.config.outputs.config)[0].platforms }}
           tags: ${{ steps.tag.outputs.tag }}
-          dry-run: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish_docker }}
+          # Pull requests build without pushing; a manual run pushes unless publish_docker is off.
+          dry-run: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.publish_docker) }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
