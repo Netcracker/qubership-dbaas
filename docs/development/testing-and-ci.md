@@ -65,12 +65,8 @@ passed. Check the reports.
   `chore(deps)` titles; start it manually when another change needs it.
 - `build-helm-charts.yml` lints and renders the aggregator and operator charts, and builds the transfer image without
   pushing it, on pull requests that change the charts or the image build. On every push to `main` it publishes the
-  `qubership-dbaas-transfer:main` image, which carries the two charts as stored in this repository
-  (`/charts/dbaas-aggregator`, `/charts/dbaas-operator`), and tags the same image with the immutable
-  `main-<yyyyMMddHHmmss>-<run number>` (UTC), the tag format of the service images, so consumers can pin a build. A
-  manual run publishes `qubership-dbaas-transfer:<branch>`,
-  with `/` in the branch name replaced by `_`. Consumers of the image, such as the internal Netcracker pipeline, derive
-  their own deployment charts from it.
+  `qubership-dbaas-transfer` image, which carries the two charts as stored in this repository
+  (`/charts/dbaas-aggregator`, `/charts/dbaas-operator`).
 - Releases are manual, through `release-dbaas.yml`: it creates the `vX.Y.Z` tag, deploys the Maven artifacts, builds the
   service images, and publishes the `vX.Y.Z` GitHub Release. Its last job runs `release-helm-charts.yml`, which creates
   the plain `X.Y.Z` tag and GitHub Release for the charts and builds the versioned `qubership-dbaas-transfer:X.Y.Z`
