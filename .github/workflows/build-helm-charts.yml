@@ -4,8 +4,8 @@ name: Build Helm Charts
 # Validates the Aggregator and Operator charts and builds the
 # qubership-dbaas-transfer image that carries them (docker-transfer/Dockerfile).
 # A push to main publishes the image. Pull requests that change a chart or the
-# image build build it without pushing. Release images are built by
-# release-helm-charts.yml.
+# image build build it without pushing. A manual run publishes the selected ref.
+# Release images are built by release-helm-charts.yml.
 
 on:
   push:
@@ -27,6 +27,7 @@ jobs:
   validate-charts:
     name: Validate charts
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -84,6 +85,7 @@ jobs:
       group: build-transfer-${{ github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -102,9 +104,6 @@ jobs:
       - name: Prepare image tag
         id: metadata
         uses: netcracker/qubership-workflow-hub/actions/metadata-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
-        with:
-          ref: ${{ github.ref }}
-          default-template: "{{ref-name}}-{{timestamp}}-{{runNumber}}"
 
       - name: Build and push
         uses: netcracker/qubership-workflow-hub/actions/docker-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
