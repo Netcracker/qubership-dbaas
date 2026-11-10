@@ -18,6 +18,8 @@ on:
       - "docker-transfer/**"
       - ".github/docker-build-config.json"
       - ".github/workflows/build-helm-charts.yml"
+  workflow_dispatch:
+
 permissions:
   contents: read
 
