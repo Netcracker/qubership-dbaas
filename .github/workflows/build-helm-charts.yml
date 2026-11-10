@@ -1,11 +1,11 @@
 ---
 name: Build Helm Charts
 
-# Builds the Helm chart transfer image on every push to main and on manual
-# dispatch (the internal GitLab nightly pipeline dispatches this workflow and
-# waits for the digest of qubership-dbaas-transfer:main to change).
-# Release tags are published by release-helm-charts.yml instead.
-# Pull requests that change a chart run only the chart validation.
+# Validates the Aggregator and Operator charts and builds the
+# qubership-dbaas-transfer image that carries them (docker-transfer/Dockerfile).
+# A push to main publishes :main. A manual run publishes :<branch>, with "/" in
+# the branch name replaced by "_". Pull requests that change a chart run only
+# the validation. Release images are built by release-helm-charts.yml.
 
 on:
   push:
@@ -16,7 +16,7 @@ on:
       - "helm-templates/**"
       - "dbaas-operator/helm-templates/**"
       - "docker-transfer/**"
-      - ".github/scripts/build-crd-chart.sh"
+      - ".github/docker-build-config.json"
       - ".github/workflows/build-helm-charts.yml"
   workflow_dispatch:
     inputs:
@@ -28,11 +28,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  TAG_NAME: ${{ github.ref }}
-  PUSH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_docker) }}
-  GITHUB_GROUP: ${{ github.repository_owner }}
 
 jobs:
   validate-charts:
@@ -47,19 +42,15 @@ jobs:
           persist-credentials: false
 
       - name: Set up Helm
-        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           version: v3.21.4
-
-      - name: Assemble dbaas-crd chart
-        run: sh .github/scripts/build-crd-chart.sh dbaas-operator/helm-templates/dbaas-operator .charts/dbaas-crd
 
       - name: Lint charts
         run: |
           set -euo pipefail
           helm lint helm-templates/dbaas-aggregator
           helm lint dbaas-operator/helm-templates/dbaas-operator
-          helm lint .charts/dbaas-crd
 
       - name: Render charts
         run: |
@@ -69,22 +60,6 @@ jobs:
             --set NAMESPACE=dbaas \
             --set PAAS_PLATFORM=KUBERNETES \
             --set PAAS_VERSION=1.28 \
-            --set IMAGE_REPOSITORY=ghcr.io/netcracker/qubership-dbaas \
-            --set TAG=ci \
-            --set CLOUD_PUBLIC_HOST="" \
-            --set DECLARATIVE_HOOK_IMAGE=ghcr.io/netcracker/qubership-dbaas-validation-image:ci \
-            --set POSTGRES_DBAAS_USER=dbaas \
-            --set POSTGRES_DBAAS_PASSWORD=ci-placeholder \
-            --set BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD=ci-placeholder \
-            --set DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD=ci-placeholder \
-            --set DBAAS_TENANT_PASSWORD=ci-placeholder \
-            --set DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD=ci-placeholder \
-            --set DISCR_TOOL_USER_PASSWORD=ci-placeholder
-
-          # PAAS_VERSION is optional: the chart must also render without it.
-          helm template dbaas helm-templates/dbaas-aggregator \
-            --set NAMESPACE=dbaas \
-            --set PAAS_PLATFORM=KUBERNETES \
             --set IMAGE_REPOSITORY=ghcr.io/netcracker/qubership-dbaas \
             --set TAG=ci \
             --set CLOUD_PUBLIC_HOST="" \
@@ -105,9 +80,7 @@ jobs:
             --set IMAGE_REPOSITORY=ghcr.io/netcracker/qubership-dbaas-operator \
             --set TAG=ci \
             --set CPU_LIMIT=1 \
-            --set CPU_REQUEST=100m
-
-          helm template dbaas-crd .charts/dbaas-crd
+            --set CPU_REQUEST=100m > /dev/null
 
   build-transfer:
     name: Build qubership-dbaas-transfer
@@ -128,49 +101,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      - name: Login to ghcr.io
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+      - name: Resolve image configuration
+        id: config
+        uses: netcracker/qubership-workflow-hub/actions/docker-config-resolver@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          file-path: .github/docker-build-config.json
 
-      - name: Prepare Tag
-        run: echo "TAG_NAME=$(echo "${TAG_NAME}" | sed 's@refs/tags/@@;s@refs/heads/@@;s@/@_@g')" >> "$GITHUB_ENV"
-      - name: Prepare Group
-        run: echo "GITHUB_GROUP=$(echo "${GITHUB_GROUP}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
-
-      - name: Get package IDs for delete
-        id: get-ids-for-delete
-        uses: Netcracker/get-package-ids@84bc8eb8bed50218be76e671b3a24c35a1300979 # v0.0.1
-        with:
-          component-name: qubership-dbaas-transfer
-          component-tag: ${{ env.TAG_NAME }}
-          access-token: ${{ secrets.GITHUB_TOKEN }}
-        if: env.PUSH == 'true'
+      # The internal GitLab pipeline looks the image up by its own branch name
+      # with "/" replaced by "_" (ci-tools resolve_github_image_tag.sh), so the
+      # tag keeps that form instead of the docker-action default.
+      - name: Prepare tag
+        id: tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: echo "tag=$(printf '%s' "$REF_NAME" | tr '/' '_')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        uses: netcracker/qubership-workflow-hub/actions/docker-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
         with:
-          no-cache: true
-          context: .
-          file: docker-transfer/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ env.PUSH }}
-          tags: ghcr.io/${{ env.GITHUB_GROUP }}/qubership-dbaas-transfer:${{ env.TAG_NAME }}
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            com.netcracker.build-run=${{ github.run_id }}-${{ github.run_attempt }}
-          provenance: false
-
-      - name: Delete old package versions
-        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
-        with:
-          package-name: qubership-dbaas-transfer
-          package-type: container
-          package-version-ids: ${{ steps.get-ids-for-delete.outputs.ids-for-delete }}
-        if: ${{ steps.get-ids-for-delete.outputs.ids-for-delete != '' }}
+          checkout: false
+          component: ${{ steps.config.outputs.config }}
+          platforms: ${{ fromJson(steps.config.outputs.config)[0].platforms }}
+          tags: ${{ steps.tag.outputs.tag }}
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish_docker }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
