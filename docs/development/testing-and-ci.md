@@ -68,6 +68,9 @@ passed. Check the reports.
   the charts.
 - Releases are manual, through `release-dbaas.yml`: it creates the `vX.Y.Z` tag, deploys the Maven artifacts, builds the
   service images, and publishes the `vX.Y.Z` GitHub Release. Its last job runs `release-helm-charts.yml`, which creates
-  the plain `X.Y.Z` tag and GitHub Release for the charts and builds the `qubership-dbaas-transfer:X.Y.Z` image. To
-  retry a failed chart release, run `release-helm-charts.yml` manually with the same version.
+  the plain `X.Y.Z` tag and GitHub Release for the charts and builds the `qubership-dbaas-transfer:X.Y.Z` image. The
+  charts come from `main` as it is when that job runs, which can include commits merged after the release started.
+- To retry a failed chart release, use "Re-run failed jobs" on the failed run. A new run of `release-helm-charts.yml`
+  with the same version works only if the failure came before the `release-X.Y.Z` branch was pushed; otherwise delete
+  that branch, and the `X.Y.Z` tag and GitHub Release if they exist, first.
 - Pull request titles and commits follow Conventional Commits; CI checks both.

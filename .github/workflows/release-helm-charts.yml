@@ -3,12 +3,15 @@ name: Release Helm Charts
 
 # Releases the Helm charts and builds qubership-dbaas-transfer:<version>, the
 # image the internal GitLab release pipeline takes the charts from.
-# release-dbaas.yml calls it as its last job, so the charts come from the same
-# run as the service release. Run it manually only to retry a failed chart
-# release with the same version.
-# The reusable workflow cuts release-<version> from the checked-out commit and
-# creates the plain <version> tag with its GitHub Release; it fails if that tag
-# already exists.
+# release-dbaas.yml calls it as its last job. The reusable workflow cuts
+# release-<version> from main as it is when the chart job runs, which can
+# include commits merged after the service release started. It then creates the
+# plain <version> tag with its GitHub Release, and fails if that tag exists.
+#
+# Retry: use "Re-run failed jobs" on the failed run. Start a new run manually
+# only if the failure came before release-<version> was pushed; otherwise
+# delete release-<version>, and the <version> tag and Release if they exist,
+# before starting it.
 
 on:
   workflow_call:
