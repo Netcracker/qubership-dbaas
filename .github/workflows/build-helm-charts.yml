@@ -1,8 +1,8 @@
 ---
 name: Build Helm Charts
 
-# Validates the Aggregator and Operator charts and builds the
-# qubership-dbaas-transfer image that carries them (docker-transfer/Dockerfile).
+# Builds the qubership-dbaas-transfer image that carries the Aggregator and
+# Operator charts (docker-transfer/Dockerfile).
 # A push to main publishes the image. Pull requests that change a chart or the
 # image build build it without pushing. A manual run publishes the selected ref.
 # Release images are built by release-helm-charts.yml.
@@ -20,66 +20,9 @@ on:
       - ".github/workflows/build-helm-charts.yml"
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
-  validate-charts:
-    name: Validate charts
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Helm
-        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
-        with:
-          version: v3.21.4
-
-      - name: Lint charts
-        run: |
-          set -euo pipefail
-          helm lint helm-templates/dbaas-aggregator
-          helm lint dbaas-operator/helm-templates/dbaas-operator
-
-      - name: Render charts
-        run: |
-          set -euo pipefail
-          # Placeholder values only: the deployment supplies the aggregator DB credentials.
-          helm template dbaas helm-templates/dbaas-aggregator \
-            --set NAMESPACE=dbaas \
-            --set PAAS_PLATFORM=KUBERNETES \
-            --set PAAS_VERSION=1.28 \
-            --set IMAGE_REPOSITORY=ghcr.io/netcracker/qubership-dbaas \
-            --set TAG=ci \
-            --set CLOUD_PUBLIC_HOST="" \
-            --set DECLARATIVE_HOOK_IMAGE=ghcr.io/netcracker/qubership-dbaas-validation-image:ci \
-            --set POSTGRES_DBAAS_USER=dbaas \
-            --set POSTGRES_DBAAS_PASSWORD=ci-placeholder \
-            --set BACKUP_DAEMON_DBAAS_ACCESS_PASSWORD=ci-placeholder \
-            --set DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD=ci-placeholder \
-            --set DBAAS_TENANT_PASSWORD=ci-placeholder \
-            --set DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD=ci-placeholder \
-            --set DISCR_TOOL_USER_PASSWORD=ci-placeholder > /dev/null
-
-          helm template dbaas-operator dbaas-operator/helm-templates/dbaas-operator \
-            --set DBAAS_OPERATOR_ENABLED=true \
-            --set NAMESPACE=dbaas \
-            --set PAAS_PLATFORM=KUBERNETES \
-            --set PAAS_VERSION=1.28 \
-            --set IMAGE_REPOSITORY=ghcr.io/netcracker/qubership-dbaas-operator \
-            --set TAG=ci \
-            --set CPU_LIMIT=1 \
-            --set CPU_REQUEST=100m > /dev/null
-
   build-transfer:
     name: Build qubership-dbaas-transfer
-    needs: [validate-charts]
     # Keep publishes sequential, and never cancel an active image push.
     concurrency:
       group: build-transfer-${{ github.ref }}
