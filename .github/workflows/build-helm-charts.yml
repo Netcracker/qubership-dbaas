@@ -3,7 +3,8 @@ name: Build Helm Charts
 
 # Validates the Aggregator and Operator charts and builds the
 # qubership-dbaas-transfer image that carries them (docker-transfer/Dockerfile).
-# A push to main publishes :main. A manual run publishes :<branch>, with "/" in
+# A push to main publishes :main and an immutable :main-<timestamp>-<run number>
+# that the internal repository pins. A manual run publishes :<branch>, with "/" in
 # the branch name replaced by "_". Pull requests that change a chart or the
 # image build build the image without pushing it. Release images are built by
 # release-helm-charts.yml.
@@ -86,8 +87,9 @@ jobs:
   build-transfer:
     name: Build qubership-dbaas-transfer
     needs: [validate-charts]
-    # Push and nightly runs both publish qubership-dbaas-transfer:<branch>; one
-    # group per ref keeps them sequential, and an active publish is never canceled.
+    # Push and manual runs of the same ref publish the same qubership-dbaas-transfer
+    # tags; one group per ref keeps them sequential, and an active publish is never
+    # canceled.
     concurrency:
       group: build-transfer-${{ github.ref }}
       cancel-in-progress: false
@@ -110,11 +112,22 @@ jobs:
       # The internal GitLab pipeline looks the image up by its own branch name
       # with "/" replaced by "_" (ci-tools resolve_github_image_tag.sh), so the
       # tag keeps that form instead of the docker-action default.
-      - name: Prepare tag
+      # main also gets an immutable main-<UTC yyyyMMddHHmmss>-<run number> tag,
+      # the format qubership-core-infra docker-build.yaml gives the service
+      # images, so the internal repository can pin it and Renovate can bump it.
+      # docker-action splits the tags on "," without trimming, so no spaces.
+      - name: Prepare tags
         id: tag
         env:
           REF_NAME: ${{ github.ref_name }}
-        run: echo "tag=$(printf '%s' "$REF_NAME" | tr '/' '_')" >> "$GITHUB_OUTPUT"
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          tags="$(printf '%s' "$REF_NAME" | tr '/' '_')"
+          if [ "$REF_NAME" = "main" ]; then
+            tags="${tags},main-$(date -u +%Y%m%d%H%M%S)-${RUN_NUMBER}"
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: netcracker/qubership-workflow-hub/actions/docker-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
@@ -122,7 +135,7 @@ jobs:
           checkout: false
           component: ${{ steps.config.outputs.config }}
           platforms: ${{ fromJson(steps.config.outputs.config)[0].platforms }}
-          tags: ${{ steps.tag.outputs.tag }}
+          tags: ${{ steps.tag.outputs.tags }}
           # Pull requests build without pushing; a manual run pushes unless publish_docker is off.
           dry-run: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.publish_docker) }}
         env:
