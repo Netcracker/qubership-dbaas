@@ -324,7 +324,7 @@
     },
     "MONITORING_ENABLED": {
       "$id": "#/properties/MONITORING_ENABLED",
-      "$ref": "#/definitions/booleanOrString",
+      "type": "boolean",
       "title": "The MONITORING_ENABLED schema",
       "description": "Set to true to import dashboards to Grafana and configure integration with Prometheus. Requires Platform System Monitor CRDs to be deployed to target k8s/openshift cluster",
       "examples": [

@@ -1,8 +1,6 @@
 {{- $arg := .Values.APPLICATION_NAME | default "dbaas" -}}
 {{- $b64p := tpl (.Files.Get "data/policy.json") $ | b64enc }}
 {{- $sha1sum := sha1sum $b64p }}
-{{- $tlsEnabled := eq (.Values.INTERNAL_TLS_ENABLED | toString | lower) "true" }}
-{{- $readOnly := and .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED (eq .Values.PAAS_PLATFORM "KUBERNETES") }}
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -10,40 +8,23 @@ metadata:
     name: '{{ .Values.SERVICE_NAME }}'
     labels:
         name: '{{ .Values.SERVICE_NAME }}'
-        {{- include "dbaas.resourceLabels" . | nindent 8 }}
+        app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
+        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
 spec:
     replicas: {{ .Values.REPLICAS | default 1 }}
     strategy:
-{{- if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "recreate" }}
+{{ if  (.Values.DBAAS_RECREATE_DEPLOYMENT_STRATEGY) }}
         type: Recreate
-{{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "best_effort_controlled_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: 0
-            maxUnavailable: 80%
-{{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "ramped_slow_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: 1
-            maxUnavailable: 0
-{{- else if eq (default "" .Values.DEPLOYMENT_STRATEGY_TYPE) "custom_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: {{ .Values.DEPLOYMENT_STRATEGY_MAXSURGE | default "25%" }}
-            maxUnavailable: {{ .Values.DEPLOYMENT_STRATEGY_MAXUNAVAILABLE | default "25%" }}
-{{- else if .Values.DBAAS_RECREATE_DEPLOYMENT_STRATEGY }}
-        type: Recreate
-{{- else }}
+{{ else }}
         type: RollingUpdate
         rollingUpdate:
             maxSurge: 25%
             maxUnavailable: 25%
-{{- end }}
+{{ end }}
     template:
         metadata:
             labels:
                 name: '{{ .Values.SERVICE_NAME }}'
-                {{- include "dbaas.resourceLabels" . | nindent 16 }}
         spec:
             nodeSelector:
                 {{ .Values.NODE_SELECTOR_DBAAS_KEY }}: '{{ .Values.REGION_DBAAS }}'
@@ -78,30 +59,22 @@ spec:
                                 path: SYM_KEY
                             -   key: default-key
                                 path: KS_DEFAULT_KEY
-        {{- if $tlsEnabled }}
-              - name: tls
-                secret:
-                    secretName: '{{ .Values.SERVICE_NAME }}-tls'
-        {{- end }}
-        {{- if $readOnly }}
-              - name: tmp
+        {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
+            -   name: tmp
                 emptyDir: {}
-              - name: env
+            -   name: env
                 emptyDir: {}
-              - name: ncdiag
+            -   name: ncdiag
                 emptyDir: {}
-              - name: glowroot
+            -   name: glowroot
                 emptyDir: {}
-              - name: nss
+            -   name: nss
                 emptyDir: {}
-              - name: java-certs
+            -   name: java-certs
                 emptyDir: {}
-              - name: secret
+            -   name: secret
                 emptyDir: {}
-        {{- end }}
-        {{- if .Values.priorityClassName }}
-            priorityClassName: {{ .Values.priorityClassName }}
-        {{- end }}
+        {{ end }}
             containers:
             -   name: '{{ .Values.SERVICE_NAME }}'
                 image: '{{ .Values.IMAGE_REPOSITORY }}:{{ .Values.TAG }}'
@@ -112,15 +85,10 @@ spec:
                 -   name: dbaas-global-permissions-configuration-volume
                     mountPath: '{{ .Values.DBAAS_GLOBAL_PERMISSIONS_CONFIGURATION_LOCATION }}'
                     readOnly: true
-            {{- if $tlsEnabled }}
-                -   name: tls
-                    mountPath: '/etc/tls'
-                    readOnly: true
-            {{- end }}
                 -   name: pod-secrets
                     mountPath: /etc/secrets/pod-secrets
                     readOnly: true
-            {{ if $readOnly }}
+            {{ if .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
                 -   name: tmp
                     mountPath: /tmp
                 -   name: env
@@ -137,23 +105,15 @@ spec:
                     mountPath: /etc/secret
             {{ end }}
                 args:
-                - /usr/bin/java
+                - java
                 - '{{ .Values.MEM_ARGS }}'
-                {{- if $tlsEnabled }}
-                - -Dquarkus.profile=tls
-                {{- end }}
-                - --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
                 - -jar
+                - --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
                 - /app/dbaas-aggregator.jar
                 ports:
                 -   name: web
                     containerPort: 8080
                     protocol: TCP
-                {{- if $tlsEnabled }}
-                -   name: tls
-                    containerPort: 8443
-                    protocol: TCP
-                {{- end }}
                 env:
                 -   name : "DBAAS_SECURITY_CONFIGURATION_SECRET_SHA1SUM"
                     value: {{ $sha1sum }}
@@ -167,17 +127,6 @@ spec:
                     valueFrom:
                         fieldRef:
                             fieldPath: 'metadata.namespace'
-                -   name: INTERNAL_TLS_ENABLED
-                    value: '{{ .Values.INTERNAL_TLS_ENABLED }}'
-                {{- if $tlsEnabled }}
-                -   name: CERTIFICATE_FILE_PASSWORD
-                    valueFrom:
-                        secretKeyRef:
-                            name: 'tls-password-secret'
-                            key: 'tls-password'
-                -   name: CERTIFICATE_FILE_PATH
-                    value: '/etc/tls'
-                {{- end }}
                 -   name: MICROSERVICE_NAME
                     value: '{{ .Values.SERVICE_NAME }}'
                 -   name: POSTGRES_HOST
@@ -188,12 +137,6 @@ spec:
                     value: '{{ .Values.CLOUD_PUBLIC_HOST }}'
                 -   name: PRODUCTION_MODE
                     value: '{{ .Values.PRODUCTION_MODE }}'
-                -   name: EXECUTION_MODE
-                    value: "{{ .Values.EXECUTION_MODE }}"
-                -   name: NC_DIAGNOSTIC_MODE
-                    value: '{{ .Values.NC_DIAGNOSTIC_MODE }}'
-                -   name: NC_DIAGNOSTIC_AGENT_SERVICE
-                    value: '{{ .Values.NC_DIAGNOSTIC_AGENT_SERVICE }}'
                 -   name: DISABLE_DEPRECATED_API
                     value: '{{ .Values.DISABLE_DEPRECATED_API }}'
                 -   name: DBAAS_LOG_LEVEL
@@ -236,22 +179,21 @@ spec:
                 livenessProbe:
                     httpGet:
                         path: /probes/live
-                        port: {{ if $tlsEnabled }} tls {{ else }} web {{ end }}
-                        scheme: {{ if $tlsEnabled }} HTTPS {{ else }} HTTP {{ end }}
+                        port: web
+                        scheme: HTTP
                     initialDelaySeconds: {{ .Values.LIVENESS_PROBE_INITIAL_DELAY_SECONDS }}
                     timeoutSeconds: 15
                 readinessProbe:
                     httpGet:
                         path: /probes/ready
-                        port: {{ if $tlsEnabled }} tls {{ else }} web {{ end }}
-                        scheme: {{ if $tlsEnabled }} HTTPS {{ else }} HTTP {{ end }}
+                        port: web
+                        scheme: HTTP
                     initialDelaySeconds: 30
                     timeoutSeconds: 15
                 securityContext:
-                    readOnlyRootFilesystem: {{ $readOnly }}
+                    readOnlyRootFilesystem: {{ .Values.READONLY_CONTAINER_FILE_SYSTEM_ENABLED }}
                     runAsNonRoot: true
                 {{ if eq .Values.PAAS_PLATFORM "KUBERNETES" }}
-                    runAsUser: 10001
                     runAsGroup: 10001
                 {{ end }}
                     seccompProfile:

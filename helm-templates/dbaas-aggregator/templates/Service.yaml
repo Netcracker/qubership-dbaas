@@ -1,20 +1,16 @@
+---
 kind: Service
 apiVersion: v1
 metadata:
-  name: '{{ .Values.SERVICE_NAME }}'
-  labels:
-    {{- include "dbaas.basicLabels" . | nindent 4 }}
-spec:
-  ports:
-    - name: web
-      port: 8080
-      targetPort: 8080
-      protocol: TCP
-    {{- if eq (.Values.INTERNAL_TLS_ENABLED | toString | lower) "true" }}
-    - name: tls
-      port: 8443
-      targetPort: 8443
-      protocol: TCP
-    {{- end }}
-  selector:
     name: '{{ .Values.SERVICE_NAME }}'
+    labels:
+        app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
+        deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+spec:
+    ports:
+    -   name: web
+        port: 8080
+        targetPort: 8080
+        protocol: TCP
+    selector:
+        name: '{{ .Values.SERVICE_NAME }}'

@@ -1,4 +1,4 @@
-{{- if eq (.Values.MONITORING_ENABLED | toString | lower) "true" }}
+{{- if .Values.MONITORING_ENABLED }}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:

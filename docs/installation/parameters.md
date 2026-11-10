@@ -6,7 +6,6 @@
         + [POSTGRES_DBA_USER / POSTGRES_DBA_PASSWORD](#postgres_dba_user--postgres_dba_password)
         + [POSTGRES_DBAAS_DATABASE_NAME / POSTGRES_DBAAS_USER / POSTGRES_DBAAS_PASSWORD](#postgres_dbaas_database_name--postgres_dbaas_user--postgres_dbaas_password)
         + [DBAAS_RECREATE_DEPLOYMENT_STRATEGY](#dbaas_recreate_deployment_strategy)
-        + [DEPLOYMENT_STRATEGY_TYPE](#deployment_strategy_type)
         + [POSTGRES_HOST](#postgres_host)
         + [DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES](#dbaas_premature_registration_adapter_addresses)
         + [DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED](#dbaas_default_physical_databases_disabled)
@@ -18,8 +17,6 @@
         + [DR_MANAGEABLE](#dr_manageable)
         + [PRODUCTION_MODE](#production_mode)
         + [INTERNAL_TLS_ENABLED](#internal_tls_enabled)
-        + [ISSUER_GROUP / ISSUER_KIND / ISSUER_NAME](#issuer_group--issuer_kind--issuer_name)
-        + [CERTIFICATE_FILE_PASSWORD](#certificate_file_password)
         + [READONLY_CONTAINER_FILE_SYSTEM_ENABLED](#readonly_container_file_system_enabled)
         + [DBAAS_BACKUP_RESTORE_CHECK_LOCK_TIMEOUT](#dbaas_backup_restore_check_lock_timeout)
         + [DBAAS_BACKUP_RESTORE_CHECK_INTERVAL](#dbaas_backup_restore_check_interval)
@@ -30,11 +27,6 @@
         + [M2M_AUTH_MODE](#m2m_auth_mode)
         + [KUBERNETES_M2M_AUDIENCE](#kubernetes_m2m_audience)
         + [priorityClassName](#priorityClassName)
-        + [MANAGED_BY](#managed_by)
-        + [EXECUTION_MODE](#execution_mode)
-        + [NC_DIAGNOSTIC_MODE / NC_DIAGNOSTIC_AGENT_SERVICE](#nc_diagnostic_mode--nc_diagnostic_agent_service)
-        + [PAAS_PLATFORM / PAAS_VERSION](#paas_platform--paas_version)
-    * [HPA (Horizontal Pod Autoscaling)](#hpa)
     * [CREDENTIALS](#credentials)
         + [DBAAS_DB_EDITOR_CREDENTIALS_USERNAME / DBAAS_DB_EDITOR_CREDENTIALS_PASSWORD](#dbaas_db_editor_credentials_username--dbaas_db_editor_credentials_password)
         + [DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME / DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD](#dbaas_cluster_dba_credentials_username--dbaas_cluster_dba_credentials_password)
@@ -125,27 +117,6 @@ Thus, after start up DBaaS Aggregator, platform stabilizes situation and service
 | Default | Recommended                                                                                                 | 
 |---------|-------------------------------------------------------------------------------------------------------------|
 | false   | We recommend to use this mode in migration procedure for consistent data. Note that you will have down time |  
-
-#### DEPLOYMENT_STRATEGY_TYPE
-
-**since 6.18.0**
-
-Defines the rollout strategy of the Aggregator Deployment:
-
-| Value                        | Strategy                                                                                   |
-|------------------------------|--------------------------------------------------------------------------------------------|
-| (empty)                      | `DBAAS_RECREATE_DEPLOYMENT_STRATEGY` behavior: Recreate when it is `true`, RollingUpdate otherwise |
-| `recreate`                   | Recreate                                                                                   |
-| `best_effort_controlled_rollout` | RollingUpdate with `maxSurge: 0`, `maxUnavailable: 80%`                              |
-| `ramped_slow_rollout`        | RollingUpdate with `maxSurge: 1`, `maxUnavailable: 0`                                     |
-| `custom_rollout`             | RollingUpdate with `DEPLOYMENT_STRATEGY_MAXSURGE` / `DEPLOYMENT_STRATEGY_MAXUNAVAILABLE`  |
-
-| Default | Recommended                                                                                                   |
-|---------|---------------------------------------------------------------------------------------------------------------|
-| empty   | Keep empty to preserve the existing behavior; the deployment platform may set one of the values above |
-
-`DEPLOYMENT_STRATEGY_MAXSURGE` and `DEPLOYMENT_STRATEGY_MAXUNAVAILABLE` set the rolling update percentages
-(defaults `25%` / `25%`) and are used only with `custom_rollout`.
 
 #### POSTGRES_HOST
 
@@ -261,12 +232,11 @@ For example, if the DBaaS database is created as pg_user, run the following comm
 
 **since 3.14.0**
 
-Flag to install monitoring resources for DBaaS: the Grafana dashboard, the `PrometheusRule`, the `PodMonitor` and the
-`dbaas-aggregator.monitoring-config` ConfigMap consumed by the platform monitoring.
+Flag to install podmonitor and grafana dashboard for DBaaS.
 
 | Default | Recommended                                                                         | 
 |---------|-------------------------------------------------------------------------------------|
-| false   | Set to true if need to enable prometheus monitoring and install dashboard for DBaaS |
+| true    | Set to true if need to enable prometheus monitoring and install dashboard for DBaaS | 
 
 #### DR_MANAGEABLE
 
@@ -291,36 +261,11 @@ If PRODUCTION_MODE is set to true, dropping databases in DBaaS is not allowed.
 storage. When enabled, the Aggregator validates the PostgreSQL server certificate against `ca.crt` in the directory set
 by `CERTIFICATE_FILE_PATH`.
 
-Since 6.18.0 the same flag also enables inbound TLS on the Aggregator service: a cert-manager `Certificate`
-(`<SERVICE_NAME>-certificate`) is created, the keystore password is stored in the `tls-password-secret` Secret, the
-service additionally listens on port `8443` (Quarkus `tls` profile), and the probes, the Service port, the `PodMonitor`
-and the monitoring-config endpoints switch from `8080`/HTTP to `8443`/HTTPS.
+`INTERNAL_TLS_ENABLED` does not enable HTTPS on DBaaS Aggregator. The Aggregator serves HTTP on port `8080`.
 
-| Default | Recommended                                                                     |
-|---------|---------------------------------------------------------------------------------|
-| false   | Set to true if TLS is required for the PostgreSQL connection and/or the service |
-
-#### ISSUER_GROUP / ISSUER_KIND / ISSUER_NAME
-
-**since 6.18.0**
-
-Issuer used by the `Certificate` template when `INTERNAL_TLS_ENABLED` is `true`.
-
-| Parameter   | Default         | Recommended                                                        |
-|-------------|-----------------|--------------------------------------------------------------------|
-| ISSUER_GROUP | cert-manager.io | Keep the default group                                           |
-| ISSUER_KIND  | ClusterIssuer   | Keep the default kind; use `Issuer` for a namespace-scoped issuer |
-| ISSUER_NAME  | empty           | Must be set to the existing issuer name when TLS is enabled       |
-
-#### CERTIFICATE_FILE_PASSWORD
-
-**since 6.18.0**
-
-Password of the `pkcs12` keystore created by the `Certificate`; stored in the `tls-password-secret` Secret.
-
-| Default  | Recommended                                                        |
-|----------|--------------------------------------------------------------------|
-| changeit | Set a deployment-specific password when `INTERNAL_TLS_ENABLED` is `true` |
+| Default | Recommended                                                   |
+|---------|---------------------------------------------------------------|
+| false   | Set to true if PostgreSQL requires TLS connections from DBaaS |
 
 #### READONLY_CONTAINER_FILE_SYSTEM_ENABLED
 
@@ -409,81 +354,6 @@ Specifies [Priority Class](https://kubernetes.io/docs/concepts/scheduling-evicti
 | Default | Recommended                                     |
 |---------|-------------------------------------------------|
 | empty   | You should create the priority class beforehand |
-
-#### MANAGED_BY
-
-**since 6.18.0**
-
-The deployer that manages the DBaaS resources. Rendered as the `app.kubernetes.io/managed-by` label on the chart
-resources; the label is omitted when the value is empty.
-
-| Default | Recommended                                          |
-|---------|------------------------------------------------------|
-| empty   | Set to the deployer name used by your deployment process |
-
-#### EXECUTION_MODE
-
-**since 6.18.0**
-
-Disaster Recovery execution mode reported to the datastore connection logic. With `active`, the Aggregator pins the
-connection to the primary server of the PostgreSQL cluster.
-
-| Default | Recommended                                                    |
-|---------|----------------------------------------------------------------|
-| active  | Keep `active` for Disaster Recovery deployments |
-
-#### NC_DIAGNOSTIC_MODE / NC_DIAGNOSTIC_AGENT_SERVICE
-
-**since 6.18.0**
-
-Parameters of the Netcracker diagnostic (CDT) integration.
-
-| Parameter              | Default             | Recommended                                     |
-|------------------------|---------------------|-------------------------------------------------|
-| NC_DIAGNOSTIC_MODE     | off                 | `off`, `dev` or `prod`                          |
-| NC_DIAGNOSTIC_AGENT_SERVICE | nc-diagnostic-agent | Keep the default agent service name             |
-
-#### PAAS_PLATFORM / PAAS_VERSION
-
-Values supplied by the deployment platform (not set in `values.yaml`). `PAAS_PLATFORM` is `KUBERNETES` or
-`OPENSHIFT`. On `KUBERNETES` only, `READONLY_CONTAINER_FILE_SYSTEM_ENABLED` applies and the Aggregator
-container runs with `runAsUser` and `runAsGroup` 10001. Since 6.18.0, `PAAS_VERSION` together with `PAAS_PLATFORM`
-selects the `apiVersion` of the rendered `HorizontalPodAutoscaler`: `autoscaling/v2beta2` for a Kubernetes version
-below 1.25 or an OpenShift version below 4.10, `autoscaling/v2` otherwise. Both values are optional; when
-`PAAS_VERSION` is empty or `PAAS_PLATFORM` is anything else, the chart renders `autoscaling/v2`.
-
-| Parameter     | Default | Recommended                                                  |
-|---------------|---------|--------------------------------------------------------------|
-| PAAS_PLATFORM | (empty) | The target cluster platform (`KUBERNETES` or `OPENSHIFT`)    |
-| PAAS_VERSION  | (empty) | The target cluster version, for example `1.28`               |
-
-### HPA (Horizontal Pod Autoscaling)
-
-**since 6.18.0**
-
-The chart always renders a `HorizontalPodAutoscaler` for the Aggregator. While `HPA_ENABLED` is `false` the HPA is a
-no-op stub: the scaling policies are `Disabled` and the Deployment replica count is not changed. The target average CPU
-utilization is computed from `CPU_LIMIT` / `CPU_REQUEST`, so enable the HPA together with the CPU values supplied by
-the deployment profile.
-
-| Parameter                                        | Default                          | Description                                                                 |
-|--------------------------------------------------|----------------------------------|-----------------------------------------------------------------------------|
-| HPA_ENABLED                                      | false                            | Enables horizontal autoscaling for the Aggregator                           |
-| HPA_MIN_REPLICAS                                 | not set (falls back to REPLICAS) | Lower limit for the number of replicas                                      |
-| HPA_MAX_REPLICAS                                 | not set                          | Upper limit for the number of replicas; must not be less than HPA_MIN_REPLICAS |
-| HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT           | 75                               | Target average CPU utilization for the autoscaler                           |
-| HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS      | 0                                | `behavior.scaleUp.stabilizationWindowSeconds`                               |
-| HPA_SCALING_UP_SELECT_POLICY                     | Max                              | `behavior.scaleUp.selectPolicy` (`Max` / `Min`)                             |
-| HPA_SCALING_UP_PERCENT_VALUE                     | not set                          | Value of the `Percent` scale-up policy                                      |
-| HPA_SCALING_UP_PERCENT_PERIOD_SECONDS            | 0                                | Period of the `Percent` scale-up policy                                     |
-| HPA_SCALING_UP_PODS_VALUE                        | not set                          | Value of the `Pods` scale-up policy                                         |
-| HPA_SCALING_UP_PODS_PERIOD_SECONDS               | 0                                | Period of the `Pods` scale-up policy                                        |
-| HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS    | 300                              | `behavior.scaleDown.stabilizationWindowSeconds`                             |
-| HPA_SCALING_DOWN_SELECT_POLICY                   | Max                              | `behavior.scaleDown.selectPolicy` (`Max` / `Min`)                           |
-| HPA_SCALING_DOWN_PERCENT_VALUE                   | not set                          | Value of the `Percent` scale-down policy                                    |
-| HPA_SCALING_DOWN_PERCENT_PERIOD_SECONDS          | 0                                | Period of the `Percent` scale-down policy                                   |
-| HPA_SCALING_DOWN_PODS_VALUE                      | not set                          | Value of the `Pods` scale-down policy                                       |
-| HPA_SCALING_DOWN_PODS_PERIOD_SECONDS             | 0                                | Period of the `Pods` scale-down policy                                      |
 
 ### CREDENTIALS
 

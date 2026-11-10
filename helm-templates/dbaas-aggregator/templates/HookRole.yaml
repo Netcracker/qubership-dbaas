@@ -8,7 +8,9 @@ metadata:
     "helm.sh/hook-weight": "-201"
     "helm.sh/hook-delete-policy": "before-hook-creation, hook-succeeded"
   labels:
-    {{- include "dbaas.basicLabels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+    app.kubernetes.io/part-of: {{ .Values.APPLICATION_NAME | default "dbaas" }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Values.SERVICE_NAME }}-sa
@@ -28,7 +30,9 @@ metadata:
     "helm.sh/hook-weight": "-202"
     "helm.sh/hook-delete-policy": "before-hook-creation, hook-succeeded"
   labels:
-    {{- include "dbaas.basicLabels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.SERVICE_NAME }}
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+    app.kubernetes.io/part-of: {{ .Values.APPLICATION_NAME | default "dbaas" }}
 rules:
   - apiGroups:
       - ""

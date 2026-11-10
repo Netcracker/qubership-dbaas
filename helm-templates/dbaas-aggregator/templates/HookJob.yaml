@@ -8,7 +8,9 @@ metadata:
     helm.sh/hook-weight: "-100"
     helm.sh/hook-delete-policy: "before-hook-creation, hook-succeeded"
   labels:
-    {{- include "dbaas.basicLabels" . | nindent 4 }}
+    app.kubernetes.io/name: "{{ .Values.SERVICE_NAME }}"
+    deployment.netcracker.com/sessionId: {{ .Values.DEPLOYMENT_SESSION_ID | default "unimplemented" }}
+    app.kubernetes.io/part-of: "{{ .Values.APPLICATION_NAME }}"
 spec:
   backoffLimit: 10
   template:
@@ -19,7 +21,7 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
         - name: "{{ .Values.SERVICE_NAME }}-validation"
-          image: "{{ include "dbaas.hookImage" . }}"
+          image: "{{ .Values.DECLARATIVE_HOOK_IMAGE }}"
           command: [ "/prepare-database.sh" ]
           imagePullPolicy: IfNotPresent
           envFrom:

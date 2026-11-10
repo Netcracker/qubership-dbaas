@@ -1,4 +1,4 @@
-{{- if and .Values.DBAAS_OPERATOR_ENABLED (eq (.Values.MONITORING_ENABLED | toString | lower) "true") }}
+{{- if and .Values.DBAAS_OPERATOR_ENABLED .Values.MONITORING_ENABLED }}
 {{- $namespaceHash := sha256sum .Values.NAMESPACE | trunc 6 }}
 {{- $dashboardNamespace := .Values.NAMESPACE | trunc 18 | trimSuffix "-" }}
 {{- $dashboardUID := printf "%s-%s-dbaas-operator" $dashboardNamespace $namespaceHash }}
