@@ -9,6 +9,13 @@
   `dbaas-security-configuration-secret` from there. See [Authentication](parameters.md#authentication).
 - The `monitoring.coreos.com` and `integreatly.org` CRDs, unless you set `MONITORING_ENABLED=false`.
 
+### Restricted Environment
+
+If you have no permission to create cluster-scoped objects, ask a cluster administrator to create the `ClusterRole`
+and `ClusterRoleBinding` first, following
+[Rendering the cluster RBAC without cloning the repository](../howto/render-cluster-rbac.md). Then
+[install](#install) the operator with `restrictedEnvironment: true`, so the chart skips both objects.
+
 ## Install
 
 ```bash
@@ -42,26 +49,6 @@ The `ClusterRole` grants no access to Secrets; see [Secret access](#secret-acces
 chart templates [`ClusterRole.yaml`](../../helm-templates/dbaas-operator/templates/ClusterRole.yaml) and
 [`Role.yaml`](../../helm-templates/dbaas-operator/templates/Role.yaml). With `K8S_EVENTS_ENABLED=false` the chart omits
 the Event rules.
-
-### Restricted Environment
-
-Where you can't create cluster-scoped objects with Helm, set `restrictedEnvironment: true`. The chart then skips the
-`ClusterRole` and `ClusterRoleBinding`, and a cluster administrator applies them before the operator starts:
-
-```bash
-helm template <release> helm-templates/dbaas-operator \
-  -f helm-templates/dbaas-operator/resource-profiles/dev.yaml \
-  --set NAMESPACE=<operator-namespace> \
-  --set DBAAS_OPERATOR_ENABLED=true --set restrictedEnvironment=false \
-  -s templates/ClusterRole.yaml -s templates/ClusterRoleBinding.yaml \
-  | kubectl apply -f -
-```
-
-The `NAMESPACE` and resource-profile arguments are required for the reasons given in [Install](#install).
-
-With `restrictedEnvironment: true`, a cluster administrator who has no clone of the repository can render and apply the
-`ClusterRole` and `ClusterRoleBinding` with the script in
-[Rendering the cluster RBAC without cloning the repository](../howto/render-cluster-rbac.md).
 
 ## Secret Access
 
