@@ -5,7 +5,7 @@
 #
 # Environment variables:
 #   REF        branch name or full ref in qubership-dbaas (default: main)
-#   WORKDIR    directory for the temporary chart (default: /tmp/dbaas-rbac-chart)
+#   WORKDIR    directory for the temporary chart (default: ./dbaas-rbac-chart)
 #   NAMESPACE, SERVICE_NAME, APPLICATION_NAME, MANAGED_BY, K8S_EVENTS_ENABLED
 #              values written to values.yaml
 #
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REF="${REF:-main}"
-WORKDIR="${WORKDIR:-/tmp/dbaas-rbac-chart}"
+WORKDIR="${WORKDIR:-./dbaas-rbac-chart}"
 NAMESPACE="${NAMESPACE:-dbaas}"
 SERVICE_NAME="${SERVICE_NAME:-dbaas-operator}"
 APPLICATION_NAME="${APPLICATION_NAME:-dbaas}"

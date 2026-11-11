@@ -1,15 +1,8 @@
 # Rendering the Cluster RBAC Without Cloning the Repository
 
-With `restrictedEnvironment: true`, the dbaas-operator chart skips the `ClusterRole` and `ClusterRoleBinding`, and a
-cluster administrator applies them before the operator starts; see
-[Restricted Environment](../installation/installation.md#restricted-environment). The
-[`render-dbaas-rbac.sh`](render-dbaas-rbac.sh) script renders the two objects without a clone of the repository: it
-downloads `ClusterRole.yaml` and `ClusterRoleBinding.yaml` from GitHub into a minimal chart and runs `helm template` on
-it.
-
 ## Prerequisites
 
-- Bash, `curl`, and Helm 3 on `PATH`.
+- Bash, `curl`, `kubectl`, and Helm 3 on `PATH`.
 - Access to `raw.githubusercontent.com`.
 
 ## Render the Objects
@@ -27,11 +20,11 @@ it.
    NAMESPACE=<operator-namespace> ./render-dbaas-rbac.sh
    ```
 
-   The script writes the manifest to `/tmp/dbaas-rbac-chart/out.yaml` and prints its kinds and names. For
+   The script writes the manifest to `./dbaas-rbac-chart/out.yaml` and prints its kinds and names. For
    `NAMESPACE=dbaas` the output ends with:
 
    ```text
-   ==> Done: /tmp/dbaas-rbac-chart/out.yaml
+   ==> Done: ./dbaas-rbac-chart/out.yaml
    kind: ClusterRole
      name: 'dbaas-dbaas-operator'
    kind: ClusterRoleBinding
@@ -45,11 +38,8 @@ it.
 3. Apply the manifest:
 
    ```bash
-   kubectl apply -f /tmp/dbaas-rbac-chart/out.yaml
+   kubectl apply -f ./dbaas-rbac-chart/out.yaml
    ```
-
-Set `NAMESPACE` to the operator namespace. The `ClusterRoleBinding` subject is the `dbaas-operator` ServiceAccount in
-that namespace, and with a wrong value the operator reconciles nothing.
 
 ## Parameters
 
@@ -58,18 +48,10 @@ The script reads its parameters from environment variables:
 | Variable             | Default                 | Controls                                                                         |
 |----------------------|-------------------------|----------------------------------------------------------------------------------|
 | `NAMESPACE`          | `dbaas`                 | Namespace of the ServiceAccount in the binding, and the prefix of the object names |
-| `SERVICE_NAME`       | `dbaas-operator`        | Name of the ServiceAccount, and the suffix of the object names                   |
-| `APPLICATION_NAME`   | `dbaas`                 | The `app.kubernetes.io/part-of` label                                            |
-| `MANAGED_BY`         | `helm`                  | The `app.kubernetes.io/managed-by` label                                         |
 | `K8S_EVENTS_ENABLED` | `true`                  | Whether the `ClusterRole` grants `create` and `patch` on `events`                |
-| `REF`                | `main`                  | Branch to download the templates from, or a full ref such as `refs/tags/<tag>`   |
-| `WORKDIR`            | `/tmp/dbaas-rbac-chart` | Directory for the temporary chart and `out.yaml`                                 |
 
-Both objects are named `<NAMESPACE>-<SERVICE_NAME>`, cut to 63 characters. Keep `SERVICE_NAME` and
-`K8S_EVENTS_ENABLED` equal to the values the operator chart is installed with.
 
-The script deletes `WORKDIR` and creates it again on every run, so don't point it at a directory that holds other
-files.
+The script deletes `./dbaas-rbac-chart` and creates it again on every run, so don't keep other files in it.
 
 ## Troubleshooting
 
