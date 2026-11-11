@@ -47,7 +47,7 @@ the Event rules.
 
 If you have no permission to create cluster-scoped objects, ask a cluster administrator to create the `ClusterRole`
 and `ClusterRoleBinding` first, following
-[Rendering the cluster RBAC without cloning the repository](../howto/render-cluster-rbac.md). Then
+[Rendering the cluster RBAC without cloning the repository](render-cluster-rbac.md). Then
 [install](#install) the operator with `restrictedEnvironment: true`, so the chart skips both objects.
 
 Where you can't create cluster-scoped objects with Helm, set `restrictedEnvironment: true`. The chart then skips the
