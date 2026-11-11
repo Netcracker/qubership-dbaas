@@ -239,28 +239,27 @@ public class PhysicalDatabasesService {
         }
         if (byPhyDBId != null && !request.getAdapterAddress().equals(byPhyDBId.getAdapter().getAddress())) {
             if (!isTLSUpdate(byPhyDBId.getAdapter().getAddress(), request.getAdapterAddress())) {
-                log.error("Address from request: {} conflicts with saved physical database address: {}", request.getAdapterAddress(), byPhyDBId.getAdapter().getAddress());
-                throw new PhysicalDatabaseRegistrationConflictException(
-                        String.format("Physical database with physicalDatabaseId '%s' is already registered with address '%s'." +
-                                        "Cannot update address to '%s' because this parameter is immutable.",
-                                physicalDatabaseId,
-                                byPhyDBId.getAdapter().getAddress(),
-                                request.getAdapterAddress()
-                        )
+                String errorMessage = String.format(
+                        "Physical database with physicalDatabaseId '%s' is already registered with address '%s'. " +
+                                "Cannot update address to '%s' because this parameter is immutable.",
+                        physicalDatabaseId,
+                        byPhyDBId.getAdapter().getAddress(),
+                        request.getAdapterAddress()
                 );
+                log.error(errorMessage);
+                throw new PhysicalDatabaseRegistrationConflictException(errorMessage);
             }
         } else if (byAdapter != null && !physicalDatabaseId.equals(byAdapter.getPhysicalDatabaseIdentifier()) &&
                 byAdapter.isIdentified()) {
-            log.error("Requested physicalDatabaseId {} conflicts with saved physicalDatabaseId: {}",
-                    physicalDatabaseId, byAdapter.getPhysicalDatabaseIdentifier());
-            throw new PhysicalDatabaseRegistrationConflictException(
-                    String.format("Physical database with address '%s' is already registered with physicalDatabaseId '%s'." +
-                                    "Cannot update physicalDatabaseId to '%s' because this parameter is immutable.",
-                            request.getAdapterAddress(),
-                            byAdapter.getPhysicalDatabaseIdentifier(),
-                            physicalDatabaseId
-                    )
+            String errorMessage = String.format(
+                    "Physical database with address '%s' is already registered with physicalDatabaseId '%s'. " +
+                            "Cannot update physicalDatabaseId to '%s' because this parameter is immutable.",
+                    request.getAdapterAddress(),
+                    byAdapter.getPhysicalDatabaseIdentifier(),
+                    physicalDatabaseId
             );
+            log.error(errorMessage);
+            throw new PhysicalDatabaseRegistrationConflictException(errorMessage);
         }
         return Optional.of(byPhyDBId != null ? byPhyDBId : byAdapter);
     }
