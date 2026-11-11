@@ -20,6 +20,15 @@
    NAMESPACE=<operator-namespace> ./render-dbaas-rbac.sh
    ```
 
+   The script reads its parameters from environment variables:
+
+   | Variable             | Default  | Controls                                                                           |
+   |----------------------|----------|------------------------------------------------------------------------------------|
+   | `NAMESPACE`          | `dbaas`  | Namespace of the ServiceAccount in the binding, and the prefix of the object names |
+   | `K8S_EVENTS_ENABLED` | `true`   | Whether the `ClusterRole` grants `create` and `patch` on `events`                  |
+
+   The script deletes `./dbaas-rbac-chart` and creates it again on every run, so don't keep other files in it.
+
    The script writes the manifest to `./dbaas-rbac-chart/out.yaml` and prints its kinds and names. For
    `NAMESPACE=dbaas` the output ends with:
 
@@ -35,23 +44,11 @@
 
    The second `name` under `ClusterRoleBinding` is its `roleRef`.
 
-3. Apply the manifest:
+3. Review the manifest before applying:
 
    ```bash
    kubectl apply -f ./dbaas-rbac-chart/out.yaml
    ```
-
-## Parameters
-
-The script reads its parameters from environment variables:
-
-| Variable             | Default                 | Controls                                                                         |
-|----------------------|-------------------------|----------------------------------------------------------------------------------|
-| `NAMESPACE`          | `dbaas`                 | Namespace of the ServiceAccount in the binding, and the prefix of the object names |
-| `K8S_EVENTS_ENABLED` | `true`                  | Whether the `ClusterRole` grants `create` and `patch` on `events`                |
-
-
-The script deletes `./dbaas-rbac-chart` and creates it again on every run, so don't keep other files in it.
 
 ## Troubleshooting
 
