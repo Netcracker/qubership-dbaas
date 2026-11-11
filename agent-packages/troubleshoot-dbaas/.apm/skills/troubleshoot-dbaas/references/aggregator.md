@@ -534,9 +534,11 @@ adapter. The health state alone does not select one of those causes.
 **Symptoms:**
 
 - The DBaaS adapter fails to register; the aggregator returns `409`.
-- dbaas-aggregator log contains:
-  - `Address from request: <new address> conflicts with already saved address: <old address>`, or
-  - `sent physicalDatabaseIdentifier = <new id>, stored at db = <old id>`
+- dbaas-aggregator log and the `409` response detail contain one of:
+  - `Physical database with physicalDatabaseId '<phydbid>' is already registered with address '<old address>'`,
+    ending with `Cannot update address to '<new address>' because this parameter is immutable.`
+  - `Physical database with address '<address>' is already registered with physicalDatabaseId '<old id>'`,
+    ending with `Cannot update physicalDatabaseId to '<new id>' because this parameter is immutable.`
 
 **Root cause:**
 
