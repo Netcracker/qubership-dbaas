@@ -57,7 +57,9 @@ helm template <release> helm-templates/dbaas-operator \
   | kubectl apply -f -
 ```
 
-The `NAMESPACE` and resource-profile arguments are required for the reasons given in [Install](#install).
+The `NAMESPACE` and resource-profile arguments are required for the reasons given in [Install](#install). Without a
+clone of the repository, use the script in
+[Rendering the cluster RBAC without cloning the repository](../howto/render-cluster-rbac.md).
 
 ## Secret Access
 
