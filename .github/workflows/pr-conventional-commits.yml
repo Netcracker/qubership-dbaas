@@ -1,6 +1,6 @@
 ---
 
-name: "[pr] Conventional-Commits"
+name: "[pr] Conventional Commits"
 
 on:
   pull_request:

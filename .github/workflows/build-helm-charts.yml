@@ -1,5 +1,5 @@
 ---
-name: "[build] Helm-Charts"
+name: "[build] Helm Charts"
 
 run-name: Build Helm Charts (placeholder)
 

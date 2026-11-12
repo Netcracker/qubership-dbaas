@@ -1,4 +1,4 @@
-name: "[util] Renovate-Lint"
+name: "[util] Renovate Lint"
 
 on:
   push:

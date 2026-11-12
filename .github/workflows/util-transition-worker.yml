@@ -1,4 +1,4 @@
-name: "[util] Transition-Worker"
+name: "[util] Transition Worker"
 
 on:
   workflow_call:

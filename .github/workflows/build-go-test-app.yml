@@ -1,4 +1,4 @@
-name: "[build] Go-Test-App"
+name: "[build] Go Test App"
 
 run-name: >
   Build Go Test App Service -

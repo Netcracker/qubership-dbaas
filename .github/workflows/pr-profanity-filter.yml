@@ -1,5 +1,5 @@
 ---
-name: "[pr] Profanity-Filter"
+name: "[pr] Profanity Filter"
 
 on:
   issue_comment:

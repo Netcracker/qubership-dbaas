@@ -1,5 +1,5 @@
 ---
-name: "[util] Cleanup-Docker"
+name: "[util] Cleanup Docker"
 run-name: "${{ github.event_name }} - ${{ github.actor }}"
 on:
     schedule:

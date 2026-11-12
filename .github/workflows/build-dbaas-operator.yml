@@ -1,4 +1,4 @@
-name: "[build] DBaaS-Operator"
+name: "[build] DBaaS Operator"
 
 run-name: >
   Build DBaaS Operator —
