@@ -65,6 +65,13 @@ isSecretExist() {
   fi
 }
 
+findPrimaryPod() {
+  local service=${1}
+  local namespace=${2}
+  kubectl get endpoints "${service}" --namespace="${namespace}" \
+    --output=jsonpath='{.subsets[*].addresses[*].targetRef.name}' 2>/dev/null | tr '\t' '\n' | head -n 1
+}
+
 ensure-encryption-secret() {
   echo "Check [encryption-secret]"
   service=${SERVICE_NAME:=dbaas-aggregator}
@@ -152,6 +159,7 @@ POSTGRES_DBA_USER="${POSTGRES_DBA_USER:-"postgres"}"
 POSTGRES_DBA_PASSWORD="${POSTGRES_DBA_PASSWORD:-"password"}"
 USE_POSTGRES_PORT_FORWARD=$(echo "${USE_POSTGRES_PORT_FORWARD:-true}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 IFS='.' read -r -a array <<< "${POSTGRES_HOST}"
+pg_service=${array[0]}
 pg_namespace=${array[1]}
 
 secretName="dbaas-storage-credentials"
@@ -173,10 +181,14 @@ fi
 echo "pg host: ${POSTGRES_HOST}, pg port: ${POSTGRES_PORT}, pg admin username: ${POSTGRES_DBA_USER}, pg dbaas username: ${POSTGRES_DBAAS_USER}"
 
 if [[ $USE_POSTGRES_PORT_FORWARD == 'true' ]]; then
-    pod_name=$(kubectl get pods --selector='pgtype=primary' --output=go-template='{{ (index .items 0).metadata.name  }}' --namespace="${pg_namespace}")
+    pod_name=$(findPrimaryPod "${pg_service}" "${pg_namespace}")
+    if [[ -z "${pod_name}" ]]; then
+      echo "PostgreSQL leader was not found behind service \"${pg_service}.${pg_namespace}\". Check POSTGRES_HOST, or set USE_POSTGRES_PORT_FORWARD=false when PostgreSQL is reachable without port-forward."
+      exit 121
+    fi
     echo "pg primary pod name ${pod_name}"
-    while :; do connection_port="`shuf -i 32768-60999 -n 1`"; ss -lpn | grep -q ":$connection_port " || break; done
-    kubectl port-forward ${pod_name} "${connection_port}:${POSTGRES_PORT}" --request-timeout=20s --namespace=${pg_namespace} > /dev/null & # port-forward does not work in deploer 6.x using custom plugin
+    while :; do connection_port="`shuf -i 32768-60999 -n 1`"; netstat -lnt 2>/dev/null | grep -q ":$connection_port " || break; done
+    kubectl port-forward ${pod_name} "${connection_port}:${POSTGRES_PORT}" --namespace=${pg_namespace} > /dev/null &
     PORT_FORWARD_PID="$!"
     sleep 20
     connection_host="localhost"
