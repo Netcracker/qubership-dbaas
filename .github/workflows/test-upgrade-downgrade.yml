@@ -1,4 +1,4 @@
-name: DBaaS Upgrade/Downgrade Availability
+name: "[test] Upgrade-Downgrade"
 
 run-name: >
   DBaaS stack ${{ github.event.inputs.direction }}

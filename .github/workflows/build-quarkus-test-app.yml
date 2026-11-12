@@ -1,4 +1,4 @@
-name: Quarkus Test App Service Build
+name: "[build] Quarkus Test App"
 
 run-name: >
   Build Quarkus Test App Service -

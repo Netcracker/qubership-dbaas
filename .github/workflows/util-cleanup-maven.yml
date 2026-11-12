@@ -1,5 +1,5 @@
 ---
-name: Cleanup Old Maven Artifacts Versions
+name: "[util] Cleanup Maven"
 run-name: "${{ github.event_name }} - ${{ github.actor }}"
 on:
     schedule:

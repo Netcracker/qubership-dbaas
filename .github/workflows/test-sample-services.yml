@@ -1,4 +1,4 @@
-name: Sample Services Tests
+name: "[test] Sample Services"
 
 on:
   workflow_call:
