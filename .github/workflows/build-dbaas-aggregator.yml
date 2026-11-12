@@ -1,5 +1,5 @@
 ---
-name: DBaaS Aggregator Build
+name: "[build] DBaaS-Aggregator"
 
 on:
   push:

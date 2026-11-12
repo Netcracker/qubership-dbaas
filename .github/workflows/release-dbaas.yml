@@ -1,5 +1,5 @@
 ---
-name: DBaaS Release
+name: "[release] DBaaS"
 
 on:
   workflow_dispatch:

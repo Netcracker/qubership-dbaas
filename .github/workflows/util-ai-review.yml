@@ -1,4 +1,4 @@
-name: 🤖 AI-Review using DeepSeek (centralized)
+name: "[util] AI-Review"
 
 on:
   workflow_dispatch:

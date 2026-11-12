@@ -1,4 +1,4 @@
-name: Integration tests publish
+name: "[release] Integration-Tests"
 
 on:
   push:
