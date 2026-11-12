@@ -18,11 +18,7 @@ public class ExternalAdapterRegistrationEntry extends AbstractExternalAdapterReg
 
     public com.netcracker.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry asH2Entity() {
         com.netcracker.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry copy = new com.netcracker.cloud.dbaas.entity.h2.ExternalAdapterRegistrationEntry();
-        copy.setAdapterId(this.adapterId);
-        copy.setAddress(this.address);
-        copy.setHttpBasicCredentials(this.httpBasicCredentials);
-        copy.setSupportedVersion(this.supportedVersion);
-        copy.setApiVersions(this.apiVersions);
+        copyStateTo(copy);
         return copy;
     }
 }

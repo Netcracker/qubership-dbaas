@@ -26,7 +26,11 @@ spec:
     name: dbaas-adapter-credentials
 ```
 
-> **Note:** deleting a `PhysicalDatabase` doesn't remove the registration, because logical databases live on it.
+> **Note:**
+> - Deleting a `PhysicalDatabase` CR doesn't remove the physical database in DBaaS, because logical databases live on
+    it.
+> - If a `PhysicalDatabase` CR is created for a physical database that is already registered in DBaaS, the operator
+    starts reconciling the CR. It updates the existing registration only if necessary; otherwise, no changes are made.
 
 ## Fields
 

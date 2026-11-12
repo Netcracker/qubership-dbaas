@@ -12,6 +12,7 @@ The document describes the installation process for DBaaS Aggregator.
     * [Requirements](#requirements)
 * [Installation](#installation)
     * [Create Namespace](#create-namespace)
+        * [Enable Namespace-Level mTLS](#enable-namespace-level-mtls)
     * [Configuration](#configuration)
         * [Multiple Physical Databases](#multiple-physical-databases)
         * [Deployment Parameters](#deployment-parameters)
@@ -110,6 +111,21 @@ This section describes both initial DBaaS installation and update. Some steps ar
 **Note**: this step is required only for initial installation. Should be skipped for update installation.
 
 The suggested namespace name for DBaaS Aggregator is `dbaas`.
+
+#### Enable Namespace-Level mTLS
+
+To enable mTLS between DBaaS and services in business namespaces, the platform administrator must install Istio Ambient Mesh and enroll the DBaaS namespace and each business namespace that communicates with DBaaS.
+Add the Ambient Mesh label to each namespace:
+
+```bash
+kubectl label namespace <namespace> istio.io/dataplane-mode=ambient --overwrite
+```
+
+The namespace label enrolls all workloads in that namespace. Do not add Istio labels to the DBaaS Deployments or pod templates.
+
+The ztunnel data plane transparently secures communication between enrolled workloads with mTLS.
+
+The namespace label does not install Istio. On a cluster without the Istio Ambient data plane and ztunnel, the label does not enable TLS.
 
 ### Configuration
 
