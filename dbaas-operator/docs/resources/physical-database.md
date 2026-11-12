@@ -63,18 +63,50 @@ kubectl annotate physicaldatabase postgres-core -n dbaas-db-adapters \
 When two resources of the same operator use the same `adapterAddress` or report the same `physicalDatabaseId`, the
 older one wins and the younger one stalls with `RegistrationConflict`.
 
+## Physical Database ID Conflict
+
+dbaas-aggregator keeps the `physicalDatabaseId` of a registered adapter address and rejects another one with `409` and
+`CORE-DBAAS-4011`. This happens when the adapter starts reporting another identifier, for example after the identifier
+is overridden in the adapter's deployment parameters. The resource reports `PhysicalDatabaseIdConflict` with
+`Ready=False` and `Stalled=False`, and the message holds the aggregator's text:
+
+```text
+Physical database identifier conflict. Physical database with address '<adapterAddress>' is already registered with
+physicalDatabaseId '<registered-id>'. ...
+```
+
+The identifier comes from the adapter, not from the resource, so the operator registers again with the
+[poll backoff](../status-and-troubleshooting.md#exponential-poll-backoff). The resource becomes `Ready` on the first
+registration the aggregator accepts. To end the conflict, do one of the following:
+
+- Restore `<registered-id>` in the adapter's deployment parameters.
+- If the new identifier is intended, delete the old registration with
+  [`DELETE /api/v3/dbaas/{type}/physical_databases/{phydbid}`](../../../docs/api/rest-api.md#delete-physical-database).
+  The aggregator refuses the deletion with `406` while the old physical database is the default for its type or holds
+  logical databases. Such a registration can't move to another identifier, so restore the old one.
+
+dbaas-aggregator answers the two conflicts with separate codes since 6.18.0. An earlier aggregator answers both with
+`CORE-DBAAS-4011`, so the operator retries an address conflict as well instead of stalling.
+
+A `409` with `CORE-DBAAS-4057` is the address conflict: the identifier the adapter reports is registered with another
+address. The aggregator accepts a new address only when it keeps the host and changes the scheme. The resource stalls
+with `AggregatorRejected`, and the operator retries only after the spec changes. Set `spec.adapterAddress` back to the
+registered address. Alternatively, give the adapter at the new address another identifier and change the
+`dbaas.netcracker.com/refresh` annotation to register again.
+
 ## Reasons
 
 Besides the [shared reasons](../status-and-troubleshooting.md#shared-reasons):
 
-| Reason                       | Condition      | Meaning                                                  |
-|------------------------------|----------------|----------------------------------------------------------|
-| `PhysicalDatabaseRegistered` | `Ready=True`   | The physical database is registered                      |
-| `RoleMigrationStarted`       | `Ready=False`  | dbaas-aggregator is migrating roles; the operator waits  |
-| `RegistrationConflict`       | `Stalled=True` | See above                                                |
-| `SecretError`                | `Ready=False`  | The Secret or a key is missing or can't be read          |
-| `Unauthorized`               | `Ready=False`  | The adapter or dbaas-aggregator answered `401`           |
-| `AdapterError`               | `Ready=False`  | The adapter answered `404` or `503`, or wasn't reachable |
+| Reason                       | Condition      | Meaning                                                                |
+|------------------------------|----------------|------------------------------------------------------------------------|
+| `PhysicalDatabaseRegistered` | `Ready=True`   | The physical database is registered                                    |
+| `RoleMigrationStarted`       | `Ready=False`  | dbaas-aggregator is migrating roles; the operator waits                |
+| `PhysicalDatabaseIdConflict` | `Ready=False`  | The adapter reports another `physicalDatabaseId`; the operator retries |
+| `RegistrationConflict`       | `Stalled=True` | See above                                                              |
+| `SecretError`                | `Ready=False`  | The Secret or a key is missing or can't be read                        |
+| `Unauthorized`               | `Ready=False`  | The adapter or dbaas-aggregator answered `401`                         |
+| `AdapterError`               | `Ready=False`  | The adapter answered `404` or `503`, or wasn't reachable               |
 
 ```bash
 kubectl get physicaldatabase -n dbaas-db-adapters -o wide

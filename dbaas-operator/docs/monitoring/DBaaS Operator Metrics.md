@@ -278,12 +278,13 @@ value — it is not recorded in `dbaas_aggregator_requests_total` at all.
 | Value | Meaning | Severity |
 |---|---|---|
 | `success` | Call succeeded | — |
-| `spec_rejection` | Aggregator rejected the request (400/403/409/410/422) | User error — fix the CR |
+| `spec_rejection` | Aggregator rejected the request (400/403/409/410/422), except the `409` counted as `physical_database_id_conflict` | User error — fix the CR |
 | `configuration_error` | The operator could not propagate its required request context; the call was rejected locally | Operator wiring error — verify provider registration and request-context initialization |
 | `auth_error` | Authentication failed (401) | Platform error |
 | `server_error` | Aggregator 5xx | Platform error |
 | `network_error` | Connection/timeout, no HTTP response | Platform error |
 | `database_not_found` | Database not yet known to the aggregator | Normal `DatabaseSecretClaim` waiting state — **not** a failure |
+| `physical_database_id_conflict` | Aggregator answered `409` with `CORE-DBAAS-4011` to a `PhysicalDatabase` registration: the adapter reports another `physicalDatabaseId` than the registered one | `PhysicalDatabase` waiting state; the operator retries until the adapter reports the registered id — **not** a user error |
 
 **`result`** (adapter call outcome — `dbaas_adapter_requests_total`): `success` for a `200`, `auth_error` for a
 `401`, which points at the adapter credentials `Secret` rather than at the operator, `server_error` for a `404`, a
@@ -327,11 +328,11 @@ Reconcile rate by trigger:
 sum by (controller, trigger) (rate(dbaas_reconcile_trigger_total[5m]))
 ```
 
-Aggregator error rate (excluding the normal `database_not_found` waiting state):
+Aggregator error rate (excluding the normal `database_not_found` and `physical_database_id_conflict` waiting states):
 
 ```promql
 sum by (operation, result) (
-  rate(dbaas_aggregator_requests_total{result!~"success|database_not_found"}[5m])
+  rate(dbaas_aggregator_requests_total{result!~"success|database_not_found|physical_database_id_conflict"}[5m])
 )
 ```
 
@@ -379,6 +380,15 @@ dbaas_resource_observed_generation_lag > 0
 
 ```promql
 time() - dbaas_secret_claim_first_not_found_timestamp_seconds > 300
+```
+
+`PhysicalDatabase`s waiting for the adapter to report the registered `physicalDatabaseId`. The operator retries this
+conflict without stalling the resource, so alert on it with a `for:` duration, such as `for: 15m`, in the alerting rule:
+
+```promql
+max by (resource_namespace, name) (
+  dbaas_resource_condition{kind="PhysicalDatabase", condition="Ready", reason="PhysicalDatabaseIdConflict"}
+) == 1
 ```
 
 A resource-metrics collection failing for a CR kind:

@@ -24,6 +24,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -97,7 +98,7 @@ type PhysicalDatabaseReconciler struct {
 	ResyncInterval time.Duration
 
 	// pollBackoff spaces the re-registrations that follow a 202 while the role
-	// migration runs.
+	// migration runs, and those that follow a physical database id conflict.
 	pollBackoff pollBackoffTracker
 }
 
@@ -169,6 +170,10 @@ func (r *PhysicalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		buildPhysicalDatabaseRegistrationRequest(pd, info, creds))
 	recordAggregatorCall(controllerPDR, operationRegisterPDR, aggStart, err)
 	if err != nil {
+		var aggErr *aggregatorclient.AggregatorError
+		if errors.As(err, &aggErr) && aggErr.IsPhysicalDatabaseIDConflict() {
+			return r.handlePhysicalDatabaseIDConflict(ctx, pd, aggErr, requestID), nil
+		}
 		log.ErrorC(ctx, "Failed to register physical database in dbaas-aggregator: %v", err)
 		return handleAggregatorError(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation, r.Recorder, pd, err, requestID)
 	}
@@ -189,6 +194,25 @@ func (r *PhysicalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	r.Recorder.Eventf(pd, corev1.EventTypeNormal, EventReasonPhysicalDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, physicalDatabaseId=%s)", info.Type, info.PhysicalDatabaseID)
 	return ctrl.Result{RequeueAfter: r.ResyncInterval}, nil
+}
+
+// handlePhysicalDatabaseIDConflict records the aggregator's physical database id
+// conflict (409, CORE-DBAAS-4011) and schedules a poll. The id comes from the
+// adapter, so nothing in the cluster changes when the adapter starts reporting
+// the registered id again, and a Stalled resource would never notice. A 409 for
+// the adapter address (CORE-DBAAS-4057) is not handled here: only a spec change
+// resolves it, so it stays a permanent failure.
+func (r *PhysicalDatabaseReconciler) handlePhysicalDatabaseIDConflict(
+	ctx context.Context, pd *dbaasv1.PhysicalDatabase, aggErr *aggregatorclient.AggregatorError, requestID string,
+) ctrl.Result {
+	msg := aggErr.UserMessage()
+	log.InfoC(ctx, "Detected physical database id conflict name=%s physicalDatabaseId=%s reason=%s",
+		pd.Name, pd.Status.PhysicalDatabaseID, msg)
+	markTransientFailure(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation,
+		EventReasonPhysicalDatabaseIDConflict, msg)
+	r.Recorder.Eventf(pd, corev1.EventTypeWarning, EventReasonPhysicalDatabaseIDConflict,
+		"dbaas-aggregator rejected the physical database id: %s (requestId=%s)", msg, requestID)
+	return r.pollBackoff.schedule(pd)
 }
 
 // checkConflict marks pd as RegistrationConflict when an older resource of this

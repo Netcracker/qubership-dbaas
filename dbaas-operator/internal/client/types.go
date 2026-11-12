@@ -398,6 +398,14 @@ func (e *AggregatorError) IsDatabaseNotFound() bool {
 	return e.StatusCode == http.StatusNotFound && e.TmfCode == "CORE-DBAAS-4006"
 }
 
+// IsPhysicalDatabaseIDConflict returns true for a 409 with TMF error code
+// CORE-DBAAS-4011 on a physical database registration. The identifier comes
+// from the adapter, so the conflict can end without a change to the resource,
+// and the controller retries it. Any other 409 stays a spec rejection.
+func (e *AggregatorError) IsPhysicalDatabaseIDConflict() bool {
+	return e.StatusCode == http.StatusConflict && e.TmfCode == "CORE-DBAAS-4011"
+}
+
 // AdapterError represents a non-2xx HTTP response from a dbaas adapter. It is
 // classified exactly like AggregatorError, so a given status code leads to the
 // same phase, Stalled condition, and retry behavior whichever service answered.

@@ -381,21 +381,78 @@ var _ = Describe("PhysicalDatabase Controller", func() {
 
 	Context("when the aggregator rejects or fails the registration", func() {
 		DescribeTable("maps the response with the shared aggregator classification",
-			func(status int, phase dbaasv1.Phase, reason string, stalled metav1.ConditionStatus, wantErr bool) {
+			func(status int, body string, phase dbaasv1.Phase, reason string, stalled metav1.ConditionStatus, wantErr bool) {
 				createSecret(validCredentials())
 				createCR(resourceName, baseSpec())
 				aggregator.statusCode = status
-				aggregator.body = `{"code":"CORE-DBAAS-4011","message":"Invalid physical identifier"}`
+				aggregator.body = body
 
-				p, _, err := reconcileAndFetch()
+				p, result, err := reconcileAndFetch()
 				Expect(err != nil).To(Equal(wantErr))
+				if !wantErr {
+					Expect(result.RequeueAfter).To(BeZero())
+				}
 				expectState(p, phase, metav1.ConditionFalse, reason, stalled)
 				Expect(p.Status.PhysicalDatabaseID).To(Equal(physicalDatabaseID), "the adapter answer is kept")
 			},
-			Entry("401", http.StatusUnauthorized, dbaasv1.PhaseBackingOff, EventReasonUnauthorized, metav1.ConditionFalse, true),
-			Entry("409", http.StatusConflict, dbaasv1.PhaseInvalidConfiguration, EventReasonAggregatorRejected, metav1.ConditionTrue, false),
-			Entry("500", http.StatusInternalServerError, dbaasv1.PhaseBackingOff, EventReasonAggregatorError, metav1.ConditionFalse, true),
+			Entry("401", http.StatusUnauthorized, `{"code":"CORE-DBAAS-2000","message":"Unauthorized"}`,
+				dbaasv1.PhaseBackingOff, EventReasonUnauthorized, metav1.ConditionFalse, true),
+			Entry("409 with CORE-DBAAS-4057 stalls with AggregatorRejected",
+				http.StatusConflict, `{"code":"CORE-DBAAS-4057","message":"Physical database address conflict."}`,
+				dbaasv1.PhaseInvalidConfiguration, EventReasonAggregatorRejected, metav1.ConditionTrue, false),
+			Entry("409 without a TMF code stalls with AggregatorRejected",
+				http.StatusConflict, `{}`,
+				dbaasv1.PhaseInvalidConfiguration, EventReasonAggregatorRejected, metav1.ConditionTrue, false),
+			Entry("500", http.StatusInternalServerError, `{"code":"CORE-DBAAS-2000","message":"Unexpected exception"}`,
+				dbaasv1.PhaseBackingOff, EventReasonAggregatorError, metav1.ConditionFalse, true),
 		)
+	})
+
+	Context("when the aggregator reports a physical database id conflict", func() {
+		const idConflictBody = `{"code":"CORE-DBAAS-4011","message":"Physical database identifier conflict. ` +
+			`Physical database with address is already registered with physicalDatabaseId 'old-id'."}`
+
+		It("backs off with PhysicalDatabaseIdConflict, polls with a growing delay, and does not stall", func() {
+			createSecret(validCredentials())
+			createCR(resourceName, baseSpec())
+			aggregator.statusCode = http.StatusConflict
+			aggregator.body = idConflictBody
+
+			p, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 0)
+			expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse, EventReasonPhysicalDatabaseIDConflict, metav1.ConditionFalse)
+			Expect(p.Status.ObservedGeneration).To(BeZero(), "a conflict that can end is not terminal")
+			Expect(p.Status.PhysicalDatabaseID).To(Equal(physicalDatabaseID), "the adapter answer is kept")
+			expectRecordedEventContaining(aggregator.recorder.Events, corev1.EventTypeWarning,
+				EventReasonPhysicalDatabaseIDConflict, "physicalDatabaseId 'old-id'")
+
+			_, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 1)
+		})
+
+		It("registers once the aggregator accepts the id, and restarts the poll sequence on a later conflict", func() {
+			createSecret(validCredentials())
+			createCR(resourceName, baseSpec())
+			aggregator.statusCode = http.StatusConflict
+			aggregator.body = idConflictBody
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+
+			aggregator.reset()
+			p, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(testResync))
+			expectState(p, dbaasv1.PhaseSucceeded, metav1.ConditionTrue, EventReasonPhysicalDatabaseRegistered, metav1.ConditionFalse)
+			Expect(p.Status.ObservedGeneration).To(Equal(p.Generation))
+
+			aggregator.statusCode = http.StatusConflict
+			aggregator.body = idConflictBody
+			_, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 0)
+		})
 	})
 
 	// ── Secret ──────────────────────────────────────────────────────────────────
