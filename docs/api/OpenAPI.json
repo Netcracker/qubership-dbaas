@@ -9337,7 +9337,14 @@
             }
           },
           "409": {
-            "description": "Database could not be registered as physical database already exists with another adapter id or the same adapter already exists and it is used with other physical database"
+            "description": "The registration conflicts with an existing physical database. `CORE-DBAAS-4011`: the adapter address is registered with another physical database identifier, or the adapter reports an identifier other than `phydbid` during the handshake. `CORE-DBAAS-4057`: the physical database identifier is registered with another adapter address, and the new address is accepted only when it keeps the host and changes the scheme",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfErrorResponse"
+                }
+              }
+            }
           },
           "502": {
             "description": "Adapter is not available during handshake process"

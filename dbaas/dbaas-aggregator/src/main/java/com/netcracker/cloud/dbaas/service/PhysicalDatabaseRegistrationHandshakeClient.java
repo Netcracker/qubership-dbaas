@@ -2,7 +2,7 @@ package com.netcracker.cloud.dbaas.service;
 
 import com.netcracker.cloud.dbaas.dto.HandshakeResponse;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
-import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseIdConflictException;
 import io.vertx.ext.auth.authentication.UsernamePasswordCredentials;
 import io.vertx.mutiny.core.Vertx;
 import io.vertx.mutiny.ext.web.client.HttpResponse;
@@ -26,7 +26,7 @@ public class PhysicalDatabaseRegistrationHandshakeClient {
     }
 
     public void handshake(String physicalDatabaseId, String adapterAddress, String type, String username, String password, String version)
-            throws AdapterUnavailableException, PhysicalDatabaseRegistrationConflictException {
+            throws AdapterUnavailableException, PhysicalDatabaseIdConflictException {
         String adapterUrl = adapterAddress + ADAPTER_PHYSICAL_DATABASE_PATH;
         log.info("Sending GET request to {} with 'type' = {} and 'version' = {}", adapterUrl, type, version);
         HttpResponse<HandshakeResponse> httpResponse = webClient.getAbs(UriTemplate.of(adapterUrl))
@@ -43,7 +43,7 @@ public class PhysicalDatabaseRegistrationHandshakeClient {
         log.info("Response body: {}", handshakeResponse);
         String phyDBId = handshakeResponse.getId();
         if (!phyDBId.equals(physicalDatabaseId)) {
-            throw new PhysicalDatabaseRegistrationConflictException(String.format("Adapter responded with wrong physical database identifier. " +
+            throw new PhysicalDatabaseIdConflictException(String.format("Adapter responded with wrong physical database identifier. " +
                     "Expected %s, got: %s", physicalDatabaseId, phyDBId));
         }
     }

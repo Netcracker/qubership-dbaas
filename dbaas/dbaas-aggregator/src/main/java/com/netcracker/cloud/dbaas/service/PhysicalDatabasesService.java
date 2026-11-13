@@ -110,7 +110,8 @@ public class PhysicalDatabasesService {
                                                              String type,
                                                              PhysicalDatabaseRegistryRequestV3 request) throws
             AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
+            PhysicalDatabaseIdConflictException,
+            PhysicalDatabaseAddressConflictException {
         log.debug("Search physical database with physicalDatabaseId={} and type={}", physicalDatabaseId, type);
         String username = request.getHttpBasicCredentials().getUsername();
         String password = request.getHttpBasicCredentials().getPassword();
@@ -227,7 +228,8 @@ public class PhysicalDatabasesService {
             String username, String password)
             throws
             AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
+            PhysicalDatabaseIdConflictException,
+            PhysicalDatabaseAddressConflictException {
         if (request.getStatus().equals("run")) {
             handshakeClient.handshake(physicalDatabaseId, request.getAdapterAddress(), type, username, password, VERSION_2);
         }
@@ -247,7 +249,7 @@ public class PhysicalDatabasesService {
                         request.getAdapterAddress()
                 );
                 log.error(errorMessage);
-                throw new PhysicalDatabaseRegistrationConflictException(errorMessage);
+                throw new PhysicalDatabaseAddressConflictException(errorMessage);
             }
         } else if (byAdapter != null && !physicalDatabaseId.equals(byAdapter.getPhysicalDatabaseIdentifier()) &&
                 byAdapter.isIdentified()) {
@@ -259,7 +261,7 @@ public class PhysicalDatabasesService {
                     physicalDatabaseId
             );
             log.error(errorMessage);
-            throw new PhysicalDatabaseRegistrationConflictException(errorMessage);
+            throw new PhysicalDatabaseIdConflictException(errorMessage);
         }
         return Optional.of(byPhyDBId != null ? byPhyDBId : byAdapter);
     }

@@ -44,12 +44,12 @@ How to read them:
 
 Each resource page lists its own reasons; every kind can report these:
 
-| Reason               | Condition      | Cause                                                                                          |
-|----------------------|----------------|------------------------------------------------------------------------------------------------|
-| `InvalidSpec`        | `Stalled=True` | The operator rejected the spec before calling the aggregator                                   |
-| `AggregatorRejected` | `Stalled=True` | The aggregator answered `400`, `403`, `409`, `410` or `422`                                    |
-| `Unauthorized`       | `Ready=False`  | The aggregator answered `401`; see [Authentication](installation/parameters.md#authentication) |
-| `AggregatorError`    | `Ready=False`  | The aggregator answered `5xx` or another `4xx`, or wasn't reachable                            |
+| Reason               | Condition      | Cause                                                                                                                                         |
+|----------------------|----------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `InvalidSpec`        | `Stalled=True` | The operator rejected the spec before calling the aggregator                                                                                  |
+| `AggregatorRejected` | `Stalled=True` | The aggregator answered `400`, `403`, `409`, `410` or `422`; a [`PhysicalDatabase`](resources/physical-database.md#reasons) retries one `409` |
+| `Unauthorized`       | `Ready=False`  | The aggregator answered `401`; see [Authentication](installation/parameters.md#authentication)                                                |
+| `AggregatorError`    | `Ready=False`  | The aggregator answered `5xx` or another `4xx`, or wasn't reachable                                                                           |
 
 ## Retries
 
@@ -66,7 +66,8 @@ Waiting for work the aggregator hasn't finished isn't a failure, and uses a sepa
 20 s, 40 s, then every 60 s, with jitter. It applies to:
 
 - an `InternalDatabase` waiting for asynchronous provisioning or a tenant database;
-- a `PhysicalDatabase` waiting for a role migration;
+- a `PhysicalDatabase` waiting for a role migration, or for the adapter to report the registered
+  `physicalDatabaseId` again (`PhysicalDatabaseIdConflict`, during the first 30 minutes);
 - a `DatabaseSecretClaim` waiting for its database (`DatabaseNotFound`), its role (`EmptyConnectionProperties`), its
   composite structure (`NamespaceNotInComposite`) or its policy grant (`AccessPolicyNotReady`).
 
@@ -81,31 +82,33 @@ With `K8S_EVENTS_ENABLED=true`, the default, the operator records an Event for e
 resource. See them with `kubectl describe` or
 `kubectl get events -n <namespace> --field-selector involvedObject.name=<name>`.
 
-| Type    | Reason                       | Emitted when                                                                     |
-|---------|------------------------------|----------------------------------------------------------------------------------|
-| Normal  | `DatabaseProvisioned`        | An `InternalDatabase` was provisioned                                            |
-| Normal  | `ProvisioningStarted`        | An `InternalDatabase` started asynchronous provisioning                          |
-| Normal  | `DatabaseRegistered`         | An `ExternalDatabase` was registered                                             |
-| Normal  | `PhysicalDatabaseRegistered` | A `PhysicalDatabase` was registered                                              |
-| Normal  | `PolicyApplied`              | A `DatabaseAccessPolicy` was applied                                             |
-| Normal  | `BalancingRuleApplied`       | A balancing rule was applied                                                     |
-| Normal  | `SecretCreated`              | A `DatabaseSecretClaim` created its Secret                                       |
-| Normal  | `SecretRotated`              | A `DatabaseSecretClaim` wrote changed credentials                                |
-| Warning | `InvalidSpec`                | The operator rejected the spec                                                   |
-| Warning | `AggregatorRejected`         | The aggregator rejected the request, or an `InternalDatabase` operation `FAILED` |
-| Warning | `AggregatorError`            | An aggregator call failed, including a balancing-rule cleanup                    |
-| Warning | `Unauthorized`               | The aggregator, or a `PhysicalDatabase` adapter, answered `401`                  |
-| Warning | `OperationTerminated`        | An `InternalDatabase` operation was terminated; the operator submits it again    |
-| Warning | `SecretError`                | A referenced credentials Secret couldn't be read                                 |
-| Warning | `SecretConflict`             | A `DatabaseSecretClaim` Secret belongs to someone else                           |
-| Warning | `DatabaseNotFound`           | A `DatabaseSecretClaim` database doesn't exist yet                               |
-| Warning | `DatabaseNotFoundTimeout`    | It still doesn't exist after 10 minutes                                          |
-| Warning | `EmptyConnectionProperties`  | The aggregator returned no credentials for the role                              |
-| Warning | `NamespaceNotInComposite`    | A cross-namespace claim and its database share no composite structure            |
-| Warning | `CompositeLookupFailed`      | The operator could not read the composite structures                             |
-| Warning | `AccessPolicyNotReady`       | A cross-namespace claim has no policy grant for its role yet                     |
-| Warning | `AdapterError`               | A `PhysicalDatabase` adapter answered `404` or `503`                             |
-| Warning | `RegistrationConflict`       | Another `PhysicalDatabase` claims the same adapter or identifier                 |
+| Type    | Reason                              | Emitted when                                                                     |
+|---------|-------------------------------------|----------------------------------------------------------------------------------|
+| Normal  | `DatabaseProvisioned`               | An `InternalDatabase` was provisioned                                            |
+| Normal  | `ProvisioningStarted`               | An `InternalDatabase` started asynchronous provisioning                          |
+| Normal  | `DatabaseRegistered`                | An `ExternalDatabase` was registered                                             |
+| Normal  | `PhysicalDatabaseRegistered`        | A `PhysicalDatabase` was registered                                              |
+| Normal  | `PolicyApplied`                     | A `DatabaseAccessPolicy` was applied                                             |
+| Normal  | `BalancingRuleApplied`              | A balancing rule was applied                                                     |
+| Normal  | `SecretCreated`                     | A `DatabaseSecretClaim` created its Secret                                       |
+| Normal  | `SecretRotated`                     | A `DatabaseSecretClaim` wrote changed credentials                                |
+| Warning | `InvalidSpec`                       | The operator rejected the spec                                                   |
+| Warning | `AggregatorRejected`                | The aggregator rejected the request, or an `InternalDatabase` operation `FAILED` |
+| Warning | `AggregatorError`                   | An aggregator call failed, including a balancing-rule cleanup                    |
+| Warning | `Unauthorized`                      | The aggregator, or a `PhysicalDatabase` adapter, answered `401`                  |
+| Warning | `OperationTerminated`               | An `InternalDatabase` operation was terminated; the operator submits it again    |
+| Warning | `SecretError`                       | A referenced credentials Secret couldn't be read                                 |
+| Warning | `SecretConflict`                    | A `DatabaseSecretClaim` Secret belongs to someone else                           |
+| Warning | `DatabaseNotFound`                  | A `DatabaseSecretClaim` database doesn't exist yet                               |
+| Warning | `DatabaseNotFoundTimeout`           | It still doesn't exist after 10 minutes                                          |
+| Warning | `EmptyConnectionProperties`         | The aggregator returned no credentials for the role                              |
+| Warning | `NamespaceNotInComposite`           | A cross-namespace claim and its database share no composite structure            |
+| Warning | `CompositeLookupFailed`             | The operator could not read the composite structures                             |
+| Warning | `AccessPolicyNotReady`              | A cross-namespace claim has no policy grant for its role yet                     |
+| Warning | `AdapterError`                      | A `PhysicalDatabase` adapter answered `404` or `503`                             |
+| Warning | `RegistrationConflict`              | Another `PhysicalDatabase` claims the same adapter or identifier                 |
+| Warning | `PhysicalDatabaseIdConflict`        | The adapter reports another `physicalDatabaseId` than the registered one         |
+| Warning | `PhysicalDatabaseIdConflictTimeout` | The conflict lasted more than 30 minutes                                         |
 
 ## Troubleshooting
 
@@ -167,6 +170,17 @@ existing Secret is left in place. See
   the cause; the claim retries with the reconcile backoff.
 - `AccessPolicyNotReady`: the owner's `DatabaseAccessPolicy` doesn't grant the claim's service the requested role. Check
   the service name and role.
+
+### `PhysicalDatabaseIdConflict` or `PhysicalDatabaseIdConflictTimeout`
+
+dbaas-aggregator holds a registration for the adapter address under another `physicalDatabaseId` than the one the
+adapter reports now, and the identifier of a registered address can't change. The message names the registered
+identifier. Restore it in the adapter's deployment parameters, or delete the old registration if it isn't the default
+and holds no logical databases. The operator retries with the [poll backoff](#exponential-poll-backoff) and registers
+the resource on the first attempt the aggregator accepts. After 30 minutes the reason becomes
+`PhysicalDatabaseIdConflictTimeout`: one Warning Event marks the change, and the operator retries at the interval from
+[Settings](installation/parameters.md#settings) without Events. See
+[PhysicalDatabase](resources/physical-database.md#physical-database-id-conflict).
 
 ### A Balancing Rule Is Stuck in `Terminating`
 

@@ -157,6 +157,7 @@ func TestRegisterPhysicalDatabase_StatusHandling(t *testing.T) {
 		wantAccepted     bool
 		wantAuthErr      bool
 		wantSpecRejected bool
+		wantIDConflict   bool
 		wantTransientErr bool
 	}{
 		{name: "updated or unchanged", status: http.StatusOK},
@@ -170,7 +171,13 @@ func TestRegisterPhysicalDatabase_StatusHandling(t *testing.T) {
 		{name: "accepted, aggregator migrating", status: http.StatusAccepted, wantAccepted: true},
 		{name: "malformed address", status: http.StatusBadRequest, body: `{"code":"CORE-DBAAS-4045"}`, wantSpecRejected: true},
 		{name: "operator credentials rejected", status: http.StatusUnauthorized, wantAuthErr: true},
-		{name: "identifier conflict", status: http.StatusConflict, body: `{"code":"CORE-DBAAS-4011"}`, wantSpecRejected: true},
+		{
+			name: "identifier conflict", status: http.StatusConflict, body: `{"code":"CORE-DBAAS-4011"}`,
+			wantSpecRejected: true, wantIDConflict: true,
+		},
+		{name: "address conflict", status: http.StatusConflict, body: `{"code":"CORE-DBAAS-4057"}`, wantSpecRejected: true},
+		{name: "conflict without a TMF code", status: http.StatusConflict, wantSpecRejected: true},
+		{name: "other error with the identifier conflict code", status: http.StatusBadRequest, body: `{"code":"CORE-DBAAS-4011"}`, wantSpecRejected: true},
 		{name: "server error", status: http.StatusInternalServerError, wantTransientErr: true},
 		{name: "adapter handshake failed", status: http.StatusBadGateway, wantTransientErr: true},
 	}
@@ -185,7 +192,7 @@ func TestRegisterPhysicalDatabase_StatusHandling(t *testing.T) {
 			accepted, err := NewBasicAuthClient(srv.URL, "dbaas-operator", "s3cr3t").RegisterPhysicalDatabase(
 				requestContext(), dbTypePostgresql, "core-postgresql", minimalPhysicalDatabaseRequest())
 
-			if !tt.wantAuthErr && !tt.wantSpecRejected && !tt.wantTransientErr {
+			if !tt.wantAuthErr && !tt.wantSpecRejected && !tt.wantIDConflict && !tt.wantTransientErr {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -203,6 +210,10 @@ func TestRegisterPhysicalDatabase_StatusHandling(t *testing.T) {
 			}
 			if aggErr.IsSpecRejection() != tt.wantSpecRejected {
 				t.Errorf("IsSpecRejection() = %v, want %v", aggErr.IsSpecRejection(), tt.wantSpecRejected)
+			}
+			if aggErr.IsPhysicalDatabaseIDConflict() != tt.wantIDConflict {
+				t.Errorf("IsPhysicalDatabaseIDConflict() = %v, want %v",
+					aggErr.IsPhysicalDatabaseIDConflict(), tt.wantIDConflict)
 			}
 		})
 	}
