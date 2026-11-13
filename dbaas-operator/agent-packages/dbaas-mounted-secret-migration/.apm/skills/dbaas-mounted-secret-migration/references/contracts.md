@@ -81,6 +81,42 @@ resources actually live in must be well-formed and match the inventory), and onc
 existing `validate-operator-absent-fallback` check -- the native resources and the operator-mode
 env var must be completely absent from that render, proving the guard actually suppresses them).
 
+## Reusing an InternalDatabase
+
+A datasource with `internalDatabase.mode: existing` reuses an `InternalDatabase` the declaration
+migration wrote, instead of generating one. The writer generates the claims and workload changes for
+that datasource, and leaves the referenced file untouched. Omitting the field, or setting
+`mode: generate`, keeps the standalone behavior: the writer generates the `InternalDatabase`.
+
+The writer finds the resource by `name` in the file at `path`, relative to the root, and checks
+`documentIndex` when the plan sets it. It blocks with exit 3 when the file's SHA-256 differs from
+`sha256`, and with exit 4 when the resource is missing or any of these differ:
+
+- `apiVersion: dbaas.netcracker.com/v1` and `kind: InternalDatabase`;
+- the classifier, compared in the wire form, and the database type, compared case-insensitively;
+- `metadata.namespace`, which must equal the root's `workloadNamespace` exactly;
+- `spec.operatorNamespace`, which must equal the root's `operatorNamespace` exactly;
+- the capability guard around the resource, which must be the root's `capabilityGuard` (none for a
+  plain root); any other Helm condition around it also blocks, because the claims would render
+  without it, and the error names that condition;
+- `spec.namePrefix` and `spec.settings`, against the datasource's `parameters`.
+
+A non-null `documentGuard` in an `internalDatabases` entry names a Helm condition that the
+declaration migration kept around the resource, so the automated mounted-secret migration does not
+support reusing that entry. Leave its datasource out of the plan, report the identity as `BLOCKED`,
+and keep its `InternalDatabase` in place without a claim. Do not hand-edit files named in another
+datasource's plan; a separate manual migration for the guarded identity is outside the writer.
+
+Ownership is decided per `(classifier, type)` identity. Several datasources may share an identity
+only when every one of them uses `existing` with the same `path`, `sha256`, `name`, and
+`documentIndex`; the writer rejects a plan that mixes `generate` and `existing` for one identity, or
+gives it two different references (exit 2). Two `generate` datasources for one identity stay
+rejected.
+
+The render check accepts other `InternalDatabase` resources in the reused file without a claim, so an
+identity whose client is not yet compatible keeps its database. A legacy declaration whose identity
+belongs to a reused datasource cannot be listed in `supersededDeclarations`.
+
 ## Classifier mapping
 
 Use typed fields for the standard identity:
