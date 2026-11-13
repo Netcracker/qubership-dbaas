@@ -21,12 +21,12 @@ missing deployment parameter stops the Helm render.
 
 **How to check:**
 
-1. Find the parameter named in the error in the deployment parameters of the `dbaas-aggregator` application. It is
-   absent or empty.
+1. Find the parameter named in the error among the values supplied to service `dbaas-aggregator`; it is absent or empty.
 
 **How to fix:**
 
-1. Set the named parameter in the deployment parameters of the `dbaas-aggregator` application and redeploy.
+1. Supply the named password in the `dbaas` application parameters through a credential, not a literal value (see
+   `Parameters and where they live` in `SKILL.md`), and redeploy.
 2. On an update of an existing installation, reuse the value that was set during the first installation. For
    `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD`, the value must also match the credentials configured in every DBaaS
    adapter and in Cloud Core projects (dbaas-agent); a new value breaks adapter registration — see
@@ -74,9 +74,9 @@ It fails with exit code `122` when no attempt succeeds. Causes, most frequent fi
 
 **How to fix:**
 
-1. Correct `POSTGRES_HOST` / `POSTGRES_PORT` in the deployment parameters of the `dbaas-aggregator` application and
-   redeploy. These values are written to Secret `dbaas-aggregator-env-variables` (hook) and to env of Deployment
-   `dbaas-aggregator`.
+1. Correct `POSTGRES_HOST` / `POSTGRES_PORT` in the `dbaas` application parameters (see `Parameters and where they
+   live` in `SKILL.md`) and redeploy. These values are written to Secret `dbaas-aggregator-env-variables` (hook) and
+   to env of Deployment `dbaas-aggregator`.
 2. If PostgreSQL itself is down, restore PostgreSQL first, then redeploy DBaaS.
 
 **Sources in Netcracker/qubership-dbaas main:**
@@ -117,8 +117,9 @@ it uses `POSTGRES_DBA_USER` / `POSTGRES_DBA_PASSWORD` instead. The check fails w
 
 **How to fix:**
 
-1. Correct `POSTGRES_DBAAS_USER` / `POSTGRES_DBAAS_PASSWORD` (or `POSTGRES_DBA_USER` / `POSTGRES_DBA_PASSWORD`) in the
-   deployment parameters of the `dbaas-aggregator` application and redeploy.
+1. Correct `POSTGRES_DBAAS_USER` / `POSTGRES_DBAAS_PASSWORD` (or `POSTGRES_DBA_USER` / `POSTGRES_DBA_PASSWORD`) in
+   the `dbaas` application parameters, supplying the password through a credential (see `Parameters and where they
+   live` in `SKILL.md`), and redeploy.
 2. If the user lacks `CREATEDB`, the PostgreSQL DBA must grant it (`ALTER USER <user> CREATEDB`) before redeploy.
 3. If the DBaaS user is not allowed to create databases by policy, pre-create the registry database and set
    `DBAAS_OWN_PG_DB_CREATED_MANUALLY: true` together with `POSTGRES_DBAAS_DATABASE_NAME`, `POSTGRES_DBAAS_USER`,
@@ -154,8 +155,7 @@ With `DBAAS_OWN_PG_DB_CREATED_MANUALLY: true`, DBaaS does not create its registr
 
 **How to check:**
 
-1. Check that `POSTGRES_DBAAS_DATABASE_NAME` is set in the deployment parameters of the `dbaas-aggregator`
-   application.
+1. Check that `POSTGRES_DBAAS_DATABASE_NAME` is set in the `dbaas` application parameters.
 2. Compare the name with the database the DBA created. Names are case-sensitive.
 
 **How to fix:**
@@ -192,8 +192,9 @@ recreated or Secret `dbaas-storage-credentials` was deleted while the PostgreSQL
 
 **How to fix:**
 
-1. Set `POSTGRES_DBAAS_USER: dbaas_user_<namespace>` and `POSTGRES_DBAAS_PASSWORD: <known password>` in the deployment
-   parameters of the `dbaas-aggregator` application. If the password is unknown, the PostgreSQL DBA resets it with
+1. Set `POSTGRES_DBAAS_USER: dbaas_user_<namespace>` in the `dbaas` application parameters, and supply the known
+   password as `POSTGRES_DBAAS_PASSWORD` through a credential (see `Parameters and where they live` in `SKILL.md`). If
+   the password is unknown, the PostgreSQL DBA resets it with
    `ALTER USER dbaas_user_<namespace> WITH PASSWORD '<new password>'` first. Redeploy.
 2. Keep `POSTGRES_DBAAS_DATABASE_NAME` pointing at the existing registry database (default: namespace name with `-`
    replaced by `_`), so DBaaS reuses its registry instead of starting with an empty one.
@@ -226,13 +227,12 @@ Secret `dbaas-storage-credentials` does not exist and neither credential pair is
 
 **How to check:**
 
-1. Check the four parameters in the deployment parameters of the `dbaas-aggregator` application. At least one pair
-   must have both values set.
+1. Check the four parameters supplied to service `dbaas-aggregator`. At least one pair must have both values set.
 
 **How to fix:**
 
-1. Set `POSTGRES_DBAAS_USER` / `POSTGRES_DBAAS_PASSWORD` (preferred) or `POSTGRES_DBA_USER` / `POSTGRES_DBA_PASSWORD`
-   and redeploy.
+1. Set `POSTGRES_DBAAS_USER` / `POSTGRES_DBAAS_PASSWORD` (preferred) or `POSTGRES_DBA_USER` / `POSTGRES_DBA_PASSWORD`,
+   supplying the password through a credential, and redeploy.
 
 **Sources in Netcracker/qubership-dbaas main:**
 
@@ -262,8 +262,8 @@ no such pod exists, the connection to `localhost` fails.
 
 1. For authentication or privilege errors, apply the fix from
    `Pre-install hook fails with It is not possible to create a database from the user`.
-2. If the deployer has direct network access to PostgreSQL, set `USE_POSTGRES_PORT_FORWARD: false` in the deployment
-   parameters of the `dbaas-aggregator` application and redeploy.
+2. If the deployer has direct network access to PostgreSQL, set `USE_POSTGRES_PORT_FORWARD: false` in the
+   `dbaas` application parameters (see `Parameters and where they live` in `SKILL.md`) and redeploy.
 
 **Sources in Netcracker/qubership-dbaas main:**
 
@@ -297,7 +297,7 @@ read again.
 
 1. To rotate the registry password: the PostgreSQL DBA runs `ALTER USER <username from dbaas-storage-credentials> WITH
 PASSWORD '<new password>'`; then update key `password` in Secret `dbaas-storage-credentials`; then redeploy
-   dbaas-aggregator. Also update `POSTGRES_DBAAS_PASSWORD` in the deployment parameters to keep them consistent.
+   dbaas-aggregator. Also update the credential that supplies `POSTGRES_DBAAS_PASSWORD` to keep them consistent.
 2. To move the registry to another database, migrate the registry data first, then update keys `username`, `password`,
    `database` in Secret `dbaas-storage-credentials` to the new values and redeploy dbaas-aggregator. Do not point the
    Secret at an empty database unless losing the existing registry contents is intended.
@@ -332,9 +332,9 @@ this label cannot host the pods.
 
 **How to fix:**
 
-1. Set `NODE_SELECTOR_DBAAS_KEY` and `REGION_DBAAS` in the deployment parameters of the `dbaas-aggregator` (and
-   `dbaas-operator`) application to a label that exists on the target nodes, and redeploy; or ask the cluster
-   administrator to label the nodes `region=database`.
+1. Set `NODE_SELECTOR_DBAAS_KEY` and `REGION_DBAAS` to a label that exists on the target nodes, and redeploy; or ask
+   the cluster administrator to label the nodes `region=database`. Both charts read these values, so set them directly
+   under the parameters of application `dbaas` (see `Parameters and where they live` in `SKILL.md`).
 
 **Sources in Netcracker/qubership-dbaas main:**
 
@@ -479,8 +479,9 @@ about 500 databases.
 2. Raise `MEMORY_LIMIT` to cover the new heap: JVM memory = `-Xmx` + `MaxMetaspaceSize` + `ReservedCodeCacheSize` +
    `MaxDirectMemorySize` + `Xss`×200; `MEMORY_LIMIT` = JVM memory × 1.2. `MEMORY_LIMIT` sets both `requests.memory`
    and `limits.memory` of container `dbaas-aggregator`.
-3. Set both values in the deployment parameters of the `dbaas-aggregator` application and redeploy. Do not edit
-   Deployment `dbaas-aggregator` directly: the next redeploy reverts the edit.
+3. Set both values for service `dbaas-aggregator` in the resource profile override, not in a ParameterSet (see
+   `Parameters and where they live` in `SKILL.md`), and redeploy. Do not edit Deployment `dbaas-aggregator` directly:
+   the next redeploy reverts the edit.
 
 **Sources in Netcracker/qubership-dbaas main:**
 
@@ -533,9 +534,11 @@ adapter. The health state alone does not select one of those causes.
 **Symptoms:**
 
 - The DBaaS adapter fails to register; the aggregator returns `409`.
-- dbaas-aggregator log contains:
-  - `Address from request: <new address> conflicts with already saved address: <old address>`, or
-  - `sent physicalDatabaseIdentifier = <new id>, stored at db = <old id>`
+- dbaas-aggregator log and the `409` response detail contain one of:
+  - `Physical database with physicalDatabaseId '<phydbid>' is already registered with address '<old address>'`,
+    ending with `Cannot update address to '<new address>' because this parameter is immutable.`
+  - `Physical database with address '<address>' is already registered with physicalDatabaseId '<old id>'`,
+    ending with `Cannot update physicalDatabaseId to '<new id>' because this parameter is immutable.`
 
 **Root cause:**
 
@@ -649,9 +652,10 @@ consumer) causes `401`.
 
 **How to fix:**
 
-1. Use one value everywhere: set the same credentials in the deployment parameters of `dbaas-aggregator`, of every
-   database cluster that has a DBaaS adapter, and of every Cloud Core project. Redeploy them in that order, then
-   restart dbaas-agent. Full order: `docs/howto/Rotate credentials.md`, section `6. DBaaS Adapter -> DBaaS Aggregator`.
+1. Use one value everywhere: supply the same credentials to `dbaas-aggregator` (through a credential, see
+   `Parameters and where they live` in `SKILL.md`), to every database cluster that has a DBaaS adapter, and to every
+   Cloud Core project. Redeploy them in that order, then restart dbaas-agent. Full order:
+   `docs/howto/Rotate credentials.md`, section `6. DBaaS Adapter -> DBaaS Aggregator`.
 
 **Sources in Netcracker/qubership-dbaas main:**
 
@@ -791,7 +795,8 @@ physical database of that type must carry this label in its registration `labels
    `Application cannot connect although DBaaS returns connection properties`.
 2. **DANGEROUS — enables destructive database, rule, and backup deletion endpoints until the value is restored.** Only
    on an environment confirmed to be non-production and where deletion is intended, set `PRODUCTION_MODE: false` in
-   the deployment parameters of `dbaas-aggregator` and redeploy. Set it back to `true` after the deletion and redeploy.
+   the `dbaas` application parameters (see `Parameters and where they live` in `SKILL.md`) and redeploy. Set it back
+   to `true` after the deletion and redeploy.
 
 **Sources in Netcracker/qubership-dbaas main:**
 

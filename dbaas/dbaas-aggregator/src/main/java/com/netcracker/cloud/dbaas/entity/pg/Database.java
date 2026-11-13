@@ -140,31 +140,14 @@ public class Database extends AbstractDatabase {
 
     public com.netcracker.cloud.dbaas.entity.h2.Database asH2Entity() {
         com.netcracker.cloud.dbaas.entity.h2.Database copy = new com.netcracker.cloud.dbaas.entity.h2.Database();
-        copy.setId(this.id);
-        copy.setOldClassifier(this.oldClassifier);
-        copy.setClassifier(this.classifier);
-        copy.setConnectionProperties(this.connectionProperties);
+        copyStateTo(copy);
         if (resources != null) {
             copy.setResources(this.resources.stream().map(r -> r.asH2Entity()).toList());
         }
         if (databaseRegistry != null) {
             copy.setDatabaseRegistry(this.databaseRegistry.stream().map(dr -> dr.asH2Entity(copy)).toList());
         }
-        copy.setNamespace(this.namespace);
-        copy.setType(this.type);
-        copy.setAdapterId(this.adapterId);
-        copy.setName(this.name);
-        copy.setMarkedForDrop(this.markedForDrop);
-        copy.setTimeDbCreation(this.timeDbCreation);
-        copy.setBackupDisabled(this.backupDisabled);
-        copy.setDbOwnerRoles(this.dbOwnerRoles);
-        copy.setSettings(this.settings);
-        copy.setConnectionDescription(this.connectionDescription);
-        copy.setWarnings(this.warnings);
-        copy.setExternallyManageable(this.externallyManageable);
-        copy.setBgVersion(this.bgVersion);
         copy.setDbState(this.dbState.asH2Entity());
-        copy.setPhysicalDatabaseId(this.physicalDatabaseId);
         return copy;
     }
 }

@@ -45,4 +45,11 @@ public abstract class AbstractDatabaseRegistry implements Serializable {
     @Schema(required = true, description = "Type of database, for example postgresql or mongodb")
     protected String type;
 
+    protected void copyStateTo(AbstractDatabaseRegistry target) {
+        target.id = id;
+        target.timeDbCreation = timeDbCreation;
+        target.classifier = classifier;
+        target.namespace = namespace;
+        target.type = type;
+    }
 }

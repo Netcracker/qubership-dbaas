@@ -17,7 +17,7 @@
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
         <flyway.version>13.3.0</flyway.version>
-        <shedlock.version>7.10.1</shedlock.version>
+        <shedlock.version>7.11.0</shedlock.version>
         <swagger-maven-plugin.version>2.2.55</swagger-maven-plugin.version>
         <sonar.coverage.exclusions>
             src/main/java/db/migration/postgresql/**/*,
@@ -125,12 +125,12 @@
         <dependency>
             <groupId>com.netcracker.cloud</groupId>
             <artifactId>core-error-handling-rest</artifactId>
-            <version>4.3.7</version>
+            <version>4.3.8</version>
         </dependency>
         <dependency>
             <groupId>com.netcracker.core</groupId>
             <artifactId>process-engine</artifactId>
-            <version>1.6.7</version>
+            <version>1.6.8</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -206,7 +206,7 @@
         <dependency>
             <groupId>com.netcracker.cloud.security.core.utils</groupId>
             <artifactId>k8s-utils</artifactId>
-            <version>3.2.7</version>
+            <version>3.2.8</version>
         </dependency>
 
         <dependency>
