@@ -84,3 +84,17 @@ jobs:
     with:
       version: ${{ inputs.version }}
       publish: true
+
+  # Releases the Helm charts in the same run: creates the plain <version> tag
+  # and its GitHub Release, and builds qubership-dbaas-transfer:<version>, which
+  # the internal GitLab release pipeline consumes. The charts come from main as
+  # it is when this job runs. To retry a failure, see release-helm-charts.yml.
+  helm-charts-release:
+    needs: [ github-release ]
+    if: ${{ !inputs.dry-run }}
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/release-helm-charts.yml
+    with:
+      release: ${{ inputs.version }}
