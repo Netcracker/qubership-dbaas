@@ -480,9 +480,10 @@ var _ = Describe("PhysicalDatabase Controller", func() {
 				}).Should(Equal(p.ResourceVersion))
 			}
 
-			// startLongConflict creates the resource and backdates the start of its
-			// conflict streak, so the test needs no 10 minute wait.
-			startLongConflict := func() {
+			// startConflictAt creates the resource, points the start of its conflict
+			// streak back by age, and waits for the cache to serve that start, so the
+			// test needs no wait of the real length.
+			startConflictAt := func(age time.Duration) {
 				GinkgoHelper()
 				createSecret(validCredentials())
 				createCR(resourceName, baseSpec())
@@ -491,7 +492,7 @@ var _ = Describe("PhysicalDatabase Controller", func() {
 
 				cr := &dbaasv1.PhysicalDatabase{}
 				Eventually(func() error { return k8sClient.Get(ctx, namespacedName, cr) }).Should(Succeed())
-				past := metav1.NewTime(time.Now().Add(-physicalDatabaseIDConflictTimeout - time.Minute))
+				past := metav1.NewTime(time.Now().Add(-age))
 				cr.Status.FirstIDConflictAt = &past
 				Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
 				// The reconciler reads through the cache: wait for it to see the backdated start.
@@ -503,6 +504,25 @@ var _ = Describe("PhysicalDatabase Controller", func() {
 					return cur.Status.FirstIDConflictAt
 				}).ShouldNot(BeNil())
 			}
+
+			// startLongConflict starts a streak that is already past the timeout.
+			startLongConflict := func() {
+				GinkgoHelper()
+				startConflictAt(physicalDatabaseIDConflictTimeout + time.Minute)
+			}
+
+			It("keeps the poll backoff while the conflict is younger than the timeout", func() {
+				startConflictAt(physicalDatabaseIDConflictTimeout - time.Minute)
+
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				expectRequeueAfterStep(result, 0)
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse,
+					EventReasonPhysicalDatabaseIDConflict, metav1.ConditionFalse)
+				expectRecordedEvent(aggregator.recorder.Events, corev1.EventTypeWarning,
+					EventReasonPhysicalDatabaseIDConflict)
+				expectNoRecordedEvent(aggregator.recorder.Events)
+			})
 
 			It("switches to PhysicalDatabaseIdConflictTimeout, emits one Warning, and polls at the resync interval", func() {
 				startLongConflict()

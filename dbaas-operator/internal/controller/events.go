@@ -170,7 +170,7 @@ const (
 	// has received the CORE-DBAAS-4011 conflict for longer than
 	// physicalDatabaseIDConflictTimeout. A conflict that lasts needs a change outside
 	// the resource: the adapter's physical database id or the registration in
-	// dbaas-aggregator. The controller keeps retrying at the resync interval (Phase
+	// dbaas-aggregator. The controller keeps retrying at ResyncInterval (Phase
 	// remains BackingOff, Stalled remains False) and stops the per-poll
 	// PhysicalDatabaseIdConflict events. Type: Warning.
 	EventReasonPhysicalDatabaseIDConflictTimeout = "PhysicalDatabaseIdConflictTimeout"

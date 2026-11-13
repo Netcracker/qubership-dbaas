@@ -67,7 +67,7 @@ Waiting for work the aggregator hasn't finished isn't a failure, and uses a sepa
 
 - an `InternalDatabase` waiting for asynchronous provisioning or a tenant database;
 - a `PhysicalDatabase` waiting for a role migration, or for the adapter to report the registered
-  `physicalDatabaseId` again (`PhysicalDatabaseIdConflict`, for the first 10 minutes);
+  `physicalDatabaseId` again (`PhysicalDatabaseIdConflict`, during the first 30 minutes);
 - a `DatabaseSecretClaim` waiting for its database (`DatabaseNotFound`), its role (`EmptyConnectionProperties`), its
   composite structure (`NamespaceNotInComposite`) or its policy grant (`AccessPolicyNotReady`).
 
@@ -108,7 +108,7 @@ resource. See them with `kubectl describe` or
 | Warning | `AdapterError`                      | A `PhysicalDatabase` adapter answered `404` or `503`                             |
 | Warning | `RegistrationConflict`              | Another `PhysicalDatabase` claims the same adapter or identifier                 |
 | Warning | `PhysicalDatabaseIdConflict`        | The adapter reports another `physicalDatabaseId` than the registered one         |
-| Warning | `PhysicalDatabaseIdConflictTimeout` | The conflict lasted more than 10 minutes                                         |
+| Warning | `PhysicalDatabaseIdConflictTimeout` | The conflict lasted more than 30 minutes                                         |
 
 ## Troubleshooting
 
@@ -177,9 +177,9 @@ dbaas-aggregator holds a registration for the adapter address under another `phy
 adapter reports now, and the identifier of a registered address can't change. The message names the registered
 identifier. Restore it in the adapter's deployment parameters, or delete the old registration if it isn't the default
 and holds no logical databases. The operator retries with the [poll backoff](#exponential-poll-backoff) and registers
-the resource on the first attempt the aggregator accepts. After 10 minutes the reason becomes
-`PhysicalDatabaseIdConflictTimeout`: one Warning Event marks the change, and the operator retries at the resync interval
-without Events. See
+the resource on the first attempt the aggregator accepts. After 30 minutes the reason becomes
+`PhysicalDatabaseIdConflictTimeout`: one Warning Event marks the change, and the operator retries at the interval from
+[Settings](installation/parameters.md#settings) without Events. See
 [PhysicalDatabase](resources/physical-database.md#physical-database-id-conflict).
 
 ### A Balancing Rule Is Stuck in `Terminating`

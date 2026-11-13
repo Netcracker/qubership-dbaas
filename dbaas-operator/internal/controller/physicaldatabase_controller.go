@@ -222,6 +222,8 @@ func (r *PhysicalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 // the resource: the adapter's physical database id or the aggregator's registration.
 // The Ready reason then becomes PhysicalDatabaseIdConflictTimeout, one Warning event
 // marks the change, and the operator polls at ResyncInterval without further events.
+// The warning names the interval it actually schedules, which is the one the
+// reconciler holds rather than physicalDatabaseDefaultResync.
 func (r *PhysicalDatabaseReconciler) handlePhysicalDatabaseIDConflict(
 	ctx context.Context, pd *dbaasv1.PhysicalDatabase, aggErr *aggregatorclient.AggregatorError,
 ) ctrl.Result {
@@ -246,6 +248,10 @@ func (r *PhysicalDatabaseReconciler) handlePhysicalDatabaseIDConflict(
 	// later polls record no event. The condition message holds the timeout, not the
 	// elapsed time, so a repeated poll leaves the condition unchanged. Only
 	// status.lastRequestId changes on each poll.
+	retryInterval := r.ResyncInterval
+	if retryInterval == 0 {
+		retryInterval = physicalDatabaseDefaultResync
+	}
 	ready := apimeta.FindStatusCondition(pd.Status.Conditions, conditionTypeReady)
 	if ready == nil || ready.Reason != EventReasonPhysicalDatabaseIDConflictTimeout {
 		log.InfoC(ctx, "Physical database id conflict timeout exceeded name=%s physicalDatabaseId=%s elapsed=%s",
@@ -254,7 +260,7 @@ func (r *PhysicalDatabaseReconciler) handlePhysicalDatabaseIDConflict(
 			"dbaas-aggregator has rejected the physical database id for more than %s; "+
 				"the operator now retries every %s without further events, and the adapter's id "+
 				"or the registration in dbaas-aggregator must change: %s",
-			physicalDatabaseIDConflictTimeout, r.ResyncInterval, msg)
+			physicalDatabaseIDConflictTimeout, retryInterval, msg)
 	}
 	markTransientFailure(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation,
 		EventReasonPhysicalDatabaseIDConflictTimeout,

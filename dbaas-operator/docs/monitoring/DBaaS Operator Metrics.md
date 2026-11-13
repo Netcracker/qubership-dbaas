@@ -382,7 +382,7 @@ dbaas_resource_observed_generation_lag > 0
 time() - dbaas_secret_claim_first_not_found_timestamp_seconds > 300
 ```
 
-`PhysicalDatabase`s whose physical database id conflict has lasted more than 10 minutes. The Ready reason becomes
+`PhysicalDatabase`s whose physical database id conflict has lasted more than 30 minutes. The Ready reason becomes
 `PhysicalDatabaseIdConflictTimeout` at that point, so alert on it directly:
 
 ```promql
