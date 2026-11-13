@@ -166,6 +166,15 @@ const (
 	// Type: Warning.
 	EventReasonPhysicalDatabaseIDConflict = "PhysicalDatabaseIdConflict"
 
+	// EventReasonPhysicalDatabaseIDConflictTimeout is emitted once when a PhysicalDatabase
+	// has received the CORE-DBAAS-4011 conflict for longer than
+	// physicalDatabaseIDConflictTimeout. A conflict that lasts needs a change outside
+	// the resource: the adapter's physical database id or the registration in
+	// dbaas-aggregator. The controller keeps retrying at the resync interval (Phase
+	// remains BackingOff, Stalled remains False) and stops the per-poll
+	// PhysicalDatabaseIdConflict events. Type: Warning.
+	EventReasonPhysicalDatabaseIDConflictTimeout = "PhysicalDatabaseIdConflictTimeout"
+
 	// ReasonRoleMigrationStarted is the Ready condition reason when dbaas-aggregator
 	// answers 202 to a PhysicalDatabase: the new supported roles need a role
 	// migration of existing logical databases, and the registration request is

@@ -382,12 +382,12 @@ dbaas_resource_observed_generation_lag > 0
 time() - dbaas_secret_claim_first_not_found_timestamp_seconds > 300
 ```
 
-`PhysicalDatabase`s waiting for the adapter to report the registered `physicalDatabaseId`. The operator retries this
-conflict without stalling the resource, so alert on it with a `for:` duration, such as `for: 15m`, in the alerting rule:
+`PhysicalDatabase`s whose physical database id conflict has lasted more than 10 minutes. The Ready reason becomes
+`PhysicalDatabaseIdConflictTimeout` at that point, so alert on it directly:
 
 ```promql
 max by (resource_namespace, name) (
-  dbaas_resource_condition{kind="PhysicalDatabase", condition="Ready", reason="PhysicalDatabaseIdConflict"}
+  dbaas_resource_condition{kind="PhysicalDatabase", condition="Ready", reason="PhysicalDatabaseIdConflictTimeout"}
 ) == 1
 ```
 

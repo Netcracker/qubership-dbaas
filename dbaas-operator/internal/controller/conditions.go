@@ -28,6 +28,14 @@ const (
 // Warning gives operators a single, alertable signal.
 const databaseNotFoundTimeout = 10 * time.Minute
 
+// physicalDatabaseIDConflictTimeout is the duration after which a PhysicalDatabase
+// that has been continuously receiving the aggregator's physical database id conflict
+// (409, CORE-DBAAS-4011) is considered stuck. The conflict then needs a change
+// outside the resource, so the controller switches to
+// EventReasonPhysicalDatabaseIDConflictTimeout, records one Warning event, and
+// polls at the resync interval instead of the poll backoff.
+const physicalDatabaseIDConflictTimeout = 10 * time.Minute
+
 // secretRotationSafetyNetInterval is the requeue delay applied after a
 // successful DatabaseSecretClaim reconcile. The rotation poller is the primary
 // trigger for credential updates; this slow periodic re-poll is a
