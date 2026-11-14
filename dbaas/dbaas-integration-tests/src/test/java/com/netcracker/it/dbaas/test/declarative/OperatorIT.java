@@ -11,7 +11,6 @@ import com.netcracker.it.dbaas.entity.composite.CompositeStructureDto;
 import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
-import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
@@ -30,15 +29,14 @@ import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import static com.netcracker.it.dbaas.entity.config.RolesRegistration.DeclarativeRoleConfigBuilder;
 import static com.netcracker.it.dbaas.helpers.BGHelper.TEST_NAMESPACE_CANDIDATE;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_NAMESPACE_PATTERN;
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
@@ -53,6 +51,8 @@ public class OperatorIT extends AbstractIT {
     private static BackupHelperV1 backupHelperV1;
     private static BackupHelperV3 backupHelperV3;
     private static BalancingRulesHelperV3 balancingRulesHelperV3;
+    private static CompositeStructureHelperV1 compositeStructureHelperV1;
+    private static DeclarativeConfigHelper declarativeConfigHelper;
 
     // The operator deploy carries no Secret RBAC, so OperatorIT grants it per-namespace Secret
     // access with a Role + RoleBinding, mirroring real onboarding.
@@ -67,6 +67,8 @@ public class OperatorIT extends AbstractIT {
         backupHelperV1 = new BackupHelperV1(helperV3);
         backupHelperV3 = new BackupHelperV3(helperV3);
         balancingRulesHelperV3 = new BalancingRulesHelperV3(helperV3);
+        compositeStructureHelperV1 = new CompositeStructureHelperV1(helperV3);
+        declarativeConfigHelper = new DeclarativeConfigHelper(helperV3);
         cleanUp();
         createOperatorSecretRbac();
     }
@@ -1913,93 +1915,81 @@ public class OperatorIT extends AbstractIT {
     @Nested
     @EnableExtension
     @Execution(ExecutionMode.SAME_THREAD)
-    class CrossNamespaceDatabaseSecretClaim {
-        private static final String COMPOSITE_STRUCTURES_URL = "api/composite/v1/structures";
+    class CompositeStructure {
         private static final String APP_NAME_LABEL = "app.kubernetes.io/name";
         private static final String ADMIN_ROLE = "admin";
-        private static final String PASSWORD_KEY = "password";
 
-        private final List<String> createdNamespaces = new ArrayList<>();
-        private final List<String> createdCompositeIds = new ArrayList<>();
+        @BeforeEach
+        @AfterEach
+        void cleanup() throws IOException {
+            kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
+                    .inNamespace(NAMESPACE).withLabel(TEST_ID, TEST_ID).delete();
+            helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
+            compositeStructureHelperV1.deleteCompositeStructuresWithAutotestNamespaces();
+        }
 
         @Test
-        void testCrossNamespaceClaimRecoversWhenCompositeAndPolicyBecomeReadyAndRotates() throws IOException {
-            String ownerNamespace = createTestNamespace();
-            String consumerNamespace = createTestNamespace();
+        void testCrossNamespaceClaimCreatesSecretWhenCompositeRegistersBothNamespaces() throws Exception {
+            String ownerNamespace = helperV3.generateTestNamespace();
             String ownerService = generateName();
             String consumerService = generateName();
-            String databaseName = generateName();
-            String policyName = generateName();
             String claimName = generateName();
             String secretName = generateName();
-            Map<String, Object> ownerClassifier = new ClassifierBuilder()
-                    .ms(ownerService)
-                    .ns(ownerNamespace)
-                    .build();
 
-            createOperatorSecretRbac(consumerNamespace);
+            var database = helperV3.createDatabase(ownerClassifier(ownerService, ownerNamespace), POSTGRES_TYPE, 201);
+            grantServiceRole(ownerNamespace, ownerService, consumerService);
 
-            var database = createInNamespace(CRD_INTERNAL_DATABASE, ownerNamespace,
-                    buildInternalDatabaseCR(databaseName, ownerService, ownerNamespace, POSTGRES_TYPE));
-            waitForDesiredState(CRD_INTERNAL_DATABASE, database,
-                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
-
-            Map<String, Object> expectedConnection = new HashMap<>(helperV3.getDatabaseByClassifierAsPOJO(
-                    helperV3.getClusterDbaAuthorization(), ownerClassifier, ownerNamespace, POSTGRES_TYPE, 200)
-                    .getConnectionProperties());
-            String expectedPassword = String.valueOf(expectedConnection.remove(PASSWORD_KEY));
-
-            var policy = createInNamespace(CRD_DATABASE_ACCESS_POLICY, ownerNamespace,
-                    buildDatabaseAccessPolicyCR(policyName, ownerService, null, null, true));
-            waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, policy,
-                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
-
-            var claim = createInNamespace(CRD_DATABASE_SECRET_CLAIM, consumerNamespace,
-                    buildDatabaseSecretClaimCR(claimName, consumerService, ownerService, ownerNamespace,
-                            secretName, ADMIN_ROLE, POSTGRES_TYPE));
+            var claim = createCR(CRD_DATABASE_SECRET_CLAIM, buildDatabaseSecretClaimCR(claimName, consumerService,
+                    ownerService, ownerNamespace, secretName, ADMIN_ROLE, POSTGRES_TYPE));
             waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
                     PHASE_BACKING_OFF, STATUS_FALSE, REASON_NAMESPACE_NOT_IN_COMPOSITE, STATUS_FALSE);
-            assertNull(getSecret(consumerNamespace, secretName));
-            assertNull(getSecret(ownerNamespace, secretName));
+            assertNull(getSecret(secretName));
 
-            createCompositeStructure(ownerNamespace, Set.of(ownerNamespace, consumerNamespace));
-            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
-                    PHASE_BACKING_OFF, STATUS_FALSE, REASON_ACCESS_POLICY_NOT_READY, STATUS_FALSE);
-            assertNull(getSecret(consumerNamespace, secretName));
-
-            var updatedPolicy = kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
-                    .inNamespace(ownerNamespace)
-                    .withName(policyName)
-                    .edit(resource -> {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> spec =
-                                (Map<String, Object>) resource.getAdditionalProperties().get("spec");
-                        spec.put("services", List.of(Map.of(
-                                "name", consumerService,
-                                "roles", List.of(ADMIN_ROLE))));
-                        return resource;
-                    });
-            waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, updatedPolicy,
-                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE, true);
+            createCompositeStructure(ownerNamespace, Set.of(ownerNamespace, NAMESPACE));
             waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
                     PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
 
-            Secret secret = getSecret(consumerNamespace, secretName);
+            Secret secret = getSecret(secretName);
             assertNotNull(secret);
-            assertNull(getSecret(ownerNamespace, secretName));
             assertSecretOwnedByCR(secret, claim);
             assertEquals(consumerService, secret.getMetadata().getLabels().get(APP_NAME_LABEL));
-            assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY, expectedConnection);
-            assertTrue(expectedPassword.equals(extractPasswordFromSecret(secret)),
-                    "Secret must contain the database owner's admin password");
+            assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY,
+                    database.getConnectionProperties());
             assertSecretContainsMetadata(secret, ownerService, ownerNamespace, POSTGRES_TYPE, ADMIN_ROLE);
+        }
 
-            String passwordBeforeRotation = extractPasswordFromSecret(secret);
-            helperV3.changePassword(ownerClassifier, POSTGRES_TYPE, 200, ownerNamespace);
+        @Test
+        void testCrossNamespaceClaimWaitsForGrantThenFollowsPasswordRotation() throws Exception {
+            String ownerNamespace = helperV3.generateTestNamespace();
+            String ownerService = generateName();
+            String consumerService = generateName();
+            String claimName = generateName();
+            String secretName = generateName();
+            Map<String, Object> ownerDbClassifier = ownerClassifier(ownerService, ownerNamespace);
+
+            helperV3.createDatabase(ownerDbClassifier, POSTGRES_TYPE, 201);
+            declarativeConfigHelper.applyDeclarativeConfig(new DeclarativeRoleConfigBuilder()
+                    .disableGlobalPermissions()
+                    .build()
+                    .asPayload(ownerNamespace, ownerService));
+            createCompositeStructure(ownerNamespace, Set.of(ownerNamespace, NAMESPACE));
+
+            var claim = createCR(CRD_DATABASE_SECRET_CLAIM, buildDatabaseSecretClaimCR(claimName, consumerService,
+                    ownerService, ownerNamespace, secretName, ADMIN_ROLE, POSTGRES_TYPE));
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_BACKING_OFF, STATUS_FALSE, REASON_ACCESS_POLICY_NOT_READY, STATUS_FALSE);
+            assertNull(getSecret(secretName));
+
+            grantServiceRole(ownerNamespace, ownerService, consumerService);
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+            String passwordBeforeRotation = extractPasswordFromSecret(getSecret(secretName));
+            helperV3.changePassword(ownerDbClassifier, POSTGRES_TYPE, 200, ownerNamespace);
             waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
                     PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
 
-            Secret rotatedSecret = getSecret(consumerNamespace, secretName);
+            Secret rotatedSecret = getSecret(secretName);
             assertNotNull(rotatedSecret);
             assertFalse(passwordBeforeRotation.equals(extractPasswordFromSecret(rotatedSecret)),
                     "Secret password must change after rotation");
@@ -2008,104 +1998,38 @@ public class OperatorIT extends AbstractIT {
         }
 
         @Test
-        void testPolicyGrantDoesNotAuthorizeServiceInDifferentComposite() {
-            String ownerNamespace = createTestNamespace();
-            String consumerNamespace = createTestNamespace();
+        void testCrossNamespaceClaimStaysRejectedWhenGrantExistsOutsideComposite() throws Exception {
+            String ownerNamespace = helperV3.generateTestNamespace();
             String ownerService = generateName();
             String consumerService = generateName();
-            String databaseName = generateName();
-            String policyName = generateName();
             String claimName = generateName();
             String secretName = generateName();
 
-            createOperatorSecretRbac(consumerNamespace);
-
-            var database = createInNamespace(CRD_INTERNAL_DATABASE, ownerNamespace,
-                    buildInternalDatabaseCR(databaseName, ownerService, ownerNamespace, POSTGRES_TYPE));
-            waitForDesiredState(CRD_INTERNAL_DATABASE, database,
-                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_DATABASE_PROVISIONED, STATUS_FALSE);
-
+            helperV3.createDatabase(ownerClassifier(ownerService, ownerNamespace), POSTGRES_TYPE, 201);
+            grantServiceRole(ownerNamespace, ownerService, consumerService);
             createCompositeStructure(ownerNamespace, Set.of(ownerNamespace));
-            createCompositeStructure(consumerNamespace, Set.of(consumerNamespace));
 
-            var policy = createInNamespace(CRD_DATABASE_ACCESS_POLICY, ownerNamespace,
-                    buildDatabaseAccessPolicyCR(policyName, ownerService,
-                            List.of(Map.of("name", consumerService, "roles", List.of(ADMIN_ROLE))),
-                            null, true));
-            waitForDesiredState(CRD_DATABASE_ACCESS_POLICY, policy,
-                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_POLICY_APPLIED, STATUS_FALSE);
-
-            var claim = createInNamespace(CRD_DATABASE_SECRET_CLAIM, consumerNamespace,
-                    buildDatabaseSecretClaimCR(claimName, consumerService, ownerService, ownerNamespace,
-                            secretName, ADMIN_ROLE, POSTGRES_TYPE));
+            var claim = createCR(CRD_DATABASE_SECRET_CLAIM, buildDatabaseSecretClaimCR(claimName, consumerService,
+                    ownerService, ownerNamespace, secretName, ADMIN_ROLE, POSTGRES_TYPE));
             waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
                     PHASE_BACKING_OFF, STATUS_FALSE, REASON_NAMESPACE_NOT_IN_COMPOSITE, STATUS_FALSE);
-            assertNull(getSecret(consumerNamespace, secretName));
-            assertNull(getSecret(ownerNamespace, secretName));
+            assertNull(getSecret(secretName));
         }
 
-        @AfterEach
-        void cleanUpCrossNamespaceResources() {
-            for (String namespace : createdNamespaces) {
-                cleanUpStep("delete claims from " + namespace, () ->
-                        kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
-                                .inNamespace(namespace).withLabel(TEST_ID, TEST_ID).delete());
-                cleanUpStep("delete policies from " + namespace, () ->
-                        kubernetesClient.genericKubernetesResources(CRD_DATABASE_ACCESS_POLICY)
-                                .inNamespace(namespace).withLabel(TEST_ID, TEST_ID).delete());
-                cleanUpStep("delete databases from " + namespace, () ->
-                        kubernetesClient.genericKubernetesResources(CRD_INTERNAL_DATABASE)
-                                .inNamespace(namespace).withLabel(TEST_ID, TEST_ID).delete());
-                cleanUpStep("delete logical databases from " + namespace, () ->
-                        helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), namespace));
-            }
-            for (String compositeId : createdCompositeIds) {
-                cleanUpStep("delete composite " + compositeId, () -> deleteCompositeStructure(compositeId));
-            }
-            for (String namespace : createdNamespaces) {
-                cleanUpStep("delete namespace " + namespace, () ->
-                        kubernetesClient.namespaces().withName(namespace).delete());
-            }
+        private void grantServiceRole(String ownerNamespace, String ownerService, String consumerService)
+                throws IOException {
+            declarativeConfigHelper.applyDeclarativeConfig(new DeclarativeRoleConfigBuilder()
+                    .service(consumerService, ADMIN_ROLE)
+                    .build()
+                    .asPayload(ownerNamespace, ownerService));
         }
 
-        private String createTestNamespace() {
-            String namespace = helperV3.generateTestNamespace();
-            kubernetesClient.namespaces().resource(new NamespaceBuilder()
-                    .withNewMetadata()
-                    .withName(namespace)
-                    .addToLabels(TEST_ID, TEST_ID)
-                    .endMetadata()
-                    .build()).create();
-            createdNamespaces.add(namespace);
-            return namespace;
+        private Map<String, Object> ownerClassifier(String ownerService, String ownerNamespace) {
+            return new ClassifierBuilder().ms(ownerService).ns(ownerNamespace).build();
         }
 
         private void createCompositeStructure(String compositeId, Set<String> namespaces) {
-            createdCompositeIds.add(compositeId);
-            Request request = helperV3.createRequest(COMPOSITE_STRUCTURES_URL,
-                    helperV3.getClusterDbaAuthorization(),
-                    new CompositeStructureDto(compositeId, new HashSet<>(namespaces)), "POST");
-            helperV3.executeRequest(request, null, 204);
-        }
-
-        private void deleteCompositeStructure(String compositeId) {
-            Request request = helperV3.createRequest(
-                    "%s/%s/delete".formatted(COMPOSITE_STRUCTURES_URL, compositeId),
-                    helperV3.getClusterDbaAuthorization(), null, "DELETE");
-            helperV3.executeRequest(request, null, 204, 404);
-        }
-
-        private void cleanUpStep(String description, CleanUpStep step) {
-            try {
-                step.run();
-            } catch (Exception | AssertionError e) {
-                log.warn("Cleanup step failed: {}", description, e);
-            }
-        }
-
-        @FunctionalInterface
-        private interface CleanUpStep {
-            void run() throws Exception;
+            compositeStructureHelperV1.saveCompositeStructure(new CompositeStructureDto(compositeId, namespaces));
         }
     }
 
@@ -2192,20 +2116,16 @@ public class OperatorIT extends AbstractIT {
 
 
     private Secret getSecret(String secretName) {
-        return getSecret(NAMESPACE, secretName);
-    }
-
-    private Secret getSecret(String namespace, String secretName) {
         ObjectMeta meta = new ObjectMeta();
         meta.setName(secretName);
-        meta.setNamespace(namespace);
+        meta.setNamespace(NAMESPACE);
 
         Secret secret = new SecretBuilder()
                 .withMetadata(meta)
                 .build();
 
         return kubernetesClient.secrets()
-                .inNamespace(namespace)
+                .inNamespace(NAMESPACE)
                 .resource(secret)
                 .get();
     }
@@ -2260,17 +2180,11 @@ public class OperatorIT extends AbstractIT {
 
     private GenericKubernetesResource createCR(CustomResourceDefinitionContext crd, GenericKubernetesResource cr) {
         GenericKubernetesResource r = kubernetesClient.genericKubernetesResources(crd)
-                .inNamespace(cr.getMetadata().getNamespace())
+                .inNamespace(NAMESPACE)
                 .resource(cr)
                 .create();
         log.info("CR created: {}", r);
         return r;
-    }
-
-    private GenericKubernetesResource createInNamespace(CustomResourceDefinitionContext crd, String namespace,
-                                                        GenericKubernetesResource cr) {
-        cr.getMetadata().setNamespace(namespace);
-        return createCR(crd, cr);
     }
 
     private Map<String, Object> buildSecretConnectionProperties(String role, String secretName) {
@@ -2291,10 +2205,9 @@ public class OperatorIT extends AbstractIT {
     }
 
     private void waitForDesiredState(CustomResourceDefinitionContext crd, GenericKubernetesResource cr, String desiredPhase, String desiredReadiness, String desiredReadyReason, String desiredStalling, boolean waitForObservedGeneration) {
-        String namespace = cr.getMetadata().getNamespace();
         try {
             kubernetesClient.genericKubernetesResources(crd)
-                    .inNamespace(namespace)
+                    .inNamespace(NAMESPACE)
                     .resource(cr)
                     .waitUntilCondition(r -> isDesiredState(r, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling)
                                     && (!waitForObservedGeneration || isCurrentGenerationObserved(r)),
@@ -2303,7 +2216,7 @@ public class OperatorIT extends AbstractIT {
             // Catch later
         }
         GenericKubernetesResource resultCR = kubernetesClient.genericKubernetesResources(crd)
-                .inNamespace(namespace)
+                .inNamespace(NAMESPACE)
                 .resource(cr)
                 .get();
         assertDesiredState(resultCR, desiredPhase, desiredReadiness, desiredReadyReason, desiredStalling);
@@ -2419,13 +2332,9 @@ public class OperatorIT extends AbstractIT {
     // Mirrors production, where each namespace's onboarding provisions this Role + RoleBinding
     // for the namespaces it serves; the operator deploy itself carries no Secret RBAC.
     private static void createOperatorSecretRbac() {
-        createOperatorSecretRbac(NAMESPACE);
-    }
-
-    private static void createOperatorSecretRbac(String namespace) {
         var role = new RoleBuilder()
                 .withNewMetadata()
-                .withName(OPERATOR_SECRET_RBAC_NAME).withNamespace(namespace)
+                .withName(OPERATOR_SECRET_RBAC_NAME).withNamespace(NAMESPACE)
                 .addToLabels(TEST_ID, TEST_ID)
                 .endMetadata()
                 .addNewRule()
@@ -2434,11 +2343,11 @@ public class OperatorIT extends AbstractIT {
                 .withVerbs("get", "create", "update", "patch")
                 .endRule()
                 .build();
-        kubernetesClient.rbac().roles().inNamespace(namespace).resource(role).create();
+        kubernetesClient.rbac().roles().inNamespace(NAMESPACE).resource(role).create();
 
         var roleBinding = new RoleBindingBuilder()
                 .withNewMetadata()
-                .withName(OPERATOR_SECRET_RBAC_NAME).withNamespace(namespace)
+                .withName(OPERATOR_SECRET_RBAC_NAME).withNamespace(NAMESPACE)
                 .addToLabels(TEST_ID, TEST_ID)
                 .endMetadata()
                 .withNewRoleRef()
@@ -2448,7 +2357,7 @@ public class OperatorIT extends AbstractIT {
                 .withKind("ServiceAccount").withName(OPERATOR_SERVICE_ACCOUNT).withNamespace(NAMESPACE)
                 .endSubject()
                 .build();
-        kubernetesClient.rbac().roleBindings().inNamespace(namespace).resource(roleBinding).create();
+        kubernetesClient.rbac().roleBindings().inNamespace(NAMESPACE).resource(roleBinding).create();
     }
 
     private static void deleteAllLogicalDatabases() throws IOException {
