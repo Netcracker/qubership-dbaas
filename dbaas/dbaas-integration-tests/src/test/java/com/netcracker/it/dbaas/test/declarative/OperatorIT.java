@@ -23,17 +23,12 @@ import net.jodah.failsafe.Failsafe;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static com.netcracker.it.dbaas.entity.config.RolesRegistration.DeclarativeRoleConfigBuilder;
@@ -1924,8 +1919,18 @@ public class OperatorIT extends AbstractIT {
         void cleanup() throws IOException {
             kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
                     .inNamespace(NAMESPACE).withLabel(TEST_ID, TEST_ID).delete();
+            cleanupDatabasesWithRoles();
             helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
             compositeStructureHelperV1.deleteCompositeStructuresWithAutotestNamespaces();
+        }
+
+        // temporary WA for proper database_role rows cleanup
+        private void cleanupDatabasesWithRoles() throws IOException {
+            for (String namespace : helperV3.findAllRegisteredNamespaces()) {
+                if (DbaasHelperV3.TEST_NAMESPACE_PATTERN.matcher(namespace).matches()) {
+                    helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), namespace);
+                }
+            }
         }
 
         @Test
