@@ -1,13 +1,15 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.DbaasApiPath;
 import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
 import com.netcracker.cloud.dbaas.dto.v3.InstructionRequestV3;
 import com.netcracker.cloud.dbaas.dto.v3.PhysicalDatabaseRegistryRequestV3;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
-import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseAddressConflictException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseIdConflictException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import jakarta.annotation.security.RolesAllowed;
@@ -48,8 +50,12 @@ public class PhysicalDatabaseRegistrationControllerV3 {
             @APIResponse(responseCode = "201", description = "Database created", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "200", description = "Updated existing database", content = @Content(schema = @Schema(implementation = String.class))),
             @APIResponse(responseCode = "202", description = "Adapter should continue to create roles for new portions", content = @Content(schema = @Schema(implementation = String.class))),
-            @APIResponse(responseCode = "409", description = "Database could not be registered as physical database already " +
-                    "exists with another adapter id or the same adapter already exists and it is used with other physical database"),
+            @APIResponse(responseCode = "409", description = "The registration conflicts with an existing physical database. " +
+                    "`CORE-DBAAS-4011`: the adapter address is registered with another physical database identifier, " +
+                    "or the adapter reports an identifier other than `phydbid` during the handshake. " +
+                    "`CORE-DBAAS-4057`: the physical database identifier is registered with another adapter address, " +
+                    "and the new address is accepted only when it keeps the host and changes the scheme",
+                    content = @Content(schema = @Schema(implementation = TmfErrorResponse.class))),
             @APIResponse(responseCode = "502", description = "Adapter is not available during handshake process"),
             @APIResponse(responseCode = "400", description = "Adapter already running or request validation failed"),
             @APIResponse(responseCode = "500", description = "Unexpected server error. " +
@@ -67,7 +73,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                              @QueryParam("internalMigration") boolean internalMigration,
                              @Parameter(description = "Parameters for registering physical database.", required = true)
                              PhysicalDatabaseRegistryRequestV3 parameters)
-            throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException, JsonProcessingException {
+            throws PhysicalDatabaseIdConflictException, PhysicalDatabaseAddressConflictException, AdapterUnavailableException, JsonProcessingException {
         log.debug("Starting registration of new adapter type={}, physicalDatabaseId={}, internalMigration={}, parameters={}", type, phydbid, internalMigration, parameters);
         return physicalDatabasesService.registerPhysicalDatabase(parameters, type, phydbid, internalMigration);
     }
@@ -113,7 +119,7 @@ public class PhysicalDatabaseRegistrationControllerV3 {
                                 @PathParam("instructionid") UUID instructionid,
                                 @Parameter(description = "Parameters for registering physical database.", required = true)
                                 InstructionRequestV3 parameters)
-            throws PhysicalDatabaseRegistrationConflictException, AdapterUnavailableException {
+            throws PhysicalDatabaseIdConflictException, PhysicalDatabaseAddressConflictException, AdapterUnavailableException {
         log.info("Starting to handle instruction of adapter type={}, physicalDatabaseId={}, instructionId={}", type, phydbid, instructionid);
         return physicalDatabasesService.handleInstruction(instructionid, parameters);
     }

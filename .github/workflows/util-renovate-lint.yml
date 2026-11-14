@@ -1,4 +1,4 @@
-name: Validate Renovate Config
+name: "[util] Renovate Lint"
 
 on:
   push:

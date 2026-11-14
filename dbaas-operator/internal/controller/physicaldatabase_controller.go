@@ -24,11 +24,13 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -97,7 +99,7 @@ type PhysicalDatabaseReconciler struct {
 	ResyncInterval time.Duration
 
 	// pollBackoff spaces the re-registrations that follow a 202 while the role
-	// migration runs.
+	// migration runs, and those that follow a physical database id conflict.
 	pollBackoff pollBackoffTracker
 }
 
@@ -140,6 +142,9 @@ func (r *PhysicalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	creds, err := r.readAdapterCredentials(ctx, pd)
 	if err != nil {
 		log.ErrorC(ctx, "Failed to read adapter credentials Secret: %v", err)
+		// A Secret error is a different wait condition than an id conflict, so it
+		// ends the streak and a later conflict starts a fresh one.
+		pd.Status.FirstIDConflictAt = nil
 		dbaasSecretResolutionErrorsTotal.WithLabelValues(pd.Namespace, secretResolutionReason(err)).Inc()
 		markTransientFailure(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation, EventReasonSecretError, err.Error())
 		r.Recorder.Eventf(pd, corev1.EventTypeWarning, EventReasonSecretError,
@@ -155,6 +160,9 @@ func (r *PhysicalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	recordAdapterCall(controllerPDR, operationProbeAdapter, probeStart, err)
 	if err != nil {
 		log.ErrorC(ctx, "Failed to probe dbaas adapter address=%s: %v", address, err)
+		// An adapter probe failure is a different wait condition than an id
+		// conflict, so it ends the streak and a later conflict starts a fresh one.
+		pd.Status.FirstIDConflictAt = nil
 		return handleAdapterError(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation, r.Recorder, pd, err, requestID)
 	}
 	setAdapterStatus(&pd.Status, info)
@@ -169,9 +177,16 @@ func (r *PhysicalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		buildPhysicalDatabaseRegistrationRequest(pd, info, creds))
 	recordAggregatorCall(controllerPDR, operationRegisterPDR, aggStart, err)
 	if err != nil {
+		var aggErr *aggregatorclient.AggregatorError
+		if errors.As(err, &aggErr) && aggErr.IsPhysicalDatabaseIDConflict() {
+			return r.handlePhysicalDatabaseIDConflict(ctx, pd, aggErr), nil
+		}
+		// Any other answer ends the conflict streak, so a later conflict starts a fresh one.
+		pd.Status.FirstIDConflictAt = nil
 		log.ErrorC(ctx, "Failed to register physical database in dbaas-aggregator: %v", err)
 		return handleAggregatorError(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation, r.Recorder, pd, err, requestID)
 	}
+	pd.Status.FirstIDConflictAt = nil
 
 	if accepted {
 		// The aggregator runs the migration; repeating the registration is how the
@@ -189,6 +204,64 @@ func (r *PhysicalDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	r.Recorder.Eventf(pd, corev1.EventTypeNormal, EventReasonPhysicalDatabaseRegistered,
 		"registered with dbaas-aggregator (type=%s, physicalDatabaseId=%s)", info.Type, info.PhysicalDatabaseID)
 	return ctrl.Result{RequeueAfter: r.ResyncInterval}, nil
+}
+
+// handlePhysicalDatabaseIDConflict records the aggregator's physical database id
+// conflict (409, CORE-DBAAS-4011) and schedules the next registration. The id comes
+// from the adapter, so nothing in the cluster changes when the adapter starts
+// reporting the registered id again, and a Stalled resource would never notice. A
+// 409 for the adapter address (CORE-DBAAS-4057) is not handled here: only a spec
+// change resolves it, so it stays a permanent failure.
+//
+// A short conflict is usually a rollout in progress, so the operator polls with the
+// poll backoff and records a Warning event per poll. The event text has no request
+// ID, so the event recorder counts the repeats instead of creating a new event each
+// time; the request ID stays in status.lastRequestId and in the log.
+//
+// A conflict that outlasts physicalDatabaseIDConflictTimeout needs a change outside
+// the resource: the adapter's physical database id or the aggregator's registration.
+// The Ready reason then becomes PhysicalDatabaseIdConflictTimeout, one Warning event
+// marks the change, and the operator polls at ResyncInterval without further events.
+func (r *PhysicalDatabaseReconciler) handlePhysicalDatabaseIDConflict(
+	ctx context.Context, pd *dbaasv1.PhysicalDatabase, aggErr *aggregatorclient.AggregatorError,
+) ctrl.Result {
+	msg := aggErr.UserMessage()
+	now := metav1.Now()
+	if pd.Status.FirstIDConflictAt == nil {
+		pd.Status.FirstIDConflictAt = &now
+	}
+	elapsed := now.Sub(pd.Status.FirstIDConflictAt.Time)
+
+	if elapsed < physicalDatabaseIDConflictTimeout {
+		log.InfoC(ctx, "Detected physical database id conflict name=%s physicalDatabaseId=%s reason=%s",
+			pd.Name, pd.Status.PhysicalDatabaseID, msg)
+		markTransientFailure(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation,
+			EventReasonPhysicalDatabaseIDConflict, msg)
+		r.Recorder.Eventf(pd, corev1.EventTypeWarning, EventReasonPhysicalDatabaseIDConflict,
+			"dbaas-aggregator rejected the physical database id: %s", msg)
+		return r.pollBackoff.schedule(pd)
+	}
+
+	// The Ready reason is the marker of the crossing: once it is the timeout reason,
+	// later polls record no event. The condition message holds the timeout, not the
+	// elapsed time, so a repeated poll leaves the condition unchanged. Only
+	// status.lastRequestId changes on each poll.
+	ready := apimeta.FindStatusCondition(pd.Status.Conditions, conditionTypeReady)
+	if ready == nil || ready.Reason != EventReasonPhysicalDatabaseIDConflictTimeout {
+		log.InfoC(ctx, "Physical database id conflict timeout exceeded name=%s physicalDatabaseId=%s elapsed=%s",
+			pd.Name, pd.Status.PhysicalDatabaseID, elapsed.Round(time.Second))
+		r.Recorder.Eventf(pd, corev1.EventTypeWarning, EventReasonPhysicalDatabaseIDConflictTimeout,
+			"dbaas-aggregator has rejected the physical database id for more than %s; "+
+				"the operator now retries every %s without further events, and the adapter's id "+
+				"or the registration in dbaas-aggregator must change: %s",
+			physicalDatabaseIDConflictTimeout, r.ResyncInterval, msg)
+	}
+	markTransientFailure(&pd.Status.Phase, &pd.Status.Conditions, pd.Generation,
+		EventReasonPhysicalDatabaseIDConflictTimeout,
+		fmt.Sprintf("%s (the conflict has lasted more than %s: the adapter's physical database id "+
+			"or the registration in dbaas-aggregator must change)", msg, physicalDatabaseIDConflictTimeout))
+	r.pollBackoff.forgetObject(pd)
+	return ctrl.Result{RequeueAfter: r.ResyncInterval}
 }
 
 // checkConflict marks pd as RegistrationConflict when an older resource of this
@@ -209,6 +282,7 @@ func (r *PhysicalDatabaseReconciler) checkConflict(
 		return ctrl.Result{}, false, nil
 	}
 	r.pollBackoff.forgetObject(pd)
+	pd.Status.FirstIDConflictAt = nil
 	msg := fmt.Sprintf("PhysicalDatabase %s/%s already claims %s %q (older claimant wins)",
 		older.Namespace, older.Name, field, value)
 	log.InfoC(ctx, "Detected registration conflict name=%s reason=%s", pd.Name, msg)

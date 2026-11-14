@@ -42,21 +42,22 @@ All resource-driven calls share this mapping, classified by the `AggregatorError
 
 Exceptions:
 
-| Call                    | Answer                                  | Result                                                                            |
-|-------------------------|-----------------------------------------|-----------------------------------------------------------------------------------|
-| apply                   | `202` with `trackingId`                 | `WaitingForDependency`; poll the operation                                        |
-| operation status        | `COMPLETED` / `FAILED`                  | `Succeeded` / `AggregatorRejected`; `trackingId` cleared                          |
-| operation status        | `TERMINATED`, or HTTP `404`             | `BackingOff`; `trackingId` cleared, apply again                                   |
-| operation status        | `401`, `5xx`                            | `BackingOff`; `trackingId` kept                                                   |
-| tenant get-or-create    | `202`                                   | `WaitingForDependency`; the body has no credentials, repeat with the poll backoff |
-| get-by-classifier       | `404` with `CORE-DBAAS-4006`            | `DatabaseNotFound`; `404` without a TMF body is `AggregatorError`                 |
-| get-by-classifier       | `200` with empty `connectionProperties` | `EmptyConnectionProperties`                                                       |
-| get-by-classifier       | cross-namespace `403` `CORE-DBAAS-4023` | `AccessPolicyNotReady`, polled; a same-namespace `403` stays `AggregatorRejected` |
-| composite structures    | any error                               | `CompositeLookupFailed`, retried; get-by-classifier is not called                 |
-| composite structures    | no structure has both namespaces        | `NamespaceNotInComposite`, polled; get-by-classifier is not called                |
-| namespace rule `DELETE` | `404`                                   | Treated as removed                                                                |
-| physical database `PUT` | `202`                                   | `WaitingForDependency`, `RoleMigrationStarted`; the body isn't read               |
-| changed-databases feed  | any error                               | Logged; the cursor stays and the next tick retries. No resource status changes.   |
+| Call                    | Answer                                  | Result                                                                                          |
+|-------------------------|-----------------------------------------|-------------------------------------------------------------------------------------------------|
+| apply                   | `202` with `trackingId`                 | `WaitingForDependency`; poll the operation                                                      |
+| operation status        | `COMPLETED` / `FAILED`                  | `Succeeded` / `AggregatorRejected`; `trackingId` cleared                                        |
+| operation status        | `TERMINATED`, or HTTP `404`             | `BackingOff`; `trackingId` cleared, apply again                                                 |
+| operation status        | `401`, `5xx`                            | `BackingOff`; `trackingId` kept                                                                 |
+| tenant get-or-create    | `202`                                   | `WaitingForDependency`; the body has no credentials, repeat with the poll backoff               |
+| get-by-classifier       | `404` with `CORE-DBAAS-4006`            | `DatabaseNotFound`; `404` without a TMF body is `AggregatorError`                               |
+| get-by-classifier       | `200` with empty `connectionProperties` | `EmptyConnectionProperties`                                                                     |
+| get-by-classifier       | cross-namespace `403` `CORE-DBAAS-4023` | `AccessPolicyNotReady`, polled; a same-namespace `403` stays `AggregatorRejected`               |
+| composite structures    | any error                               | `CompositeLookupFailed`, retried; get-by-classifier is not called                               |
+| composite structures    | no structure has both namespaces        | `NamespaceNotInComposite`, polled; get-by-classifier is not called                              |
+| namespace rule `DELETE` | `404`                                   | Treated as removed                                                                              |
+| physical database `PUT` | `202`                                   | `WaitingForDependency`, `RoleMigrationStarted`; the body isn't read                             |
+| physical database `PUT` | `409` with `CORE-DBAAS-4011`            | `PhysicalDatabaseIdConflict`, polled; a `409` with `CORE-DBAAS-4057` stays `AggregatorRejected` |
+| changed-databases feed  | any error                               | Logged; the cursor stays and the next tick retries. No resource status changes.                 |
 
 ## Rotation Feed
 

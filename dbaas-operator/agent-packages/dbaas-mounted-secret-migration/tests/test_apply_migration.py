@@ -1255,6 +1255,52 @@ class HelmApplyTest(unittest.TestCase):
             self.assertEqual(code, 3, report.get("__stderr"))
             self.assertTrue(any("sha256 changed" in e for e in report.get("blocking", [])))
 
+    def test_a_stale_plan_is_exit_3_when_the_output_file_is_also_foreign(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            (repo / "chart/templates/deployment.yaml").write_text(DEPLOYMENT + "\n# edited after discovery\n", encoding="utf-8")
+            (repo / "chart/templates/dbaas-mounted-secret-resources.yaml").write_text("kind: ConfigMap\n", encoding="utf-8")
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 3, report.get("__stdout"))
+            self.assertTrue(any("sha256 changed" in e for e in report.get("blocking", [])), report.get("__stdout"))
+
+    def test_a_stale_plan_is_exit_3_when_the_output_was_edited_after_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stdout"))
+            output = repo / "chart/templates/dbaas-mounted-secret-resources.yaml"
+            edited = output.read_text(encoding="utf-8") + "# edited by hand\n"
+            output.write_text(edited, encoding="utf-8")
+
+            code2, report2 = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code2, 3, report2.get("__stdout"))
+            self.assertEqual(output.read_text(encoding="utf-8"), edited)
+
+    def test_a_stale_plan_is_exit_3_when_validation_also_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stdout"))
+            deployment = repo / "chart/templates/deployment.yaml"
+            # The workload keeps its migration, so nothing would be written, but
+            # the chart no longer renders.
+            deployment.write_text(deployment.read_text(encoding="utf-8") + "{{ fail \"broken after apply\" }}\n", encoding="utf-8")
+
+            code2, report2 = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code2, 3, report2.get("__stdout"))
+            self.assertTrue(any("sha256 changed" in e for e in report2.get("blocking", [])), report2.get("__stdout"))
+
     def test_source_equals_output_path_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -1931,6 +1977,347 @@ class MaskForReadingTrailingCommentTest(unittest.TestCase):
             with self.subTest(text=text):
                 masked = self.am._mask_for_reading(text)
                 self.assertEqual(yaml.safe_load(masked)["name"], expected)
+
+
+EXISTING_FILE = "templates/dbaas-operator-resources.yaml"
+# One resource as the declaration migration writes it for a helm root.
+EXISTING_DATABASE = (
+    "---\n"
+    f"{CAPABILITY_GUARD_OPEN}\n"
+    "apiVersion: dbaas.netcracker.com/v1\n"
+    "kind: InternalDatabase\n"
+    "metadata:\n"
+    "  name: orders-db\n"
+    "  namespace: '{{ .Values.NAMESPACE }}'\n"
+    "spec:\n"
+    "  operatorNamespace: '{{ include \"coretpl.dbaasNamespace\" $ }}'\n"
+    "  classifier:\n"
+    "    microserviceName: orders\n"
+    "    scope: service\n"
+    "  type: postgresql\n"
+    "{{- end }}\n"
+)
+
+
+def reuse_existing(repo: Path, content: str = EXISTING_DATABASE, *, root: str = "chart",
+                   path: str = EXISTING_FILE, **reference) -> dict:
+    """Write ``content`` as the declaration migration's output and return the
+    datasource ``internalDatabase`` field that reuses ``orders-db`` from it."""
+
+    target = repo / root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return {"mode": "existing", "path": path, "sha256": sha256(target), "name": "orders-db", **reference}
+
+
+@unittest.skipUnless(shutil.which("helm"), "helm is not on PATH")
+class InternalDatabaseModeTest(unittest.TestCase):
+    """A datasource's internalDatabase.mode decides whether the writer
+    generates the InternalDatabase or reuses the declaration migration's."""
+
+    def test_existing_mode_generates_the_claim_and_mount_and_keeps_the_database(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, datasources=[datasource(internalDatabase=reuse_existing(repo))])
+
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code, 0, report.get("__stdout"))
+            docs = load_generated_documents(repo / "chart/templates/dbaas-mounted-secret-resources.yaml")
+            self.assertEqual([d["kind"] for d in docs], ["DatabaseSecretClaim"])
+            self.assertEqual(
+                (repo / "chart" / EXISTING_FILE).read_text(encoding="utf-8"), EXISTING_DATABASE
+            )
+            self.assertIn(
+                "mountPath: /etc/secrets/dbaas-secrets/orders-postgresql-service-default-credentials",
+                (repo / "chart/templates/deployment.yaml").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                report["reusedInternalDatabases"],
+                [{"root": "chart", "datasourceId": "orders-postgresql-service",
+                  "path": "chart/" + EXISTING_FILE, "name": "orders-db"}],
+            )
+
+    def test_two_roles_reuse_one_existing_database(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(
+                repo,
+                datasources=[datasource(requestedRoles=["", "admin"], internalDatabase=reuse_existing(repo))],
+                claims=[claim(role=""), claim(role="admin")],
+            )
+
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code, 0, report.get("__stdout"))
+            docs = load_generated_documents(repo / "chart/templates/dbaas-mounted-secret-resources.yaml")
+            self.assertEqual(
+                sorted((d["kind"], d["spec"].get("userRole", "")) for d in docs),
+                [("DatabaseSecretClaim", ""), ("DatabaseSecretClaim", "admin")],
+            )
+
+    def test_two_datasources_with_one_existing_reference_reuse_one_database(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            reference = reuse_existing(repo)
+            the_plan = plan(
+                repo,
+                datasources=[
+                    datasource(id="orders-app", requestedRoles=[""], internalDatabase=reference),
+                    datasource(id="orders-admin", requestedRoles=["admin"], internalDatabase=dict(reference)),
+                ],
+                claims=[claim(datasourceId="orders-app", role=""), claim(datasourceId="orders-admin", role="admin")],
+            )
+
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code, 0, report.get("__stdout"))
+            docs = load_generated_documents(repo / "chart/templates/dbaas-mounted-secret-resources.yaml")
+            self.assertEqual(
+                sorted((d["kind"], d["spec"].get("userRole", "")) for d in docs),
+                [("DatabaseSecretClaim", ""), ("DatabaseSecretClaim", "admin")],
+            )
+            self.assertEqual((repo / "chart" / EXISTING_FILE).read_text(encoding="utf-8"), EXISTING_DATABASE)
+
+    def test_one_identity_with_generate_and_existing_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(
+                repo,
+                datasources=[
+                    datasource(id="orders-app", internalDatabase={"mode": "generate"}),
+                    datasource(id="orders-admin", requestedRoles=["admin"], internalDatabase=reuse_existing(repo)),
+                ],
+                claims=[claim(datasourceId="orders-app"), claim(datasourceId="orders-admin", role="admin")],
+            )
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 2, report.get("__stdout"))
+            self.assertIn("one generates its InternalDatabase", report["validation"][0]["details"])
+            self.assertFalse((repo / "chart/templates/dbaas-mounted-secret-resources.yaml").exists())
+
+    def test_one_identity_with_two_existing_references_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            reference = reuse_existing(repo)
+            the_plan = plan(
+                repo,
+                datasources=[
+                    datasource(id="orders-app", internalDatabase=reference),
+                    datasource(id="orders-admin", requestedRoles=["admin"],
+                               internalDatabase={**reference, "name": "orders-admin-db"}),
+                ],
+                claims=[claim(datasourceId="orders-app"), claim(datasourceId="orders-admin", role="admin")],
+            )
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 2, report.get("__stdout"))
+            self.assertIn("reference different existing InternalDatabase", report["validation"][0]["details"])
+
+    def test_explicit_generate_mode_writes_what_an_omitted_mode_writes(self) -> None:
+        written = []
+        for internal_database in (None, {"mode": "generate"}):
+            with tempfile.TemporaryDirectory() as directory:
+                tmp = Path(directory)
+                repo = scaffold(tmp)
+                ds = datasource() if internal_database is None else datasource(internalDatabase=internal_database)
+                code, report = run_migration(repo, plan(repo, datasources=[ds]), "apply", tmp)
+                self.assertEqual(code, 0, report.get("__stdout"))
+                written.append(tuple(
+                    (repo / "chart/templates" / name).read_bytes()
+                    for name in ("dbaas-mounted-secret-resources.yaml", "deployment.yaml")
+                ))
+        self.assertEqual(written[1], written[0])
+        self.assertIn(b"kind: InternalDatabase", written[0][0])
+
+    def test_a_missing_existing_file_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            reference = reuse_existing(repo)
+            (repo / "chart" / EXISTING_FILE).unlink()
+            the_plan = plan(repo, datasources=[datasource(internalDatabase=reference)])
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 4, report.get("__stdout"))
+            self.assertIn("file is missing", report["validation"][0]["details"])
+
+    def test_a_missing_existing_resource_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, datasources=[datasource(internalDatabase=reuse_existing(repo, name="billing-db"))])
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 4, report.get("__stdout"))
+            self.assertIn("no such InternalDatabase", report["validation"][0]["details"])
+
+    def test_an_existing_file_changed_since_the_plan_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            reference = reuse_existing(repo)
+            (repo / "chart" / EXISTING_FILE).write_text(EXISTING_DATABASE + "# edited\n", encoding="utf-8")
+            the_plan = plan(repo, datasources=[datasource(internalDatabase=reference)])
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 3, report.get("__stdout"))
+
+    def test_an_existing_resource_that_differs_from_the_datasource_blocks(self) -> None:
+        # (difference, replacements in EXISTING_DATABASE, reference fields, text in the error)
+        cases = [
+            ("apiVersion", [("dbaas.netcracker.com/v1\nkind", "dbaas.netcracker.com/v2\nkind")], {},
+             "apiVersion"),
+            ("type", [("type: postgresql", "type: mongodb")], {}, "spec.type"),
+            ("classifier", [("microserviceName: orders", "microserviceName: billing")], {}, "spec.classifier"),
+            ("metadata namespace", [("namespace: '{{ .Values.NAMESPACE }}'", "namespace: orders-ns")], {},
+             "metadata.namespace"),
+            ("operator namespace",
+             [("operatorNamespace: '{{ include \"coretpl.dbaasNamespace\" $ }}'", "operatorNamespace: dbaas")],
+             {}, "spec.operatorNamespace"),
+            ("no capability guard", [(f"{CAPABILITY_GUARD_OPEN}\n", ""), ("{{- end }}\n", "")], {},
+             "guarded by capability None"),
+            ("another condition",
+             [(f"{CAPABILITY_GUARD_OPEN}\n", f"{CAPABILITY_GUARD_OPEN}\n{{{{- if .Values.enabled }}}}\n"),
+              ("{{- end }}\n", "{{- end }}\n{{- end }}\n")],
+             {}, "Helm condition"),
+            ("settings", [("  type: postgresql\n", "  type: postgresql\n  settings:\n    owner: billing\n")], {},
+             "spec.settings"),
+            ("document index", [], {"documentIndex": 2}, "not documentIndex 2"),
+        ]
+        for difference, replacements, reference_fields, expected in cases:
+            with self.subTest(difference=difference), tempfile.TemporaryDirectory() as directory:
+                tmp = Path(directory)
+                repo = scaffold(tmp)
+                content = EXISTING_DATABASE
+                for old, new in replacements:
+                    self.assertIn(old, content)
+                    content = content.replace(old, new)
+                reference = reuse_existing(repo, content, **reference_fields)
+                the_plan = plan(repo, datasources=[datasource(internalDatabase=reference)])
+
+                code, report = run_migration(repo, the_plan, "check", tmp)
+
+                self.assertEqual(code, 4, report.get("__stdout"))
+                self.assertIn(expected, report["validation"][0]["details"])
+
+    def test_an_unclaimed_database_may_share_the_existing_file(self) -> None:
+        unclaimed = (
+            EXISTING_DATABASE.replace("orders-db", "billing-db").replace("type: postgresql", "type: mongodb")
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            reference = reuse_existing(repo, EXISTING_DATABASE + unclaimed)
+            the_plan = plan(repo, datasources=[datasource(internalDatabase=reference)])
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 0, report.get("__stdout"))
+
+    def test_applying_the_same_existing_mode_plan_twice_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo, datasources=[datasource(internalDatabase=reuse_existing(repo))])
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stdout"))
+            migrated = (repo / "chart/templates/deployment.yaml").read_bytes()
+
+            code2, report2 = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code2, 0, report2.get("__stdout"))
+            self.assertEqual(report2["status"], "unchanged")
+            self.assertEqual((repo / "chart/templates/deployment.yaml").read_bytes(), migrated)
+
+    def test_applying_the_same_standalone_plan_twice_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            the_plan = plan(repo)
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+            self.assertEqual(code, 0, report.get("__stdout"))
+
+            code2, report2 = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code2, 0, report2.get("__stdout"))
+            self.assertEqual(report2["status"], "unchanged")
+
+    def test_a_plain_root_reuses_an_existing_database(self) -> None:
+        plain_database = (
+            "---\napiVersion: dbaas.netcracker.com/v1\nkind: InternalDatabase\n"
+            "metadata:\n  name: orders-db\n  namespace: orders-ns\n"
+            "spec:\n  operatorNamespace: dbaas-system\n"
+            "  classifier:\n    microserviceName: orders\n    scope: service\n  type: postgresql\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold_plain(tmp)
+            reference = reuse_existing(repo, plain_database, root="deploy", path="dbaas-operator-resources.yaml")
+            the_plan = plan(repo, root="deploy", kind="plain", datasources=[datasource(internalDatabase=reference)])
+
+            code, report = run_migration(repo, the_plan, "apply", tmp)
+
+            self.assertEqual(code, 0, report.get("__stdout"))
+            output = (repo / "deploy/dbaas-mounted-secret-resources.yaml").read_text(encoding="utf-8")
+            self.assertEqual(
+                [d["kind"] for d in yaml.safe_load_all(output) if d], ["DatabaseSecretClaim"]
+            )
+
+    def test_a_superseded_declaration_of_a_reused_database_blocks(self) -> None:
+        declaration = {
+            "kind": "DatabaseDeclaration",
+            "declarations": [{
+                "classifierConfig": {"classifier": {"microserviceName": "orders", "scope": "service"}},
+                "type": "postgresql",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            repo = scaffold(tmp)
+            (repo / "chart/templates/dbaas-declaration.json").write_text(json.dumps(declaration), encoding="utf-8")
+            the_plan = plan(repo, datasources=[datasource(internalDatabase=reuse_existing(repo))])
+            the_plan["roots"][0]["supersededDeclarations"] = [{"path": "templates/dbaas-declaration.json"}]
+            the_plan["roots"][0]["sourceHashes"]["templates/dbaas-declaration.json"] = sha256(
+                repo / "chart/templates/dbaas-declaration.json"
+            )
+
+            code, report = run_migration(repo, the_plan, "check", tmp)
+
+            self.assertEqual(code, 4, report.get("__stdout"))
+            self.assertIn("the declaration migration owns this declaration", report["validation"][0]["details"])
+
+    def test_an_invalid_internal_database_field_is_rejected(self) -> None:
+        cases = {
+            "unknown mode": ({"mode": "reuse"}, "mode must be 'generate' or 'existing'"),
+            "generate with a path": ({"mode": "generate", "path": EXISTING_FILE}, "takes no other properties"),
+            "existing without a hash": ({"mode": "existing", "path": EXISTING_FILE, "name": "orders-db"}, "sha256"),
+            "existing file is the output": (
+                {"mode": "existing", "path": "templates/dbaas-mounted-secret-resources.yaml",
+                 "sha256": "0" * 64, "name": "orders-db"},
+                "cannot also be the output",
+            ),
+        }
+        for case, (internal_database, expected) in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                tmp = Path(directory)
+                repo = scaffold(tmp)
+                the_plan = plan(repo, datasources=[datasource(internalDatabase=internal_database)])
+
+                code, report = run_migration(repo, the_plan, "check", tmp)
+
+                self.assertEqual(code, 2, report.get("__stdout"))
+                self.assertIn(expected, report["validation"][0]["details"])
 
 
 if __name__ == "__main__":

@@ -110,7 +110,8 @@ public class PhysicalDatabasesService {
                                                              String type,
                                                              PhysicalDatabaseRegistryRequestV3 request) throws
             AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
+            PhysicalDatabaseIdConflictException,
+            PhysicalDatabaseAddressConflictException {
         log.debug("Search physical database with physicalDatabaseId={} and type={}", physicalDatabaseId, type);
         String username = request.getHttpBasicCredentials().getUsername();
         String password = request.getHttpBasicCredentials().getPassword();
@@ -227,7 +228,8 @@ public class PhysicalDatabasesService {
             String username, String password)
             throws
             AdapterUnavailableException,
-            PhysicalDatabaseRegistrationConflictException {
+            PhysicalDatabaseIdConflictException,
+            PhysicalDatabaseAddressConflictException {
         if (request.getStatus().equals("run")) {
             handshakeClient.handshake(physicalDatabaseId, request.getAdapterAddress(), type, username, password, VERSION_2);
         }
@@ -239,17 +241,27 @@ public class PhysicalDatabasesService {
         }
         if (byPhyDBId != null && !request.getAdapterAddress().equals(byPhyDBId.getAdapter().getAddress())) {
             if (!isTLSUpdate(byPhyDBId.getAdapter().getAddress(), request.getAdapterAddress())) {
-                log.error("Address from request: {} conflicts with already saved address: {}", request.getAdapterAddress(), byPhyDBId.getAdapter().getAddress());
-                throw new PhysicalDatabaseRegistrationConflictException("Database with physical DB id " + physicalDatabaseId +
-                        " already exists, but adapter address differs. Cannot register another one as adapter " +
-                        "address is unique and immutable");
+                String errorMessage = String.format(
+                        "Physical database with physicalDatabaseId '%s' is already registered with address '%s'. " +
+                                "Cannot update address to '%s' because this parameter is immutable.",
+                        physicalDatabaseId,
+                        byPhyDBId.getAdapter().getAddress(),
+                        request.getAdapterAddress()
+                );
+                log.error(errorMessage);
+                throw new PhysicalDatabaseAddressConflictException(errorMessage);
             }
         } else if (byAdapter != null && !physicalDatabaseId.equals(byAdapter.getPhysicalDatabaseIdentifier()) &&
                 byAdapter.isIdentified()) {
-            log.error("sent physicalDatabaseIdentifier = {}, stored at db = {}",
-                    physicalDatabaseId, byAdapter.getPhysicalDatabaseIdentifier());
-            throw new PhysicalDatabaseRegistrationConflictException("Database with set adapter exists but its " +
-                    "physical DB id is different from provided value and cannot be updated");
+            String errorMessage = String.format(
+                    "Physical database with address '%s' is already registered with physicalDatabaseId '%s'. " +
+                            "Cannot update physicalDatabaseId to '%s' because this parameter is immutable.",
+                    request.getAdapterAddress(),
+                    byAdapter.getPhysicalDatabaseIdentifier(),
+                    physicalDatabaseId
+            );
+            log.error(errorMessage);
+            throw new PhysicalDatabaseIdConflictException(errorMessage);
         }
         return Optional.of(byPhyDBId != null ? byPhyDBId : byAdapter);
     }

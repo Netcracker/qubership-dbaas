@@ -1428,7 +1428,8 @@ components:
           description: Name of the database in the backup
         databaseName:
           type: string
-          description: Name of the restored database
+          description: Name of the restored database. It should differ from previous
+            database name
         status:
           type: string
           description: "Status of the database restore: notStarted, inProgress, completed\

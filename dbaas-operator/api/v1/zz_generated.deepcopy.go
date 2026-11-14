@@ -1112,6 +1112,10 @@ func (in *PhysicalDatabaseSpec) DeepCopy() *PhysicalDatabaseSpec {
 func (in *PhysicalDatabaseStatus) DeepCopyInto(out *PhysicalDatabaseStatus) {
 	*out = *in
 	in.OperatorStatus.DeepCopyInto(&out.OperatorStatus)
+	if in.FirstIDConflictAt != nil {
+		in, out := &in.FirstIDConflictAt, &out.FirstIDConflictAt
+		*out = (*in).DeepCopy()
+	}
 	if in.Labels != nil {
 		in, out := &in.Labels, &out.Labels
 		*out = make(map[string]string, len(*in))

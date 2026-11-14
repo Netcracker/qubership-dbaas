@@ -12,11 +12,7 @@ public class ExternalAdapterRegistrationEntry extends AbstractExternalAdapterReg
 
     public com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry asPgEntity() {
         com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry copy = new com.netcracker.cloud.dbaas.entity.pg.ExternalAdapterRegistrationEntry();
-        copy.setAdapterId(this.adapterId);
-        copy.setAddress(this.address);
-        copy.setHttpBasicCredentials(this.httpBasicCredentials);
-        copy.setSupportedVersion(this.supportedVersion);
-        copy.setApiVersions(this.apiVersions);
+        copyStateTo(copy);
         return copy;
     }
 

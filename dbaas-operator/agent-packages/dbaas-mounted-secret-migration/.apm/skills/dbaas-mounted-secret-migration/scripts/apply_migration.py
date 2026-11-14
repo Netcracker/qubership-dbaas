@@ -61,6 +61,32 @@ with the SHA-256 the skill inspected; a mismatch is a stale-plan error (exit
 ``values.schema.json`` -- ``operatorNamespace`` must already be a concrete,
 verified value or Helm expression when the plan is built (see
 references/contracts.md).
+
+A changed source hash is a stale plan (exit 3), except when running it against
+the repository as it is now writes nothing and passes validation: then
+``--apply`` reports ``unchanged``. A stale plan that fails in any other way
+exits 3.
+
+A datasource's optional ``internalDatabase`` field selects who owns its
+``InternalDatabase``. Omitted, or ``{"mode": "generate"}``, the writer generates
+it. ``existing`` reuses one the declaration migration wrote, copying the fields
+from that migration's ``internalDatabases`` result::
+
+    "internalDatabase": {
+      "mode": "existing",
+      "path": "templates/dbaas-operator-resources.yaml",   // root-relative
+      "sha256": "<sha256 of that file>",
+      "name": "orders-db",
+      "documentIndex": 1                                   // optional
+    }
+
+The writer reads that file and generates only the claims and workload changes.
+It blocks when the file changed since the plan was built (exit 3), and when the
+resource is missing or differs from the datasource or the root (exit 4): its
+apiVersion, kind, classifier, type, ``metadata.namespace`` (against
+``workloadNamespace``), ``spec.operatorNamespace``, capability guard, any other
+Helm condition around it, ``namePrefix``, and ``settings`` are compared. The
+result lists every reused resource in ``reusedInternalDatabases``.
 """
 
 from __future__ import annotations
@@ -344,8 +370,9 @@ _OPERATOR_MODE_ENV_KEYS = {"name", "value"}
 _DBAAS_CAPABILITY = "dbaas.netcracker.com/v1"
 _DATASOURCE_KEYS = {
     "id", "type", "classifier", "requestedRoles", "parameters", "migrationFeasibility",
-    "resourceName", "codeLocations",
+    "resourceName", "codeLocations", "internalDatabase",
 }
+_EXISTING_DATABASE_KEYS = {"mode", "path", "sha256", "name", "documentIndex"}
 _PARAMETER_KEYS = {"namePrefix", "settings", "physicalDatabaseId"}
 _CLAIM_KEYS = {
     "datasourceId", "role", "workloadFile", "workloadKind", "workloadName",
@@ -443,7 +470,7 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
         if not isinstance(datasources, list) or not datasources:
             raise bad_input(f"{where}.datasources must be a non-empty list")
         ids: set[str] = set()
-        identities: set[tuple[str, str]] = set()
+        identities: dict[tuple[str, str], dict[str, Any]] = {}
         for ds_index, ds in enumerate(datasources):
             ds_where = f"{where}.datasources[{ds_index}]"
             _reject_unknown(ds, _DATASOURCE_KEYS, ds_where)
@@ -519,20 +546,6 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             for key, value in classifier.items():
                 if key not in RESERVED_CLASSIFIER_KEYS | {"extraKeys"} and not validator.is_json_value(value):
                     raise bad_input(f"{ds_where}.classifier.{key} must be a valid JSON value")
-            # Two datasources sharing one (classifier, type) identity is
-            # always ambiguous, never a legitimate shape: build_resources()
-            # and verify_superseded() would each have to pick one of them as
-            # authoritative, and nothing forces those two independent picks
-            # to agree -- reject it here instead of letting them silently
-            # disagree about which datasource's parameters were "the ones
-            # that got migrated".
-            identity = (canonical(wire_classifier(classifier)), ds["type"].lower())
-            if identity in identities:
-                raise bad_input(
-                    f"{ds_where}: datasource identity (classifier, type) duplicates an earlier "
-                    f"datasource in {where}.datasources"
-                )
-            identities.add(identity)
             roles = ds.get("requestedRoles", [""])
             if not isinstance(roles, list) or not roles or not all(isinstance(r, str) for r in roles):
                 raise bad_input(f"{ds_where}.requestedRoles must be a non-empty list of strings")
@@ -561,6 +574,40 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             ):
                 raise bad_input(f"{ds_where}.parameters.settings must map string keys to valid JSON values")
             ds["parameters"] = parameters
+            ds["_existingDatabase"] = _load_internal_database_mode(
+                ds.get("internalDatabase"), norm_root, f"{ds_where}.internalDatabase"
+            )
+            # Ownership is decided per (classifier, type) identity, not per
+            # datasource. Two generated datasources for one identity stay
+            # ambiguous: build_resources() and verify_superseded() would each
+            # pick one datasource's parameters as authoritative, and nothing
+            # forces those picks to agree. Datasources that all reuse the same
+            # existing resource are unambiguous, because each one is checked
+            # against that resource.
+            identity = (canonical(wire_classifier(classifier)), ds["type"].lower())
+            first = identities.get(identity)
+            if first is not None:
+                first_ref, ref = first["_existingDatabase"], ds["_existingDatabase"]
+                if first_ref is None and ref is None:
+                    raise bad_input(
+                        f"{ds_where}: datasource identity (classifier, type) duplicates an earlier "
+                        f"datasource in {where}.datasources"
+                    )
+                if first_ref is None or ref is None:
+                    raise bad_input(
+                        f"{ds_where}: datasource identity (classifier, type) is shared with datasource "
+                        f"{first['id']!r}, and one generates its InternalDatabase while the other reuses "
+                        "an existing one; give every datasource of one identity the same internalDatabase"
+                    )
+                if _reference_key(first_ref) != _reference_key(ref):
+                    raise bad_input(
+                        f"{ds_where}: datasource identity (classifier, type) is shared with datasource "
+                        f"{first['id']!r}, and the two reference different existing InternalDatabase "
+                        "resources; give every datasource of one identity the same path, sha256, name, "
+                        "and documentIndex"
+                    )
+            else:
+                identities[identity] = ds
 
         claims = entry.get("claims")
         if not isinstance(claims, list) or not claims:
@@ -654,8 +701,62 @@ def load_plan(plan_path: Path, repo_root: Path) -> dict[str, Any]:
             raise bad_input(f"{where}.sourceHashes is missing an entry for: {', '.join(missing_hashes)}")
         if output_path in touched:
             raise bad_input(f"{where}.outputFile {output_path!r} collides with a migration source")
+        # The writer only reads a reused InternalDatabase file; it must never
+        # also be a file this root writes.
+        existing_paths = {
+            ds["_existingDatabase"]["_path"] for ds in datasources if ds["_existingDatabase"] is not None
+        }
+        written = sorted(existing_paths & (touched | {output_path}))
+        if written:
+            raise bad_input(
+                f"{where}: an existing InternalDatabase file cannot also be the output, a workload file, "
+                f"or a superseded declaration source: {', '.join(written)}"
+            )
 
     return raw
+
+
+def _reference_key(reference: dict[str, Any]) -> tuple[Any, ...]:
+    return (reference["_path"], reference["sha256"], reference["name"], reference["documentIndex"])
+
+
+def _load_internal_database_mode(value: Any, root: str, where: str) -> dict[str, Any] | None:
+    """Validate a datasource's ``internalDatabase`` field.
+
+    Return ``None`` for the ``generate`` mode (also when the field is absent),
+    and the normalized reference for the ``existing`` mode.
+    """
+
+    if value is None:
+        return None
+    _reject_unknown(value, _EXISTING_DATABASE_KEYS, where)
+    mode = value.get("mode")
+    if mode == "generate":
+        extra = sorted(set(value) - {"mode"})
+        if extra:
+            raise bad_input(f"{where}: mode 'generate' takes no other properties, got {', '.join(extra)}")
+        return None
+    if mode != "existing":
+        raise bad_input(f"{where}.mode must be 'generate' or 'existing', got {mode!r}")
+    if not isinstance(value.get("path"), str) or not value["path"]:
+        raise bad_input(f"{where}.path is required for mode 'existing'")
+    sha256 = value.get("sha256")
+    if not isinstance(sha256, str) or _SHA256.fullmatch(sha256) is None:
+        raise bad_input(f"{where}.sha256 must be a 64-character hex digest")
+    if not isinstance(value.get("name"), str) or not value["name"]:
+        raise bad_input(f"{where}.name is required for mode 'existing'")
+    document_index = value.get("documentIndex")
+    if document_index is not None and (
+        isinstance(document_index, bool) or not isinstance(document_index, int) or document_index < 1
+    ):
+        raise bad_input(f"{where}.documentIndex must be a positive integer or null")
+    return {
+        "path": value["path"],
+        "_path": join_rel(root, value["path"], what=f"{where}.path"),
+        "sha256": sha256.lower(),
+        "name": value["name"],
+        "documentIndex": document_index,
+    }
 
 
 def _reject_json_constant(value: str) -> Any:
@@ -870,14 +971,25 @@ def build_resources(root_plan: dict[str, Any]) -> tuple[list[dict[str, Any]], di
     by_id = {ds["id"]: ds for ds in root_plan["datasources"]}
     databases: dict[str, dict[str, Any]] = {}
     names: dict[str, tuple[str, bool]] = {}
+    # Ownership is decided once per identity: when any datasource of an
+    # identity reuses an existing InternalDatabase, none is generated for it.
+    # verify_existing_databases has proven the reused resource.
+    reused = {
+        f"{canonical(wire_classifier(ds['classifier']))}|{ds['type'].lower()}"
+        for ds in root_plan["datasources"]
+        if ds.get("_existingDatabase") is not None
+    }
     for ds in sorted(root_plan["datasources"], key=lambda d: canonical(wire_classifier(d["classifier"])) + d["type"]):
         classifier = ds["classifier"]
         key = f"{canonical(wire_classifier(classifier))}|{ds['type'].lower()}"
-        if key in databases:
+        if key in names:
             continue
         stem, templated = identity_stem(classifier, ds["type"], ds.get("resourceName"))
         name = with_tail(stem, keep_tail="db", templated=templated)
         names[key] = (stem, templated)
+        if key in reused:
+            # The claims below still take their names from this stem.
+            continue
         spec: dict[str, Any] = {
             "operatorNamespace": root_plan["operatorNamespace"],
             "classifier": cr_classifier(classifier),
@@ -1728,6 +1840,173 @@ def apply_workload_patches(repo_root: Path, root_plan: dict[str, Any], name_bund
 
 
 # --------------------------------------------------------------------------- #
+# Reused InternalDatabase resources (datasource internalDatabase.mode: existing)
+# --------------------------------------------------------------------------- #
+
+_CAPABILITY_GUARD_IF = re.compile(r'^\{\{-?\s*if\s+\.Capabilities\.APIVersions\.Has\s+"([^"]+)"\s*-?\}\}$')
+_DOCUMENT_MARKER = re.compile(r"^---(?:[ \t]+#[^\r\n]*)?[ \t]*\r?\n", re.M)
+
+
+def _read_generated_documents(text: str, path: str) -> list[dict[str, Any]]:
+    """Parse a file of generated resources, one ``---``-separated document each.
+
+    Every entry carries the parsed ``value``, the capability the document is
+    wrapped in (``capability``, or ``None``), and the first other standalone
+    Helm action that remains inside it (``condition``, or ``None``). Regions
+    holding only comments or blank lines are skipped and consume no index.
+    """
+
+    documents = []
+    for chunk in _DOCUMENT_MARKER.split(text):
+        lines = chunk.splitlines()
+        meaningful = [i for i, line in enumerate(lines) if line.strip() and not line.lstrip().startswith("#")]
+        if not meaningful:
+            continue
+        capability = None
+        first, last = meaningful[0], meaningful[-1]
+        match = _CAPABILITY_GUARD_IF.match(lines[first].strip())
+        if match and first != last and _HELM_BLOCK_END.match(lines[last].strip()):
+            capability = match.group(1)
+            lines = lines[first + 1:last]
+        condition = next(
+            (
+                line.strip()
+                for line in lines
+                if line.strip().startswith("{{") and _STANDALONE_HELM_LINE.match(line.strip())
+            ),
+            None,
+        )
+        try:
+            value = yaml.safe_load(_mask_for_reading("\n".join(lines)))
+        except yaml.YAMLError as exc:
+            raise unsupported(f"{path}: existing InternalDatabase file is not valid YAML: {exc}") from None
+        documents.append({"value": value, "capability": capability, "condition": condition})
+    return documents
+
+
+def _cr_wire_classifier(classifier: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a CR classifier's ``extraKeys`` to top-level keys and drop
+    ``namespace``, which the operator fills from ``metadata.namespace``."""
+
+    wire = wire_classifier(classifier)
+    wire.pop("namespace", None)
+    return wire
+
+
+def verify_existing_databases(repo_root: Path, root_plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Prove every ``existing``-mode datasource's InternalDatabase is present
+    and matches the datasource and the root.
+
+    Return one entry per referenced file, listing the identity of every
+    InternalDatabase in it; validate_root accepts those identities in the
+    rendered chart. Raise a stale error when a file changed since the plan was
+    built, and an unsupported error when the resource is missing or differs.
+    """
+
+    references = [ds for ds in root_plan["datasources"] if ds.get("_existingDatabase") is not None]
+    files: dict[str, dict[str, Any]] = {}
+    capability_guard = root_plan.get("capabilityGuard")
+    for ds in references:
+        reference = ds["_existingDatabase"]
+        path = reference["_path"]
+        where = f"datasource {ds['id']!r}: existing InternalDatabase {reference['name']!r} in {path}"
+        if path not in files:
+            target = resolve_within(repo_root, path, what="existing InternalDatabase path")
+            if not target.is_file():
+                raise unsupported("existing InternalDatabase is missing", [f"{where}: file is missing"])
+            raw = target.read_bytes()
+            actual = sha256_bytes(raw)
+            if actual != reference["sha256"]:
+                raise stale(
+                    "existing InternalDatabase file changed since the plan was built",
+                    [f"{path}: sha256 changed (expected {reference['sha256']}, found {actual})"],
+                )
+            text = raw.decode("utf-8-sig")
+            files[path] = {"path": path, "sha256": actual, "documents": _read_generated_documents(text, path)}
+        elif files[path]["sha256"] != reference["sha256"]:
+            raise bad_input(f"{where}: sha256 differs from another reference to the same file")
+
+        matches = [
+            (index, doc)
+            for index, doc in enumerate(files[path]["documents"], start=1)
+            if isinstance(doc["value"], dict)
+            and doc["value"].get("kind") == "InternalDatabase"
+            and (doc["value"].get("metadata") or {}).get("name") == reference["name"]
+        ]
+        if not matches:
+            raise unsupported("existing InternalDatabase is missing", [f"{where}: no such InternalDatabase"])
+        if len(matches) > 1:
+            raise unsupported("existing InternalDatabase is ambiguous", [f"{where}: the name is used more than once"])
+        index, doc = matches[0]
+        problems = _existing_database_problems(doc, ds, root_plan, capability_guard)
+        if reference["documentIndex"] is not None and reference["documentIndex"] != index:
+            problems.append(f"it is document {index}, not documentIndex {reference['documentIndex']}")
+        if problems:
+            raise unsupported(
+                "existing InternalDatabase does not match the datasource",
+                [f"{where}: {problem}" for problem in problems],
+            )
+
+    for entry in files.values():
+        entry["internalDatabases"] = [
+            doc["value"]
+            for doc in entry["documents"]
+            if isinstance(doc["value"], dict) and doc["value"].get("kind") == "InternalDatabase"
+        ]
+    return list(files.values())
+
+
+def _existing_database_problems(
+    doc: dict[str, Any], ds: dict[str, Any], root_plan: dict[str, Any], capability_guard: str | None
+) -> list[str]:
+    value = doc["value"]
+    metadata = value.get("metadata") or {}
+    spec = value.get("spec") or {}
+    problems: list[str] = []
+    if value.get("apiVersion") != "dbaas.netcracker.com/v1":
+        problems.append(f"apiVersion is {value.get('apiVersion')!r}, not 'dbaas.netcracker.com/v1'")
+    if str(spec.get("type") or "").lower() != ds["type"].lower():
+        problems.append(f"spec.type is {spec.get('type')!r}, not {ds['type']!r}")
+    classifier = spec.get("classifier")
+    if not isinstance(classifier, dict):
+        problems.append("spec.classifier is not an object")
+    else:
+        if canonical(_cr_wire_classifier(classifier)) != canonical(_cr_wire_classifier(ds["classifier"])):
+            problems.append(
+                f"spec.classifier {canonical(classifier)} differs from the datasource classifier "
+                f"{canonical(cr_classifier(ds['classifier']))}"
+            )
+        if classifier.get("namespace") not in (None, "", metadata.get("namespace")):
+            problems.append("spec.classifier.namespace differs from metadata.namespace")
+    if metadata.get("namespace") != root_plan["workloadNamespace"]:
+        problems.append(
+            f"metadata.namespace is {metadata.get('namespace')!r}, not the workloadNamespace "
+            f"{root_plan['workloadNamespace']!r}"
+        )
+    if spec.get("operatorNamespace") != root_plan["operatorNamespace"]:
+        problems.append(
+            f"spec.operatorNamespace is {spec.get('operatorNamespace')!r}, not the plan's "
+            f"operatorNamespace {root_plan['operatorNamespace']!r}"
+        )
+    if doc["capability"] != capability_guard:
+        problems.append(
+            f"it is guarded by capability {doc['capability']!r}, not the root's capabilityGuard {capability_guard!r}"
+        )
+    if doc["condition"]:
+        problems.append(
+            f"it renders under a Helm condition besides the capability guard ({doc['condition']}), so its claims "
+            "could render without it. Reusing a guarded InternalDatabase is not supported: leave this datasource "
+            "out of the plan and report its identity as not migrated"
+        )
+    params = ds["parameters"]
+    if str(spec.get("namePrefix") or "") != str(params.get("namePrefix") or ""):
+        problems.append("spec.namePrefix differs from the datasource's parameters.namePrefix")
+    if (spec.get("settings") or {}) != (params.get("settings") or {}):
+        problems.append("spec.settings differs from the datasource's parameters.settings")
+    return problems
+
+
+# --------------------------------------------------------------------------- #
 # Superseded legacy declarations
 # --------------------------------------------------------------------------- #
 
@@ -1847,6 +2126,13 @@ def _check_declaration_items(
         db_type = str(item.get("type", "")).lower()
         identity = (canonical(wire_classifier(classifier)), db_type)
         ds = known.get(identity)
+        if ds is not None and ds.get("_existingDatabase") is not None:
+            problems.append(
+                f"{where}: declaration belongs to datasource {ds['id']!r}, whose InternalDatabase is reused "
+                "(internalDatabase.mode: existing); the declaration migration owns this declaration; "
+                "not superseding"
+            )
+            continue
         if ds is None:
             problems.append(f"{where}: declaration classifier/type does not match any migrated datasource; not superseding")
             continue
@@ -2092,6 +2378,10 @@ def _values_tree(values: dict[str, str]) -> dict[str, Any]:
     return result
 
 
+def database_identity(classifier: dict[str, Any], db_type: str) -> str:
+    return f"{canonical(classifier)}|{db_type.lower()}"
+
+
 def _inventory_classifier(classifier: dict[str, Any], workload_namespace: str) -> dict[str, Any]:
     # effective_classifier (validate_generated.py) always injects
     # classifier.namespace from the generated CR's metadata.namespace before
@@ -2103,10 +2393,16 @@ def _inventory_classifier(classifier: dict[str, Any], workload_namespace: str) -
     return wire
 
 
-def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: str) -> list[dict[str, str]]:
+def validate_root(
+    tree_root: Path,
+    root_plan: dict[str, Any],
+    output_content: str,
+    existing_files: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     root = root_plan["_root"]
     chart_dir = tree_root / root if root else tree_root
+    existing_files = existing_files or []
     inventory_datasources = []
     for ds in root_plan["datasources"]:
         inventory_datasources.append({
@@ -2114,6 +2410,26 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
             "classifier": _inventory_classifier(ds["classifier"], root_plan["workloadNamespace"]),
             "requestedRoles": ds["requestedRoles"], "migrationFeasibility": "SUPPORTED",
         })
+    # A reused file may hold InternalDatabase resources this plan does not
+    # claim, for example one whose client is not yet supported. They are
+    # expected in the render, with no claim.
+    planned = {database_identity(entry["classifier"], entry["type"]) for entry in inventory_datasources}
+    for entry in existing_files:
+        for index, resource in enumerate(entry["internalDatabases"], start=1):
+            spec = resource.get("spec") or {}
+            classifier = spec.get("classifier")
+            if not isinstance(classifier, dict):
+                continue
+            wire = _cr_wire_classifier(classifier)
+            wire["namespace"] = (resource.get("metadata") or {}).get("namespace")
+            db_type = str(spec.get("type") or "")
+            if database_identity(wire, db_type) in planned:
+                continue
+            planned.add(database_identity(wire, db_type))
+            inventory_datasources.append({
+                "id": f"{entry['path']}#{index}", "type": db_type, "classifier": wire,
+                "requestedRoles": [], "migrationFeasibility": "SUPPORTED",
+            })
 
     if root_plan["kind"] == "plain":
         if "{{" in output_content:
@@ -2123,6 +2439,7 @@ def validate_root(tree_root: Path, root_plan: dict[str, Any], output_content: st
         try:
             errors = validator.validate(
                 [tree_root / root_plan["_outputPath"]]
+                + [tree_root / entry["path"] for entry in existing_files]
                 + [tree_root / c["_workloadPath"] for c in root_plan["claims"]],
                 inventory_path,
                 root_plan["operatorNamespace"],
@@ -2310,10 +2627,11 @@ def build_changes(repo_root: Path, plan: dict[str, Any]) -> Changes:
     return changes
 
 
-def run(repo_root: Path, plan_path: Path, mode: str) -> dict[str, Any]:
-    plan = load_plan(plan_path, repo_root)
-    for root_plan in plan["roots"]:
-        check_source_hashes(repo_root, root_plan)
+def _build_and_validate(
+    repo_root: Path, plan: dict[str, Any], existing_files: dict[str, list[dict[str, Any]]]
+) -> tuple[Changes, dict[str, list[str]], list[dict[str, str]]]:
+    """Return ``(changes, file lists, validation entries)`` for the plan as the
+    repository holds it now. Raise ``MigrationError`` for a blocking problem."""
 
     changes = build_changes(repo_root, plan)
     # check_output_ownership needs this run's generated content to allow an
@@ -2334,9 +2652,61 @@ def run(repo_root: Path, plan_path: Path, mode: str) -> dict[str, Any]:
             tree_root = Path(tmp)
             materialize_tree(repo_root, root_plan["_root"], changes, tree_root)
             output_content = changes.files.get(root_plan["_outputPath"], "")
-            validation.extend(validate_root(tree_root, root_plan, output_content or ""))
+            validation.extend(validate_root(
+                tree_root, root_plan, output_content or "", existing_files[root_plan["_root"]]
+            ))
+    return changes, file_lists, validation
 
+
+def run(repo_root: Path, plan_path: Path, mode: str) -> dict[str, Any]:
+    plan = load_plan(plan_path, repo_root)
+    # A changed source hash makes the plan stale, unless running it now writes
+    # nothing and passes validation: the same plan applied a second time
+    # reports "unchanged".
+    stale_error: MigrationError | None = None
+    for root_plan in plan["roots"]:
+        try:
+            check_source_hashes(repo_root, root_plan)
+        except MigrationError as exc:
+            stale_error = stale_error or exc
+    # A reused InternalDatabase is never written, so a changed hash there
+    # always blocks.
+    existing_files = {
+        root_plan["_root"]: verify_existing_databases(repo_root, root_plan) for root_plan in plan["roots"]
+    }
+
+    try:
+        changes, file_lists, validation = _build_and_validate(repo_root, plan, existing_files)
+    except Exception:
+        # A stale plan reports exit 3 before any other blocking problem, so the
+        # plan is rebuilt from the current repository before anything else is
+        # judged.
+        if stale_error is not None:
+            raise stale_error from None
+        raise
+    touched = file_lists["createdFiles"] or file_lists["modifiedFiles"] or file_lists["deletedFiles"]
     failed = [entry for entry in validation if entry["status"] != "passed"]
+    if stale_error is not None and (touched or failed):
+        raise stale_error
+    if stale_error is not None:
+        validation.append({
+            "name": "source-hashes",
+            "status": "passed",
+            "details": "the plan's source hashes do not match the repository, but running it writes nothing "
+                       "and passes validation; nothing is written",
+        })
+    reused = [
+        {
+            "root": root_plan["_root"],
+            "datasourceId": ds["id"],
+            "path": ds["_existingDatabase"]["_path"],
+            "name": ds["_existingDatabase"]["name"],
+        }
+        for root_plan in plan["roots"]
+        for ds in root_plan["datasources"]
+        if ds.get("_existingDatabase") is not None
+    ]
+
     if failed:
         return {
             "status": "blocked",
@@ -2344,7 +2714,6 @@ def run(repo_root: Path, plan_path: Path, mode: str) -> dict[str, Any]:
             "validation": validation,
         }
 
-    touched = file_lists["createdFiles"] or file_lists["modifiedFiles"] or file_lists["deletedFiles"]
     if mode == "apply" and touched:
         check_source_hashes_all(repo_root, plan, changes)
         commit(repo_root, changes)
@@ -2353,7 +2722,7 @@ def run(repo_root: Path, plan_path: Path, mode: str) -> dict[str, Any]:
         status = "unchanged"
     else:
         status = "valid"
-    return {**file_lists, "status": status, "validation": validation}
+    return {**file_lists, "status": status, "validation": validation, "reusedInternalDatabases": reused}
 
 
 def check_source_hashes_all(repo_root: Path, plan: dict[str, Any], changes: Changes) -> None:
