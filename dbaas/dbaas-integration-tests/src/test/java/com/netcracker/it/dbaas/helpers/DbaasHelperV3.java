@@ -74,12 +74,12 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.test.AbstractIT.*;
-import static io.undertow.server.handlers.SSLHeaderHandler.HTTPS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.oneOf;
@@ -114,6 +114,14 @@ public class DbaasHelperV3 {
     public static final String MARKED_FOR_DROP = "MARKED_FOR_DROP";
     public static final String MICROSERVICE_NAME = "microserviceName";
     public static final String NAMESPACE = "namespace";
+    public static final String TLS_FEATURE = "tls";
+
+    /**
+     * Ports of the ClickHouse HTTP interface. The adapter publishes the native port, and these two are the
+     * plaintext and the TLS HTTP ports of the same cluster.
+     */
+    private static final String CLICKHOUSE_HTTP_PORT = "8123";
+    private static final String CLICKHOUSE_TLS_HTTP_PORT = "8443";
 
     public static final String DATABASES_V3 = "api/v3/dbaas/%s/databases";
     public static final String DATABASES_LIST_V3 = DATABASES_V3 + "/list";
@@ -270,50 +278,23 @@ public class DbaasHelperV3 {
      */
     private static final Pattern SERVICE_NAME_WITH_NAMESPACE_PATTERN = Pattern.compile("(^.*?://|^)(.*?)\\.(.*?)(\\..*?)?:([0-9]+)(/?.*?$|$)");
 
-    /**
-     * Checks whether dbaas-aggregator has physical database adapter of the corresponding type.
-     *
-     * @param dbType physical database type, e.g. {@code mongodb}.
-     * @return {@code true} if dbaas-aggregator has adapters of this type, {@code false} otherwise.
-     */
-
-
     public boolean hasAdapterOfType(String dbType) {
-        Request request = new Request.Builder()
-                .url(dbaasServiceUrl + String.format(PHYSICAL_DATABASE_MAIN_PATH_V3, dbType))
-                .addHeader("Authorization", "Basic " + clusterDbaAuthorization)
-                .addHeader("X-Request-Id", getRequestId())
-                .get()
-                .build();
-        try (Response response = executeWithPortForwardRetry(request)) {
-            if (response.code() != 200) {
-                log.info("There are no physical databases of type {}.", dbType);
-                return false;
-            }
-            String body = response.body().string();
-            log.info("Got physical databases of type {}: {}", dbType, body);
-            RegisteredPhysicalDatabasesDTOV3 physicalDatabases = objectMapper.readValue(body, RegisteredPhysicalDatabasesDTOV3.class);
-            for (PhysicalDatabaseRegistrationResponseDTOV3 database : physicalDatabases.getIdentified().values()) {
-                if (database.isGlobal() && adapterIsAvailable(database.getAdapterAddress())) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (IOException e) {
-            log.debug("Error while getting adapter by db type {}:", dbType, e);
-            return false;
-        }
+        return hasGlobalPhysicalDatabase(dbType, database -> true);
     }
 
-    /**
-     * Checks whether the dbaas-aggregator has a global physical database of the given type
-     * with an available adapter that registered at least 3 supported roles, i.e. the
-     * multiusers feature.
-     *
-     * @param dbType physical database type, e.g. {@code mongodb}.
-     * @return {@code true} if the multiusers feature is supported for this type, {@code false} otherwise.
-     */
     public boolean isAdapterSupportMultiusersFeature(String dbType) {
+        return hasGlobalPhysicalDatabase(dbType, database -> database.getSupportedRoles().size() >= 3);
+    }
+
+    public boolean isAdapterSupportTLSFeature(String dbType) {
+        return hasGlobalPhysicalDatabase(dbType, database -> isTlsFeatureEnabled(database.getFeatures()));
+    }
+
+    private boolean isTlsFeatureEnabled(Map<String, Boolean> features) {
+        return features != null && Boolean.TRUE.equals(features.get(TLS_FEATURE));
+    }
+
+    private boolean hasGlobalPhysicalDatabase(String dbType, Predicate<PhysicalDatabaseRegistrationResponseDTOV3> condition) {
         Request request = new Request.Builder()
                 .url(dbaasServiceUrl + String.format(PHYSICAL_DATABASE_MAIN_PATH_V3, dbType))
                 .addHeader("Authorization", "Basic " + clusterDbaAuthorization)
@@ -329,7 +310,7 @@ public class DbaasHelperV3 {
             log.info("Got physical databases of type {}: {}", dbType, body);
             RegisteredPhysicalDatabasesDTOV3 physicalDatabases = objectMapper.readValue(body, RegisteredPhysicalDatabasesDTOV3.class);
             for (PhysicalDatabaseRegistrationResponseDTOV3 database : physicalDatabases.getIdentified().values()) {
-                if (database.isGlobal() && adapterIsAvailable(database.getAdapterAddress()) && database.getSupportedRoles().size() >= 3) {
+                if (database.isGlobal() && adapterIsAvailable(database.getAdapterAddress()) && condition.test(database)) {
                     return true;
                 }
             }
@@ -1433,46 +1414,6 @@ public class DbaasHelperV3 {
                 .build();
     }
 
-    private static String getBasicAuthorization(String user, String password) {
-        return Base64.getEncoder().encodeToString((user + ":" + password).getBytes());
-    }
-
-    public List<DatabaseResponse> createDatabaseInOtherPhysicalDatabases(RegisteredPhysicalDatabasesDTO physicalDatabases, String namespace, String dbType) throws IOException {
-        List<DatabaseResponse> createdDb = new ArrayList<>();
-        for (String physicalDatabaseId : physicalDatabases.getIdentified().keySet()) {
-            log.debug("Create database in cluster");
-            DatabaseResponse clusterDb = createDatabase(clusterDbaAuthorization, "physical database identifier " + physicalDatabaseId, 201, dbType,
-                    null, namespace, false, physicalDatabaseId, "dbaas_autotests", null);
-            createdDb.add(clusterDb);
-        }
-        return createdDb;
-    }
-
-    public void checkConnectNotDefaultMongoCluster(DatabaseResponse database, boolean expectFail) {
-        try (MongoClient serviceMongoClient = connectMongo(database, expectFail)) {
-            serviceMongoClient.getDatabase(database.getName()).getCollection("autotestsData")
-                    .insertOne(new Document("testkey", "testvalue"));
-            assertEquals(
-                    "testvalue",
-                    serviceMongoClient.getDatabase(database.getName()).getCollection("autotestsData")
-                            .find(new Document("testkey", "testvalue"))
-                            .first().get("testkey")
-            );
-            log.info("Data was inserted successfully");
-        }
-    }
-
-    public void checkConnectNotDefaultPostgresCluster(DatabaseResponse database) throws SQLException, IOException {
-        try (Connection connection = connectPg(database);
-             Statement statement = connection.createStatement()) {
-            try {
-                assertTrue(statement.executeQuery("select 1;").next(), "Expect postgresql to return 1 row");
-            } catch (Throwable ex) {
-                throw new CannotConnect(ex);
-            }
-        }
-    }
-
     public PasswordChangeResponse changePassword(Map<String, Object> classifier, String dbType, int expectHttpCode, String namespace) throws IOException {
         PasswordChangRequestV3 passwordChangeRequest = new PasswordChangRequestV3();
         passwordChangeRequest.setClassifier(classifier);
@@ -1722,38 +1663,6 @@ public class DbaasHelperV3 {
         }
     }
 
-    public boolean isAdapterV2Available(String dbType) {
-        PhysicalDatabaseRegistrationResponseDTOV3 physicalDatabase;
-        try {
-            RegisteredPhysicalDatabasesDTOV3 registeredPhysicalDatabases = getRegisteredPhysicalDatabases(dbType, clusterDbaAuthorization, 200);
-            physicalDatabase = registeredPhysicalDatabases.getIdentified().values().iterator().next();
-        } catch (IOException e) {
-            log.error("Adapter with dbType = {} does not exist", dbType);
-            return false;
-        }
-        return physicalDatabase.getSupportedVersion().equals("v2");
-    }
-
-
-    public boolean isTLSEnabledInAdapter(String dbType, String physicalDatabaseId) {
-        String adapterAddress = getAdapterAddress(dbType, physicalDatabaseId);
-        assertNotNull(adapterAddress);
-        return adapterAddress.contains(HTTPS);
-    }
-
-    public boolean isTLSEnabledInDatabase(String dbType, String physicalDatabaseId) {
-        String adapterAddress = getAdapterAddress(dbType, physicalDatabaseId);
-        assertNotNull(adapterAddress);
-        String databaseName = getServiceNameFromUrl(adapterAddress);
-        String databaseNamespace = getServiceNamespaceFromUrl(adapterAddress);
-        Optional<Pod> dbPod = getAdapterPodByServiceName(databaseNamespace, databaseName);
-        if (dbPod.isEmpty()) {
-            throw new RuntimeException("Could not find adapter pod for database " + databaseName);
-        }
-        Optional<String> PGSSL = readEnvVariable(dbPod.get(), "PG_SSL");
-        return PGSSL.map(s -> s.equals("on")).orElse(false);
-    }
-
     public boolean isDefaultDatabaseDisabled(Pod dbaasPod) {
         Optional<String> isDefaultDatabaseDisabled = readEnvVariable(dbaasPod, "DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED");
         return isDefaultDatabaseDisabled.map(s -> s.equals("true")).orElse(false);
@@ -1771,17 +1680,6 @@ public class DbaasHelperV3 {
             }
         }
         return Optional.empty();
-    }
-
-    private String getAdapterAddress(String dbType, String physicalDatabaseId) {
-        try {
-            Map<String, PhysicalDatabaseRegistrationResponseDTOV3> identified = getRegisteredPhysicalDatabases(dbType, clusterDbaAuthorization, 200).getIdentified();
-            PhysicalDatabaseRegistrationResponseDTOV3 physicalDatabaseRegistrationResponseDTOV3 = identified.get(physicalDatabaseId);
-            return physicalDatabaseRegistrationResponseDTOV3.getAdapterAddress();
-        } catch (Exception e) {
-            log.error("An error occurred while receiving registered physical databases.", e);
-            return null;
-        }
     }
 
     public void deleteDatabasesByClassifierRequest(String namespace, String dbType, ClassifierWithRolesRequest classifierWithRolesRequest, int expected) throws IOException {

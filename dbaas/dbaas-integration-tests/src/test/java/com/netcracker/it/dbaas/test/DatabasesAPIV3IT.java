@@ -23,7 +23,6 @@ import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import java.io.IOException;
-import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.*;
@@ -355,6 +354,10 @@ public class DatabasesAPIV3IT extends AbstractIT {
             return MessageFormat.format("No {0} adapter with the multiusers feature. Skip test.", databaseType);
         }
 
+        private String tlsSkipMessage() {
+            return MessageFormat.format("No {0} adapter with the tls feature. Skip test.", databaseType);
+        }
+
         @BeforeAll
         void beforeAll() {
             DbaasHelperV3.regenerateRequestId();
@@ -674,15 +677,14 @@ public class DatabasesAPIV3IT extends AbstractIT {
         }
 
         @Test
-        void testDatabaseCreatedAndConnectionContainsTLS() throws IOException, SQLException { // TODO generelize test
-            assumeTrue(helperV3.hasAdapterOfType(POSTGRES_TYPE), MessageFormat.format("No {0} adapter. Skip test.", POSTGRES_TYPE));
-            log.info("Create a postgres database for the TLS connection check");
-            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, namespace, false);
-            assumeTrue(helperV3.isTLSEnabledInDatabase(POSTGRES_TYPE, created_1.getPhysicalDatabaseId()), "Skip test because TLS is disabled in database");
-            log.info("Check the tls key in the connection properties and the connection to the database");
-            Map<String, Object> connectionProperties = created_1.getConnectionProperties();
-            assertTrue(connectionProperties.containsKey("tls"));
-            helperV3.checkConnectionPostgres(created_1);
+        void testDatabaseCreatedAndConnectionContainsTLS() throws IOException {
+            assumeTrue(helperV3.isAdapterSupportTLSFeature(databaseType), tlsSkipMessage());
+            log.info("Create a {} database for the TLS connection properties check", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            log.info("Check the tls flag in the connection properties of the {} database", databaseType);
+            assertEquals(Boolean.TRUE, created_1.getConnectionProperties().get(TLS_FEATURE));
+            log.info("Check the connection to the created {} database", databaseType);
+            helperV3.checkConnection(false, created_1, null, null, false);
         }
 
         private List<DatabaseV3> filterByClassifierField(List<DatabaseV3> databases, String key, String value) {
