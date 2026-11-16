@@ -20,13 +20,13 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
-
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.lang.StringUtils;
 
 import java.util.*;
+
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 
 @ApplicationScoped
 @Slf4j
@@ -77,10 +77,12 @@ public class UserService {
             request.setUserRole("admin");
         }
 
-        EnsuredUser adapterResponse = adapter.createUser(db.getName(),
+        EnsuredUser adapterResponse = adapter.createUser(
+                getDatabaseName(db),
                 null,
                 request.getUserRole(),
-                request.getUsernamePrefix());
+                request.getUsernamePrefix()
+        );
 
         return saveNewDatabaseUserAndResources(adapterResponse, db, request, preCreatedUser);
     }
@@ -114,7 +116,7 @@ public class UserService {
                 adapter.ensureUser(
                         cp.get("username").toString(),
                         cp.get("password").toString(),
-                        DBaaService.getDatabaseName(database),
+                        getDatabaseName(database),
                         cp.get("role").toString()
                 );
                 response.getSuccessfully().add(new SuccessfullRestore(cp));

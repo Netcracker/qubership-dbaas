@@ -307,11 +307,9 @@ public class BackupHelperV3 {
                 var databaseType = entry.getValue();
 
                 var prefixName = "dbaas_autotests";
-                Map<String, Object> settingsMap = null;
 
                 if (OPENSEARCH_TYPE.equalsIgnoreCase(databaseType)) {
                     prefixName = null;
-                    settingsMap = Collections.singletonMap("resourcePrefix", true);
                 }
 
                 var databaseCreateRequest = DatabaseCreateRequestV3.builder(
@@ -320,7 +318,6 @@ public class BackupHelperV3 {
                         )
                         .type(databaseType)
                         .namePrefix(prefixName)
-                        .settings(settingsMap)
                         .originService(TEST_MICROSERVICE_NAME)
                         .backupDisabled(false)
                         .build();

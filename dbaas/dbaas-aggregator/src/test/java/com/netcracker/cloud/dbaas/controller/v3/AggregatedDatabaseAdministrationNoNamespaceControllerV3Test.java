@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.controller.v3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netcracker.cloud.dbaas.dto.CleanupMarkedForDropRequest;
+import com.netcracker.cloud.dbaas.dto.DeleteAllInNamespacesRequest;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.entity.pg.Database;
 import com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry;
@@ -31,6 +32,7 @@ import static com.netcracker.cloud.dbaas.DbaasApiPath.NAMESPACE_PARAMETER;
 import static io.restassured.RestAssured.given;
 import static jakarta.ws.rs.core.Response.Status.*;
 import static java.util.Collections.singletonList;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -105,11 +107,11 @@ class AggregatedDatabaseAdministrationNoNamespaceControllerV3Test {
     }
 
     @Test
-    void testDeleteAll_ProdModeTrue() {
+    void testDeleteAll_ProdModeTrue() throws JsonProcessingException {
         when(dbaaSHelper.isProductionMode()).thenReturn(true);
-        Set<String> namespaces = Set.of("ns1", "ns2");
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .queryParam("namespaces", namespaces)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(deleteAllRequestBody(List.of("ns1", "ns2")))
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(FORBIDDEN.getStatusCode());
@@ -117,12 +119,12 @@ class AggregatedDatabaseAdministrationNoNamespaceControllerV3Test {
     }
 
     @Test
-    void testDeleteAll_ProdModeFalse_Empty() {
+    void testDeleteAll_ProdModeFalse_Empty() throws JsonProcessingException {
         when(dbaaSHelper.isProductionMode()).thenReturn(false);
         when(databaseDbaasRepository.countByNamespaces(any())).thenReturn(0L);
-        Set<String> namespaces = Set.of("ns1", "ns2");
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .queryParam("namespaces", namespaces)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(deleteAllRequestBody(List.of("ns1", "ns2")))
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(OK.getStatusCode());
@@ -130,16 +132,49 @@ class AggregatedDatabaseAdministrationNoNamespaceControllerV3Test {
     }
 
     @Test
-    void testDeleteAll_ProdModeFalse_NotEmpty() {
+    void testDeleteAll_ProdModeFalse_NotEmpty() throws JsonProcessingException {
         when(dbaaSHelper.isProductionMode()).thenReturn(false);
         when(databaseDbaasRepository.countByNamespaces(any())).thenReturn(1L);
-        Set<String> namespaces = Set.of("ns1", "ns2");
         given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .queryParam("namespaces", namespaces)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(deleteAllRequestBody(List.of("ns1", "ns2")))
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(OK.getStatusCode());
-        verify(deletionService).cleanupAllLogicalDatabasesInNamespacesByPortionsAsync(anySet());
+        verify(deletionService).cleanupAllLogicalDatabasesInNamespacesByPortionsAsync(Set.of("ns1", "ns2"));
+    }
+
+    @Test
+    void testDeleteAll_EmptyNamespaces() throws JsonProcessingException {
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(deleteAllRequestBody(List.of()))
+                .when().delete("/deleteall")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("detail", containsString("namespaces"));
+        verifyNoInteractions(deletionService);
+    }
+
+    @Test
+    void testDeleteAll_NamespacesFieldMissing() {
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{}")
+                .when().delete("/deleteall")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("detail", containsString("namespaces"));
+        verifyNoInteractions(deletionService);
+    }
+
+    @Test
+    void testDeleteAll_NoBody() {
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .when().delete("/deleteall")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode());
+        verifyNoInteractions(deletionService);
     }
 
     @Test
@@ -219,6 +254,12 @@ class AggregatedDatabaseAdministrationNoNamespaceControllerV3Test {
             verify(deletionService).cleanupMarkedForDropRegistriesAsync(eq(namespace), eq(request.getForce()));
         }
         verifyNoMoreInteractions(deletionService);
+    }
+
+    private String deleteAllRequestBody(List<String> namespaces) throws JsonProcessingException {
+        DeleteAllInNamespacesRequest request = new DeleteAllInNamespacesRequest();
+        request.setNamespaces(new HashSet<>(namespaces));
+        return objectMapper.writeValueAsString(request);
     }
 
     private DatabaseRegistry getDatabaseSample() {

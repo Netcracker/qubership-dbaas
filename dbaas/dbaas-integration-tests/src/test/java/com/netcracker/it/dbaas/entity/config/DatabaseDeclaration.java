@@ -97,6 +97,11 @@ public class DatabaseDeclaration implements DeclarativeConfig {
             return this;
         }
 
+        public DeclarativeDBConfigBuilder settings(Map<String, Object> settings) {
+            databaseDeclaration.setSettings(settings);
+            return this;
+        }
+
         public DeclarativeDBConfigBuilder lazy() {
             databaseDeclaration.setLazy(true);
             return this;
