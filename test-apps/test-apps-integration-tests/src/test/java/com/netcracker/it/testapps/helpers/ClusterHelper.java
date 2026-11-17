@@ -126,7 +126,7 @@ public final class ClusterHelper {
     }
 
     private static void awaitAnsweringAt(String url, String what, IntPredicate answer) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(3);
         IOException lastError = null;
         while (System.nanoTime() < deadline) {
             try {
