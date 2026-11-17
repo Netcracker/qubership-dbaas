@@ -54,8 +54,8 @@ helmfile -e ci sync          # from bootstrap/helmfile, on a Kind cluster
 mvn verify -DskipIT=false
 ```
 
-`maven.test.failure.ignore` is `true` in the root `pom.xml`, so a green build doesn't mean the integration tests
-passed. Check the reports.
+`dbaas/dbaas-integration-tests/pom.xml` sets `maven.test.failure.ignore=true`, so a green build doesn't mean the
+integration tests passed. Run 'test-it.yml' workflow when you need to check full IT suite.
 
 ## CI
 
