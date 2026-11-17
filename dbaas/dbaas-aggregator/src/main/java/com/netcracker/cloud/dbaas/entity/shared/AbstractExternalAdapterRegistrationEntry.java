@@ -31,4 +31,12 @@ public abstract class AbstractExternalAdapterRegistrationEntry {
     @Column(name = "api_versions")
     @Convert(converter = ApiVersionConverter.class)
     protected ApiVersion apiVersions;
+
+    protected void copyStateTo(AbstractExternalAdapterRegistrationEntry target) {
+        target.adapterId = adapterId;
+        target.address = address;
+        target.httpBasicCredentials = httpBasicCredentials;
+        target.supportedVersion = supportedVersion;
+        target.apiVersions = apiVersions;
+    }
 }

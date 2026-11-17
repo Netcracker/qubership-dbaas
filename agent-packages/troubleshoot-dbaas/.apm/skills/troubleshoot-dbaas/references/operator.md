@@ -407,8 +407,9 @@ registered in dbaas-aggregator are not deleted.
 
 **How to avoid this issue:**
 
-To pause the operator, set `REPLICAS: 0` in the `dbaas-operator` deployment parameters. Never use
-`DBAAS_OPERATOR_ENABLED: false` for this.
+Never use `DBAAS_OPERATOR_ENABLED: false` to pause the operator. The chart has no supported parameter that pauses
+dbaas-operator without removing its CRDs: `REPLICAS: 0` renders one replica, because the Deployment template applies
+`default 1`.
 
 **Sources in Netcracker/qubership-dbaas main:**
 

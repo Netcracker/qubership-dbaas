@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.netcracker.cloud.dbaas.dto.HandshakeResponse;
 import com.netcracker.cloud.dbaas.exceptions.AdapterUnavailableException;
-import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseIdConflictException;
 import com.sun.net.httpserver.HttpServer;
 import io.vertx.mutiny.core.Vertx;
 
@@ -75,7 +75,7 @@ class PhysicalDatabaseRegistrationHandshakeClientTest {
     void testHandshakeReturnedWrongPhysDbId() {
         PhysicalDatabaseRegistrationHandshakeClient client =
                 new PhysicalDatabaseRegistrationHandshakeClient(Vertx.vertx());
-        Assertions.assertThrows(PhysicalDatabaseRegistrationConflictException.class, () -> {
+        Assertions.assertThrows(PhysicalDatabaseIdConflictException.class, () -> {
             client.handshake("2", TEST_ADAPTER_ADDRESS, POSTGRESQL_TYPE, ADAPTER_USERNAME, ADAPTER_PWD, ADAPTER_VERSION_V1);
         });
     }

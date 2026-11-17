@@ -13,8 +13,8 @@ import lombok.NoArgsConstructor;
 public class DbResource extends AbstractDbResource {
 
     public com.netcracker.cloud.dbaas.entity.pg.DbResource asPgEntity() {
-        com.netcracker.cloud.dbaas.entity.pg.DbResource copy = new com.netcracker.cloud.dbaas.entity.pg.DbResource(this.kind, this.name);
-        copy.setId(this.id);
+        com.netcracker.cloud.dbaas.entity.pg.DbResource copy = new com.netcracker.cloud.dbaas.entity.pg.DbResource();
+        copyStateTo(copy);
         return copy;
     }
 

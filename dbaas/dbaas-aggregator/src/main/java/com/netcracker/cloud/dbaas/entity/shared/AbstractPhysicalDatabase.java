@@ -59,6 +59,19 @@ public abstract class AbstractPhysicalDatabase {
     @Column(name = "ro_host")
     protected String roHost;
 
+    protected void copyStateTo(AbstractPhysicalDatabase target) {
+        target.id = id;
+        target.physicalDatabaseIdentifier = physicalDatabaseIdentifier;
+        target.global = global;
+        target.labels = labels;
+        target.type = type;
+        target.registrationDate = registrationDate;
+        target.roles = roles;
+        target.features = features;
+        target.unidentified = unidentified;
+        target.roHost = roHost;
+    }
+
     /**
      * Checks if physical database is identified (see javadoc for {@link AbstractPhysicalDatabase#unidentified}).
      *

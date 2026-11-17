@@ -1,4 +1,4 @@
-name: DBaaS Upgrade/Downgrade Availability
+name: "[test] Upgrade-Downgrade"
 
 run-name: >
   DBaaS stack ${{ github.event.inputs.direction }}
@@ -92,7 +92,7 @@ jobs:
     if: ${{ needs.resolve-versions.result == 'success' && (github.event.inputs.direction == 'both' || github.event.inputs.direction == 'upgrade') }}
     permissions:
       contents: read
-    uses: ./.github/workflows/dbaas-transition-worker.yml
+    uses: ./.github/workflows/util-transition-worker.yml
     with:
       direction: upgrade
       initial-version: ${{ needs.resolve-versions.outputs.older-version }}
@@ -105,7 +105,7 @@ jobs:
     if: ${{ needs.resolve-versions.result == 'success' && (github.event.inputs.direction == 'both' || github.event.inputs.direction == 'downgrade') }}
     permissions:
       contents: read
-    uses: ./.github/workflows/dbaas-transition-worker.yml
+    uses: ./.github/workflows/util-transition-worker.yml
     with:
       direction: downgrade
       initial-version: ${{ needs.resolve-versions.outputs.newer-version }}

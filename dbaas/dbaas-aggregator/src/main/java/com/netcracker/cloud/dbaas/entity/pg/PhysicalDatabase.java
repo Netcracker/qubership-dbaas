@@ -15,19 +15,10 @@ public class PhysicalDatabase extends AbstractPhysicalDatabase {
 
     public com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase asH2Entity() {
         com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase copy = new com.netcracker.cloud.dbaas.entity.h2.PhysicalDatabase();
-        copy.setId(this.id);
-        copy.setPhysicalDatabaseIdentifier(this.physicalDatabaseIdentifier);
-        copy.setGlobal(this.global);
+        copyStateTo(copy);
         if (adapter != null) {
             copy.setAdapter(this.adapter.asH2Entity());
         }
-        copy.setLabels(this.labels);
-        copy.setType(this.type);
-        copy.setRegistrationDate(this.registrationDate);
-        copy.setRoles(this.roles);
-        copy.setFeatures(this.features);
-        copy.setUnidentified(this.unidentified);
-        copy.setRoHost(this.roHost);
         return copy;
     }
 }

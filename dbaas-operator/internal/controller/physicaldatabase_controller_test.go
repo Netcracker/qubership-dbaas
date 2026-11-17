@@ -381,21 +381,262 @@ var _ = Describe("PhysicalDatabase Controller", func() {
 
 	Context("when the aggregator rejects or fails the registration", func() {
 		DescribeTable("maps the response with the shared aggregator classification",
-			func(status int, phase dbaasv1.Phase, reason string, stalled metav1.ConditionStatus, wantErr bool) {
+			func(status int, body string, phase dbaasv1.Phase, reason string, stalled metav1.ConditionStatus, wantErr bool) {
 				createSecret(validCredentials())
 				createCR(resourceName, baseSpec())
 				aggregator.statusCode = status
-				aggregator.body = `{"code":"CORE-DBAAS-4011","message":"Invalid physical identifier"}`
+				aggregator.body = body
 
-				p, _, err := reconcileAndFetch()
+				p, result, err := reconcileAndFetch()
 				Expect(err != nil).To(Equal(wantErr))
+				if !wantErr {
+					Expect(result.RequeueAfter).To(BeZero())
+				}
 				expectState(p, phase, metav1.ConditionFalse, reason, stalled)
 				Expect(p.Status.PhysicalDatabaseID).To(Equal(physicalDatabaseID), "the adapter answer is kept")
 			},
-			Entry("401", http.StatusUnauthorized, dbaasv1.PhaseBackingOff, EventReasonUnauthorized, metav1.ConditionFalse, true),
-			Entry("409", http.StatusConflict, dbaasv1.PhaseInvalidConfiguration, EventReasonAggregatorRejected, metav1.ConditionTrue, false),
-			Entry("500", http.StatusInternalServerError, dbaasv1.PhaseBackingOff, EventReasonAggregatorError, metav1.ConditionFalse, true),
+			Entry("401", http.StatusUnauthorized, `{"code":"CORE-DBAAS-2000","message":"Unauthorized"}`,
+				dbaasv1.PhaseBackingOff, EventReasonUnauthorized, metav1.ConditionFalse, true),
+			Entry("409 with CORE-DBAAS-4057 stalls with AggregatorRejected",
+				http.StatusConflict, `{"code":"CORE-DBAAS-4057","message":"Physical database address conflict."}`,
+				dbaasv1.PhaseInvalidConfiguration, EventReasonAggregatorRejected, metav1.ConditionTrue, false),
+			Entry("409 without a TMF code stalls with AggregatorRejected",
+				http.StatusConflict, `{}`,
+				dbaasv1.PhaseInvalidConfiguration, EventReasonAggregatorRejected, metav1.ConditionTrue, false),
+			Entry("500", http.StatusInternalServerError, `{"code":"CORE-DBAAS-2000","message":"Unexpected exception"}`,
+				dbaasv1.PhaseBackingOff, EventReasonAggregatorError, metav1.ConditionFalse, true),
 		)
+	})
+
+	Context("when the aggregator reports a physical database id conflict", func() {
+		const idConflictBody = `{"code":"CORE-DBAAS-4011","message":"Physical database identifier conflict. ` +
+			`Physical database with address is already registered with physicalDatabaseId 'old-id'."}`
+
+		It("backs off with PhysicalDatabaseIdConflict, polls with a growing delay, and does not stall", func() {
+			createSecret(validCredentials())
+			createCR(resourceName, baseSpec())
+			aggregator.statusCode = http.StatusConflict
+			aggregator.body = idConflictBody
+
+			p, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 0)
+			expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse, EventReasonPhysicalDatabaseIDConflict, metav1.ConditionFalse)
+			Expect(p.Status.ObservedGeneration).To(BeZero(), "a conflict that can end is not terminal")
+			Expect(p.Status.PhysicalDatabaseID).To(Equal(physicalDatabaseID), "the adapter answer is kept")
+			Expect(p.Status.FirstIDConflictAt).NotTo(BeNil(), "the first conflict starts the streak")
+			var first string
+			Expect(aggregator.recorder.Events).To(Receive(&first))
+			Expect(first).To(And(
+				HavePrefix(corev1.EventTypeWarning+" "+EventReasonPhysicalDatabaseIDConflict),
+				ContainSubstring("physicalDatabaseId 'old-id'"),
+			))
+
+			p, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 1)
+			Expect(p.Status.LastRequestID).NotTo(BeEmpty(), "the request ID of each poll stays in the status")
+
+			var second string
+			Expect(aggregator.recorder.Events).To(Receive(&second))
+			Expect(second).To(Equal(first), "a repeated conflict records the same event text, so it is counted, not duplicated")
+		})
+
+		It("registers once the aggregator accepts the id, and restarts the poll sequence on a later conflict", func() {
+			createSecret(validCredentials())
+			createCR(resourceName, baseSpec())
+			aggregator.statusCode = http.StatusConflict
+			aggregator.body = idConflictBody
+			_, _, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+
+			aggregator.reset()
+			p, result, err := reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(testResync))
+			expectState(p, dbaasv1.PhaseSucceeded, metav1.ConditionTrue, EventReasonPhysicalDatabaseRegistered, metav1.ConditionFalse)
+			Expect(p.Status.ObservedGeneration).To(Equal(p.Generation))
+			Expect(p.Status.FirstIDConflictAt).To(BeNil(), "a successful registration ends the streak")
+
+			aggregator.statusCode = http.StatusConflict
+			aggregator.body = idConflictBody
+			_, result, err = reconcileAndFetch()
+			Expect(err).NotTo(HaveOccurred())
+			expectRequeueAfterStep(result, 0)
+		})
+
+		Context("when the conflict has lasted longer than the timeout", func() {
+			// waitForCache blocks until the cache holds the stored version of p. The
+			// reconciler reads through the cache, and the conflict streak lives in the
+			// status, so the next reconcile must not read the status of the one before.
+			waitForCache := func(p *dbaasv1.PhysicalDatabase) {
+				GinkgoHelper()
+				Eventually(func() string {
+					cur := &dbaasv1.PhysicalDatabase{}
+					if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
+						return ""
+					}
+					return cur.ResourceVersion
+				}).Should(Equal(p.ResourceVersion))
+			}
+
+			// startConflictAt creates the resource, points the start of its conflict
+			// streak back by age, and waits for the cache to serve that start, so the
+			// test needs no wait of the real length.
+			startConflictAt := func(age time.Duration) {
+				GinkgoHelper()
+				createSecret(validCredentials())
+				createCR(resourceName, baseSpec())
+				aggregator.statusCode = http.StatusConflict
+				aggregator.body = idConflictBody
+
+				cr := &dbaasv1.PhysicalDatabase{}
+				Eventually(func() error { return k8sClient.Get(ctx, namespacedName, cr) }).Should(Succeed())
+				past := metav1.NewTime(time.Now().Add(-age))
+				cr.Status.FirstIDConflictAt = &past
+				Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
+				// The reconciler reads through the cache: wait for it to see the backdated start.
+				Eventually(func() *metav1.Time {
+					cur := &dbaasv1.PhysicalDatabase{}
+					if err := cacheClient.Get(ctx, namespacedName, cur); err != nil {
+						return nil
+					}
+					return cur.Status.FirstIDConflictAt
+				}).ShouldNot(BeNil())
+			}
+
+			// startLongConflict starts a streak that is already past the timeout.
+			startLongConflict := func() {
+				GinkgoHelper()
+				startConflictAt(physicalDatabaseIDConflictTimeout + time.Minute)
+			}
+
+			It("keeps the poll backoff while the conflict is younger than the timeout", func() {
+				startConflictAt(physicalDatabaseIDConflictTimeout - time.Minute)
+
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				expectRequeueAfterStep(result, 0)
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse,
+					EventReasonPhysicalDatabaseIDConflict, metav1.ConditionFalse)
+				expectRecordedEvent(aggregator.recorder.Events, corev1.EventTypeWarning,
+					EventReasonPhysicalDatabaseIDConflict)
+				expectNoRecordedEvent(aggregator.recorder.Events)
+			})
+
+			It("switches to PhysicalDatabaseIdConflictTimeout, emits one Warning, and polls at the resync interval", func() {
+				startLongConflict()
+
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.RequeueAfter).To(Equal(testResync))
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse,
+					EventReasonPhysicalDatabaseIDConflictTimeout, metav1.ConditionFalse)
+				Expect(p.Status.FirstIDConflictAt).NotTo(BeNil(), "the streak start is kept across the timeout")
+				expectRecordedEvent(aggregator.recorder.Events, corev1.EventTypeWarning,
+					EventReasonPhysicalDatabaseIDConflictTimeout)
+				expectNoRecordedEvent(aggregator.recorder.Events)
+			})
+
+			It("records no further event on the next poll", func() {
+				startLongConflict()
+				first, _, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				drainRecordedEvents(aggregator.recorder.Events)
+				waitForCache(first)
+
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.RequeueAfter).To(Equal(testResync))
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse,
+					EventReasonPhysicalDatabaseIDConflictTimeout, metav1.ConditionFalse)
+				expectNoRecordedEvent(aggregator.recorder.Events)
+			})
+
+			It("registers and ends the streak once the aggregator accepts the id", func() {
+				startLongConflict()
+				first, _, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				waitForCache(first)
+
+				aggregator.reset()
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.RequeueAfter).To(Equal(testResync))
+				expectState(p, dbaasv1.PhaseSucceeded, metav1.ConditionTrue, EventReasonPhysicalDatabaseRegistered, metav1.ConditionFalse)
+				Expect(p.Status.FirstIDConflictAt).To(BeNil())
+			})
+
+			It("starts a new streak after another aggregator answer", func() {
+				startLongConflict()
+				aggregator.statusCode = http.StatusInternalServerError
+				aggregator.body = `{"code":"CORE-DBAAS-2000","message":"Unexpected exception"}`
+
+				p, _, err := reconcileAndFetch()
+				Expect(err).To(HaveOccurred())
+				Expect(p.Status.FirstIDConflictAt).To(BeNil(), "any other answer ends the streak")
+				waitForCache(p)
+
+				aggregator.statusCode = http.StatusConflict
+				aggregator.body = idConflictBody
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				expectRequeueAfterStep(result, 0)
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse,
+					EventReasonPhysicalDatabaseIDConflict, metav1.ConditionFalse)
+			})
+
+			It("starts a new streak after an adapter probe failure", func() {
+				startLongConflict()
+				first, _, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				waitForCache(first)
+
+				adapter.statusCode = http.StatusInternalServerError
+				adapter.body = `{}`
+				p, _, err := reconcileAndFetch()
+				Expect(err).To(HaveOccurred())
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse, EventReasonAdapterError, metav1.ConditionFalse)
+				Expect(p.Status.FirstIDConflictAt).To(BeNil(), "an adapter probe failure is a different wait condition")
+				waitForCache(p)
+
+				adapter.statusCode = http.StatusOK
+				adapter.body = adapterAnswer(physicalDatabaseID)
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				expectRequeueAfterStep(result, 0)
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse,
+					EventReasonPhysicalDatabaseIDConflict, metav1.ConditionFalse)
+			})
+
+			It("starts a new streak after a Secret error", func() {
+				startLongConflict()
+				first, _, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				waitForCache(first)
+
+				Expect(k8sClient.Delete(ctx, &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: ns},
+				})).To(Succeed())
+				Eventually(func() bool {
+					err := cacheClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &corev1.Secret{})
+					return apierrors.IsNotFound(err)
+				}).Should(BeTrue())
+
+				p, _, err := reconcileAndFetch()
+				Expect(err).To(HaveOccurred())
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse, EventReasonSecretError, metav1.ConditionFalse)
+				Expect(p.Status.FirstIDConflictAt).To(BeNil(), "a Secret error is a different wait condition")
+				waitForCache(p)
+
+				createSecret(validCredentials())
+				p, result, err := reconcileAndFetch()
+				Expect(err).NotTo(HaveOccurred())
+				expectRequeueAfterStep(result, 0)
+				expectState(p, dbaasv1.PhaseBackingOff, metav1.ConditionFalse,
+					EventReasonPhysicalDatabaseIDConflict, metav1.ConditionFalse)
+			})
+		})
 	})
 
 	// ── Secret ──────────────────────────────────────────────────────────────────

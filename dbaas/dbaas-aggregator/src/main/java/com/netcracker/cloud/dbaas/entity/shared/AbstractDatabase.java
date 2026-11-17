@@ -119,4 +119,25 @@ public abstract class AbstractDatabase implements Serializable {
         if (this.connectionProperties == null) this.connectionProperties = new ArrayList<>();
         this.connectionProperties.addAll(connectionPropertiesForNewRole);
     }
+
+    protected void copyStateTo(AbstractDatabase target) {
+        target.id = id;
+        target.oldClassifier = oldClassifier;
+        target.classifier = classifier;
+        target.connectionProperties = connectionProperties;
+        target.namespace = namespace;
+        target.type = type;
+        target.adapterId = adapterId;
+        target.name = name;
+        target.markedForDrop = markedForDrop;
+        target.timeDbCreation = timeDbCreation;
+        target.backupDisabled = backupDisabled;
+        target.dbOwnerRoles = dbOwnerRoles;
+        target.settings = settings;
+        target.connectionDescription = connectionDescription;
+        target.warnings = warnings;
+        target.externallyManageable = externallyManageable;
+        target.bgVersion = bgVersion;
+        target.physicalDatabaseId = physicalDatabaseId;
+    }
 }

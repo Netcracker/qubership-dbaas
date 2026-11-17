@@ -30,11 +30,7 @@ public class DbState extends AbstractDbState {
 
     public com.netcracker.cloud.dbaas.entity.h2.DbState asH2Entity() {
         com.netcracker.cloud.dbaas.entity.h2.DbState clone = new com.netcracker.cloud.dbaas.entity.h2.DbState();
-        clone.setId(this.id);
-        clone.setState(this.state);
-        clone.setDatabaseState(this.databaseState);
-        clone.setDescription(this.description);
-        clone.setPodName(this.podName);
+        copyStateTo(clone);
         return clone;
     }
 }

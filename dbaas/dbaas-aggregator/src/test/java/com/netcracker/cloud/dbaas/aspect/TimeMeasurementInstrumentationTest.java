@@ -35,7 +35,7 @@ public class TimeMeasurementInstrumentationTest {
     @AfterEach
     void afterEach() {
         meterRegistry.getMeters().stream()
-                .filter(meter -> "some.metric".equals(meter.getId().getName()))
+                .filter(meter -> meter.getId().getName().startsWith("some.metric"))
                 .toList().forEach(meterRegistry::remove);
     }
 

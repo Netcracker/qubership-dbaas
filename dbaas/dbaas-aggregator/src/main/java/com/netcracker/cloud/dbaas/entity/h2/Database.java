@@ -8,7 +8,6 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-import org.hibernate.collection.spi.PersistentBag;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -76,40 +75,23 @@ public class Database extends AbstractDatabase {
 
     private com.netcracker.cloud.dbaas.entity.pg.Database asPgEntityBase() {
         com.netcracker.cloud.dbaas.entity.pg.Database copy = new com.netcracker.cloud.dbaas.entity.pg.Database();
-        copy.setId(this.id);
-        copy.setOldClassifier(this.oldClassifier);
-        copy.setClassifier(this.classifier);
-        copy.setConnectionProperties(this.connectionProperties);
+        copyStateTo(copy);
         if (resources != null) {
             copy.setResources(this.resources.stream().map(r -> r.asPgEntity()).toList());
         }
-        copy.setNamespace(this.namespace);
-        copy.setType(this.type);
-        copy.setAdapterId(this.adapterId);
-        copy.setName(this.name);
-        copy.setMarkedForDrop(this.markedForDrop);
-        copy.setTimeDbCreation(this.timeDbCreation);
-        copy.setBackupDisabled(this.backupDisabled);
-        copy.setDbOwnerRoles(this.dbOwnerRoles);
-        copy.setSettings(this.settings);
-        copy.setConnectionDescription(this.connectionDescription);
-        copy.setWarnings(this.warnings);
-        copy.setExternallyManageable(this.externallyManageable);
-        copy.setBgVersion(this.bgVersion);
         copy.setDbState(this.dbState.asPgEntity());
-        copy.setPhysicalDatabaseId(this.physicalDatabaseId);
         return copy;
     }
 
     public com.netcracker.cloud.dbaas.entity.pg.Database asPgEntity() {
         com.netcracker.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
-        copy.setDatabaseRegistry(new PersistentBag(null, this.databaseRegistry.stream().map(dr -> dr.asPgEntity(copy)).toList()));
+        copy.setDatabaseRegistry(new ArrayList<>(this.databaseRegistry.stream().map(dr -> dr.asPgEntity(copy)).toList()));
         return copy;
     }
 
     public com.netcracker.cloud.dbaas.entity.pg.Database asPgEntity(com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry clone) {
         com.netcracker.cloud.dbaas.entity.pg.Database copy = asPgEntityBase();
-        copy.setDatabaseRegistry(new PersistentBag(null, this.databaseRegistry.stream().map(dr -> {
+        copy.setDatabaseRegistry(new ArrayList<>(this.databaseRegistry.stream().map(dr -> {
             if (dr.getId().equals(clone.getId())) {
                 return clone;
             } else {

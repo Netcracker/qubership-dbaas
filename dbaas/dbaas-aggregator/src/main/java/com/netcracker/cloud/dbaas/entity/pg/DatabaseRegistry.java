@@ -66,11 +66,7 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
 
     public com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry asH2Entity(com.netcracker.cloud.dbaas.entity.h2.Database db) {
         com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry copy = new com.netcracker.cloud.dbaas.entity.h2.DatabaseRegistry();
-        copy.setId(this.id);
-        copy.setTimeDbCreation(this.timeDbCreation);
-        copy.setClassifier(this.classifier);
-        copy.setNamespace(this.namespace);
-        copy.setType(this.type);
+        copyStateTo(copy);
         copy.setDatabase(db);
         return copy;
     }

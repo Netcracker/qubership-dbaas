@@ -27,9 +27,7 @@ public class DbResource extends AbstractDbResource {
 
     public com.netcracker.cloud.dbaas.entity.h2.DbResource asH2Entity() {
         com.netcracker.cloud.dbaas.entity.h2.DbResource copy = new com.netcracker.cloud.dbaas.entity.h2.DbResource();
-        copy.setKind(this.kind);
-        copy.setName(this.name);
-        copy.setId(this.id);
+        copyStateTo(copy);
         return copy;
     }
 

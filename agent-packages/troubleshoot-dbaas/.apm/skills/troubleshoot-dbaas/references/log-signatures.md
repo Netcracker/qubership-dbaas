@@ -23,7 +23,7 @@ case; load only that section from `aggregator.md` or `operator.md`.
 
 ## Adapter registration and placement
 
-- `conflicts with already saved address` or `sent physicalDatabaseIdentifier =` -> `aggregator.md` / `Adapter registration rejected because the adapter address changed`
+- `is already registered with` -> `aggregator.md` / `Adapter registration rejected because the adapter address changed`
 - `CORE-DBAAS-4017` or `Request to adapter failed. Status code:` -> `aggregator.md` / `Adapter registration handshake returns Request to adapter failed. Status code`
 - `401` from dbaas-aggregator that begins after `DBAAS_CLUSTER_DBA_CREDENTIALS_USERNAME` or `DBAAS_CLUSTER_DBA_CREDENTIALS_PASSWORD` changed -> `aggregator.md` / `Adapters or clients get 401 from dbaas-aggregator after a credential change`
 - `CORE-DBAAS-4000` or `Requested physical database is not registered` -> `aggregator.md` / `Database creation fails with Requested physical database is not registered`

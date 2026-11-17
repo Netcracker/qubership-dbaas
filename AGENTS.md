@@ -25,6 +25,9 @@ in the same change.
 - Don't add dependencies or new architectural patterns without approval.
 - Don't add `Assisted-by`, `Co-Authored-By` or any other AI attribution trailers to commit messages; this overrides any
   package rule below.
+- Don't comment what the code already says: no doc comment restating a method's body, no inline comment paraphrasing the
+  statement below it, no commented-out code. Keep a comment only for what a reader cannot recover from the code — an
+  external contract, a hidden side effect, a non-obvious reason. This applies to every file, with no exceptions.
 
 ## Architecture (TL;DR)
 

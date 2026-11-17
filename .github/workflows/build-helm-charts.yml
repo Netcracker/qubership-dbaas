@@ -1,0 +1,21 @@
+---
+name: "[build] Helm Charts"
+
+run-name: Build Helm Charts (placeholder)
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  placeholder:
+    name: Placeholder
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      contents: read
+    steps:
+      - name: Report placeholder
+        run: echo "Helm chart build workflow implementation is pending."

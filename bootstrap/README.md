@@ -231,7 +231,7 @@ starts with its S3 endpoint. Without the switch, `values/patroni-services.yaml.g
 ```bash
 AGGREGATOR_TAG=latest OPERATOR_TAG=latest helmfile -f helmfile/helmfile.yaml.gotmpl sync
 
-# With the test tuning and object storage, as .github/workflows/integration-tests.yml deploys them:
+# With the test tuning and object storage, as .github/workflows/test-it.yml deploys them:
 AGGREGATOR_TAG=latest OPERATOR_TAG=latest \
   helmfile -e ci --state-values-file values/backup/enable.yaml -f helmfile/helmfile.yaml.gotmpl sync
 ```

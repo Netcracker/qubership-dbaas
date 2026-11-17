@@ -1,7 +1,7 @@
 # Same Java base image as dbaas-aggregator (see dbaas/Dockerfile). The Quarkus fast-jar is built by
 # the CI Maven step (which carries GitHub Packages credentials for the dbaas-quarkus snapshot) and
 # copied in here.
-FROM ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.5.10@sha256:1f27f540416a2db413283744ba7facb31fad220c25d905a67179955581a527a0
+FROM ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.5.13@sha256:1da226993cb0c0fa213477fe393d6495f89702f8dfb4c2a44ad53e369d426d7c
 LABEL maintainer="qubership"
 
 WORKDIR /app

@@ -48,23 +48,15 @@ public class DatabaseRegistry extends AbstractDatabaseRegistry {
 
     public com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry asPgEntity() {
         com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry clone = new com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry();
-        clone.setId(this.id);
+        copyStateTo(clone);
         clone.setDatabase(this.database.asPgEntity(clone));
-        clone.setTimeDbCreation(this.timeDbCreation);
-        clone.setClassifier(this.classifier);
-        clone.setNamespace(this.namespace);
-        clone.setType(this.type);
         return clone;
     }
 
     public com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry asPgEntity(com.netcracker.cloud.dbaas.entity.pg.Database copy) {
         com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry clone = new com.netcracker.cloud.dbaas.entity.pg.DatabaseRegistry();
-        clone.setId(this.id);
+        copyStateTo(clone);
         clone.setDatabase(copy);
-        clone.setTimeDbCreation(this.timeDbCreation);
-        clone.setClassifier(this.classifier);
-        clone.setNamespace(this.namespace);
-        clone.setType(this.type);
         return clone;
     }
 

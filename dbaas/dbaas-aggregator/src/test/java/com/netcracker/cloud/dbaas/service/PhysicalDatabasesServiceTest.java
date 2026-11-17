@@ -5,8 +5,10 @@ import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
+import com.netcracker.cloud.dbaas.exceptions.ErrorCodes;
 import com.netcracker.cloud.dbaas.exceptions.NotFoundException;
-import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseRegistrationConflictException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseAddressConflictException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseIdConflictException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
@@ -188,9 +190,11 @@ class PhysicalDatabasesServiceTest {
         physicalDatabase.getAdapter().setAddress("http://some-adapter:8080");
         when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
 
-        assertThrows(PhysicalDatabaseRegistrationConflictException.class,
+        final PhysicalDatabaseAddressConflictException exception = assertThrows(PhysicalDatabaseAddressConflictException.class,
                 () -> physicalDatabasesService.registerPhysicalDatabase(
                         physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false));
+
+        assertEquals(ErrorCodes.CORE_DBAAS_4057, exception.getErrorCode());
     }
 
     @Test
@@ -343,10 +347,11 @@ class PhysicalDatabasesServiceTest {
         when(physicalDatabaseDbaasRepository.findByPhysicalDatabaseIdentifier(TEST_PHYDBID)).thenReturn(physicalDatabase);
         when(physicalDatabaseDbaasRepository.findByAdapterAddress(TEST_ADAPTER_ADDRESS)).thenReturn(physicalDatabase);
 
-        Assertions.assertThrows(PhysicalDatabaseRegistrationConflictException.class, () -> {
-            physicalDatabasesService.registerPhysicalDatabase(
-                    physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false);
-        });
+        final PhysicalDatabaseIdConflictException exception = assertThrows(PhysicalDatabaseIdConflictException.class,
+                () -> physicalDatabasesService.registerPhysicalDatabase(
+                        physicalDatabaseRegistryRequest, TEST_TYPE, TEST_PHYDBID, false));
+
+        assertEquals(ErrorCodes.CORE_DBAAS_4011, exception.getErrorCode());
     }
 
     @Test

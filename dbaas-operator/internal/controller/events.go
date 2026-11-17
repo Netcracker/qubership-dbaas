@@ -157,6 +157,24 @@ const (
 	// same status.physicalDatabaseId. Type: Warning.
 	EventReasonRegistrationConflict = "RegistrationConflict"
 
+	// EventReasonPhysicalDatabaseIDConflict is emitted when dbaas-aggregator answers a
+	// PhysicalDatabase registration with 409 and TMF code CORE-DBAAS-4011: the
+	// adapter address is registered with another physical database id, or the
+	// adapter reports an id different from the registered one. The id comes from
+	// the adapter and can return to the registered value without any change to the
+	// resource, so the controller keeps polling (Phase BackingOff, Stalled False).
+	// Type: Warning.
+	EventReasonPhysicalDatabaseIDConflict = "PhysicalDatabaseIdConflict"
+
+	// EventReasonPhysicalDatabaseIDConflictTimeout is emitted once when a PhysicalDatabase
+	// has received the CORE-DBAAS-4011 conflict for longer than
+	// physicalDatabaseIDConflictTimeout. A conflict that lasts needs a change outside
+	// the resource: the adapter's physical database id or the registration in
+	// dbaas-aggregator. The controller keeps retrying at ResyncInterval (Phase
+	// remains BackingOff, Stalled remains False) and stops the per-poll
+	// PhysicalDatabaseIdConflict events. Type: Warning.
+	EventReasonPhysicalDatabaseIDConflictTimeout = "PhysicalDatabaseIdConflictTimeout"
+
 	// ReasonRoleMigrationStarted is the Ready condition reason when dbaas-aggregator
 	// answers 202 to a PhysicalDatabase: the new supported roles need a role
 	// migration of existing logical databases, and the registration request is
