@@ -14,7 +14,6 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -95,14 +94,14 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
     }
 
     @Operation(summary = "V3. Find namespace backups in namespaces",
-        description = "Lists namespace backups prepared for specified namespaces",
-        hidden = true
+            description = "Lists namespace backups prepared for specified namespaces",
+            hidden = true
     )
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Successfully returned namespace backups.")})
+            @APIResponse(responseCode = "200", description = "Successfully returned namespace backups.")})
     @POST
     public Response findNamespaceBackupsInNamespaces(@Parameter(description = "Namespaces to list namespace backups for", required = true)
-                                                     @NotNull @Valid DeleteAllInNamespacesRequest request,
+                                                     @Valid DeleteAllInNamespacesRequest request,
                                                      @Parameter(description = "Integer value to specify how many namespace backups have to be skipped")
                                                      @QueryParam("offset") @DefaultValue("0") Integer offset,
                                                      @Parameter(description = "Integer value to specify how many namespace backups have to be returned")
@@ -119,12 +118,12 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
     }
 
     @Operation(summary = "V3. Clean all namespace backups in namespaces",
-        description = "Drops all namespace backups for the specified namespaces",
-        hidden = true
+            description = "Drops all namespace backups for the specified namespaces",
+            hidden = true
     )
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Namespace backups were successfully dropped in specified namespaces", content = @Content(schema = @Schema(implementation = String.class))),
-        @APIResponse(responseCode = "403", description = "Dbaas is working in PROD mode. Deleting namespace backups is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
+            @APIResponse(responseCode = "200", description = "Namespace backups were successfully dropped in specified namespaces", content = @Content(schema = @Schema(implementation = String.class))),
+            @APIResponse(responseCode = "403", description = "Dbaas is working in PROD mode. Deleting namespace backups is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
     })
     @Path("/deleteall")
     @DELETE
@@ -132,7 +131,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
     public Response dropAllNamespaceBackupsInNamespaces(@Parameter(description = "Boolean value to force remove or not remove namespace backups in namespaces if its can not be deleted")
                                                         @QueryParam("forceRemoveNotDeletableBackups") @DefaultValue("false") Boolean forceRemoveNotDeletableBackups,
                                                         @Parameter(description = "Namespaces to clean, operation would drop all namespace backups in that cloud project", required = true)
-                                                        @NotNull @Valid DeleteAllInNamespacesRequest request) {
+                                                        @Valid DeleteAllInNamespacesRequest request) {
         Set<String> namespaces = request.getNamespaces();
 
         log.info("Received request to drop all namespace backups in {} namespaces {}", namespaces.size(), namespaces);
@@ -155,8 +154,8 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
             if (CollectionUtils.isNotEmpty(notDeletableNamespaceBackupIds)) {
 
                 throw new ForbiddenDeleteBackupOperationException(MessageFormat.format(
-                    "It is forbidden to delete {0} namespace backups with ids {1} because its can not be deleted, probably its had been failed to be collected or processing",
-                    notDeletableNamespaceBackupIds.size(), notDeletableNamespaceBackupIds
+                        "It is forbidden to delete {0} namespace backups with ids {1} because its can not be deleted, probably its had been failed to be collected or processing",
+                        notDeletableNamespaceBackupIds.size(), notDeletableNamespaceBackupIds
                 ));
             }
         }

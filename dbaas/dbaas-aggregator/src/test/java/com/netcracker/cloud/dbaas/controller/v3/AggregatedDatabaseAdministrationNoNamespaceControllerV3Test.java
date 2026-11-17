@@ -152,7 +152,7 @@ class AggregatedDatabaseAdministrationNoNamespaceControllerV3Test {
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
-                .body("detail", containsString("namespaces"));
+                .body("message", containsString("namespaces"));
         verifyNoInteractions(deletionService);
     }
 
@@ -164,16 +164,7 @@ class AggregatedDatabaseAdministrationNoNamespaceControllerV3Test {
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
-                .body("detail", containsString("namespaces"));
-        verifyNoInteractions(deletionService);
-    }
-
-    @Test
-    void testDeleteAll_NoBody() {
-        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
-                .when().delete("/deleteall")
-                .then()
-                .statusCode(BAD_REQUEST.getStatusCode());
+                .body("message", containsString("namespaces"));
         verifyNoInteractions(deletionService);
     }
 

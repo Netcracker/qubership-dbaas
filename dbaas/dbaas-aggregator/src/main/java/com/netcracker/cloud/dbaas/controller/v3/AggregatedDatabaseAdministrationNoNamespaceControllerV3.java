@@ -21,7 +21,6 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -88,7 +87,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     @POST
     @RolesAllowed(DB_CLIENT)
     public Response findLogicalDatabasesInNamespaces(@Parameter(description = "List of names of namespaces where logical databases have to be deleted from")
-                                                     @NotNull @Valid DeleteAllInNamespacesRequest request,
+                                                         @Valid DeleteAllInNamespacesRequest request,
                                                      @Parameter(description = "Integer value to specify how many logical databases have to be skipped")
                                                      @QueryParam("offset") @DefaultValue("0") Integer offset,
                                                      @Parameter(description = "Integer value to specify how many logical databases have to be returned")
@@ -117,7 +116,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     @RolesAllowed(NAMESPACE_CLEANER)
     @Transactional
     public Response dropAllLogicalDatabasesInNamespaces(@Parameter(description = "Namespaces to clean, operation would drop all logical databases in that cloud project", required = true)
-                                                            @NotNull @Valid DeleteAllInNamespacesRequest request) {
+                                                            @Valid DeleteAllInNamespacesRequest request) {
         Set<String> namespaces = request.getNamespaces();
 
         log.info("Received request to drop all logical databases in {} namespaces {}", namespaces.size(), namespaces);

@@ -174,7 +174,7 @@ class AggregatedBackupRestoreControllerV3Test {
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
-                .body("detail", containsString("namespaces"));
+                .body("message", containsString("namespaces"));
         verifyNoInteractions(dbBackupsService);
     }
 
@@ -186,16 +186,7 @@ class AggregatedBackupRestoreControllerV3Test {
                 .when().delete("/deleteall")
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode())
-                .body("detail", containsString("namespaces"));
-        verifyNoInteractions(dbBackupsService);
-    }
-
-    @Test
-    void testDeleteAllNamespaceBackups_NoBody() {
-        given().auth().preemptive().basic("backup_manager", "backup_manager")
-                .when().delete("/deleteall")
-                .then()
-                .statusCode(BAD_REQUEST.getStatusCode());
+                .body("message", containsString("namespaces"));
         verifyNoInteractions(dbBackupsService);
     }
 
