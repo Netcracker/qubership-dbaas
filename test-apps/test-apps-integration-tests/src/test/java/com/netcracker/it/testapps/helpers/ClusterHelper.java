@@ -1,5 +1,6 @@
 package com.netcracker.it.testapps.helpers;
 
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.LocalPortForward;
@@ -10,7 +11,9 @@ import okhttp3.ResponseBody;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntPredicate;
 
@@ -67,6 +70,36 @@ public final class ClusterHelper {
 
     public static LocalPortForward toService(String service, int port) {
         return CLUSTER.services().inNamespace(namespace()).withName(service).portForward(port);
+    }
+
+    /**
+     * A Service forward picks an endpoint once, and a rolling redeploy can give it the pod that is being replaced.
+     */
+    public static LocalPortForward toReadyPod(String appName, int port) {
+        return CLUSTER.pods().inNamespace(namespace()).withName(awaitReadyPodName(appName)).portForward(port);
+    }
+
+    private static String awaitReadyPodName(String appName) {
+        long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            Optional<String> pod = CLUSTER.pods().inNamespace(namespace())
+                    .withLabel("app.kubernetes.io/name", appName)
+                    .list().getItems().stream()
+                    .filter(ClusterHelper::isReady)
+                    .max(Comparator.comparing(candidate -> candidate.getMetadata().getCreationTimestamp()))
+                    .map(candidate -> candidate.getMetadata().getName());
+            if (pod.isPresent()) {
+                return pod.get();
+            }
+            sleep(Duration.ofSeconds(2));
+        }
+        throw new AssertionError("No ready pod for " + appName);
+    }
+
+    private static boolean isReady(Pod pod) {
+        return pod.getStatus() != null && pod.getStatus().getConditions() != null
+                && pod.getStatus().getConditions().stream()
+                .anyMatch(condition -> "Ready".equals(condition.getType()) && "True".equals(condition.getStatus()));
     }
 
     public static String url(LocalPortForward forward, String path) {

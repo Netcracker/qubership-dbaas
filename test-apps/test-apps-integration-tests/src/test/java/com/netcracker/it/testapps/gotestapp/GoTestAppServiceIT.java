@@ -106,7 +106,7 @@ public class GoTestAppServiceIT {
         assertSecret(waitForSecret(SECRET_TENANT), "tenant", TENANT_ID, null);
         assertSecret(waitForSecret(SECRET_TENANT_ADMIN), "tenant", TENANT_ID, ADMIN_ROLE);
 
-        sampleService = ClusterHelper.toService(SAMPLE_SERVICE_NAME, HTTP_PORT);
+        sampleService = ClusterHelper.toReadyPod(SAMPLE_SERVICE_NAME, HTTP_PORT);
         ClusterHelper.awaitHealthy(ClusterHelper.url(sampleService, "/health"), SAMPLE_SERVICE_NAME);
     }
 

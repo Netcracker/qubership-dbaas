@@ -41,7 +41,7 @@ class SpringTestAppLightClientM2MIT {
 
     @BeforeAll
     static void readLightClientReport() throws IOException {
-        sampleService = ClusterHelper.toService(SAMPLE_SERVICE, HTTP_PORT);
+        sampleService = ClusterHelper.toReadyPod(SAMPLE_SERVICE, HTTP_PORT);
         String reportUrl = ClusterHelper.url(sampleService, REPORT_PATH);
         ClusterHelper.awaitReachable(reportUrl, SAMPLE_SERVICE);
         report = GSON.fromJson(ClusterHelper.execute(get(reportUrl, null), 200), JsonObject.class);
