@@ -19,10 +19,10 @@ LOG_LEVEL: info
 # bogus host to prove every datasource keeps working without dbaas-aggregator.
 # CR templates derive spec.operatorNamespace from the second DNS label; use <service>.<namespace>.
 API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
-# Direct-M2M phase toggle. When true, the pod mounts a `dbaas`-audience projected token, the
-# aggregator basic-auth creds are cleared (so the M2M client is chosen), and the client calls
-# API_DBAAS_ADDRESS directly with a Bearer. Default false keeps the other phases unchanged.
-M2M_ENABLED: false
+# Client M2M auth mode, as the clients read it: legacy, hybrid, or k8s. Any mode but legacy mounts
+# a `dbaas`-audience projected token, clears the aggregator basic-auth creds (so the M2M client is
+# chosen), and calls API_DBAAS_ADDRESS directly.
+M2M_AUTH_MODE: legacy
 # Caps the JVM heap to a fraction of the container memory limit.
 JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
 

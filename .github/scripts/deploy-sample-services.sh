@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 # Deploy all three sample services (go / spring / quarkus) with a given aggregator URL, secret-mount
-# mode, and (optionally) direct-M2M mode, so the integration test can be run in three phases:
-#   - mount proof:   <broken aggregator URL> true         (working DML can only come from the mount)
-#   - REST fallback: <working agent URL>     false         (no mount -> client resolves via the agent)
-#   - direct M2M:    <aggregator URL>        false  true   (no mount -> client calls the aggregator
-#                                                           directly with a `dbaas`-audience token)
+# mode and client M2M auth mode, so the integration test can be run in three phases:
+#   - mount proof:   <broken aggregator URL> true               (working DML can only come from the mount)
+#   - REST fallback: <working agent URL>     false              (no mount -> client resolves via the agent)
+#   - direct M2M:    <aggregator URL>        false hybrid|k8s   (no mount -> client calls the aggregator
+#                                                                with a `dbaas`-audience token)
 #
-# Usage: deploy-sample-services.sh <AGG_URL> <MOUNT_SECRETS> [M2M_ENABLED=false]
+# Usage: deploy-sample-services.sh <AGG_URL> <MOUNT_SECRETS> [M2M_AUTH_MODE=legacy] [SPRING_M2M_AUTH_MODE]
+# SPRING_M2M_AUTH_MODE defaults to M2M_AUTH_MODE: the spring service hosts the light-client probe, so a
+# phase keeps it in the mode whose behaviour it asserts while the other two follow the cluster.
 # Relies on job-level env: TEST_NAMESPACE and the {GO,SPRING,QUARKUS}_SERVICE_NAME /
 # _IMAGE_REPOSITORY / _IMAGE_TAG variables.
 set -euo pipefail
 
 AGG_URL="$1"
 MOUNT_SECRETS="$2"
-M2M_ENABLED="${3:-false}"
+M2M_AUTH_MODE="${3:-legacy}"
+SPRING_M2M_AUTH_MODE="${4:-$M2M_AUTH_MODE}"
 
 helm upgrade --install "$GO_SERVICE_NAME" \
   test-apps/go-test-app-service/helm-templates/go-test-app-service \
@@ -23,7 +26,7 @@ helm upgrade --install "$GO_SERVICE_NAME" \
   --set TAG="$GO_IMAGE_TAG" \
   --set IMAGE_PULL_POLICY="Never" \
   --set MOUNT_SECRETS="$MOUNT_SECRETS" \
-  --set M2M_ENABLED="$M2M_ENABLED" \
+  --set M2M_AUTH_MODE="$M2M_AUTH_MODE" \
   --set DBAAS_AGENT="$AGG_URL" \
   --set API_DBAAS_ADDRESS="$AGG_URL"
 
@@ -35,7 +38,7 @@ helm upgrade --install "$SPRING_SERVICE_NAME" \
   --set TAG="$SPRING_IMAGE_TAG" \
   --set IMAGE_PULL_POLICY="Never" \
   --set MOUNT_SECRETS="$MOUNT_SECRETS" \
-  --set M2M_ENABLED="$M2M_ENABLED" \
+  --set M2M_AUTH_MODE="$SPRING_M2M_AUTH_MODE" \
   --set API_DBAAS_ADDRESS="$AGG_URL"
 
 helm upgrade --install "$QUARKUS_SERVICE_NAME" \
@@ -46,5 +49,5 @@ helm upgrade --install "$QUARKUS_SERVICE_NAME" \
   --set TAG="$QUARKUS_IMAGE_TAG" \
   --set IMAGE_PULL_POLICY="Never" \
   --set MOUNT_SECRETS="$MOUNT_SECRETS" \
-  --set M2M_ENABLED="$M2M_ENABLED" \
+  --set M2M_AUTH_MODE="$M2M_AUTH_MODE" \
   --set API_DBAAS_ADDRESS="$AGG_URL"

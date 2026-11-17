@@ -16,10 +16,9 @@ REGION_DBAAS: database
 
 LOG_LEVEL: info
 DBAAS_AGENT: http://dbaas-aggregator.dbaas:8080
-# Direct-M2M phase toggle. When true, the pod mounts a `dbaas`-audience projected token and the
-# base client calls API_DBAAS_ADDRESS directly with a Bearer (no dbaas-agent). Default false keeps
-# the mounted-secret / REST-fallback phases unchanged.
-M2M_ENABLED: false
+# Client M2M auth mode, as the clients read it: legacy, hybrid, or k8s. Any mode but legacy mounts
+# a `dbaas`-audience projected token and sends it to API_DBAAS_ADDRESS.
+M2M_AUTH_MODE: legacy
 # CR templates derive spec.operatorNamespace from the second DNS label; use <service>.<namespace>.
 API_DBAAS_ADDRESS: http://dbaas-aggregator.dbaas:8080
 BASECLIENT_RETRY_MAX_ATTEMPTS: 0

@@ -44,10 +44,11 @@ black-box contract, toggling only how the DBaaS connection is resolved:
   round-trip proves the connection came from the mount, not REST.
 - **Pass B — REST fallback**: no mount, `API_DBAAS_ADDRESS` at the `dbaas-agent` stub. The client
   misses the mount and resolves each database over REST through the agent (Basic auth).
-- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_ENABLED=true`.
-  A `dbaas`-audience projected token is mounted at `/var/run/secrets/tokens/dbaas/token`; the client
-  switches to the M2M OkHttp flavor (`getDbaasOkHttpClient`, `basic-auth` off) and calls the
-  aggregator directly with that token as a Bearer — no dbaas-agent.
+- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_AUTH_MODE` set
+  to the cluster's mode (`hybrid` here, since the probe must keep its legacy fallback to assert the
+  refusal). A `dbaas`-audience projected token is mounted at `/var/run/secrets/tokens/dbaas/token`;
+  the client switches to the M2M OkHttp flavor (`getDbaasOkHttpClient`, `basic-auth` off) and calls
+  the aggregator directly with that token as a Bearer — no dbaas-agent.
 
 ## Build & run
 
@@ -64,8 +65,8 @@ The jar depends on the dbaas client snapshot that carries the mounted-secret fea
 | `MICROSERVICE_NAME` | dbaas classifier `microserviceName` | `spring-test-app-service` |
 | `MICROSERVICE_NAMESPACE` | dbaas classifier `namespace` | `default` |
 | `API_DBAAS_ADDRESS` | REST target: dbaas-agent (Pass B) or the aggregator directly (Pass C) | `http://dbaas-aggregator:8080` |
-| `M2M_AUTH_MODE` | Pass C (`hybrid`): call the aggregator directly with a `dbaas`-audience projected token | `legacy` |
-| `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH` | `false` in Pass C to select the M2M OkHttp client | `true` |
+| `M2M_AUTH_MODE` | client mode: `hybrid` or `k8s` call the aggregator directly with a `dbaas`-audience projected token | `legacy` |
+| `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH` | `false` outside `legacy` to select the M2M OkHttp client | `true` |
 | `LOG_LEVEL` | root + dbaas log level | `INFO` |
 | `JAVA_TOOL_OPTIONS` | JVM options (heap sizing) | — |
 
@@ -84,8 +85,9 @@ host without a namespace label fails chart rendering.
   eagerly touch the datasource at startup, breaking boot-without-aggregator.
 - Defaults to the basic-auth RestTemplate flavor (`dbaas.restclient.resttemplate.basic-auth=true`) —
   a plain `RestTemplate` with no platform gateway/M2M dependency — so the service boots standalone.
-  Pass C flips it to `false` (via `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH`) so the client uses the
-  M2M OkHttp flavor and authenticates the aggregator with a projected `dbaas`-audience token.
+  Outside `legacy` the chart flips it to `false` (via `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH`) so
+  the client uses the M2M OkHttp flavor and authenticates the aggregator with a projected
+  `dbaas`-audience token.
 - Runs on the same digest-pinned Java base image as dbaas-aggregator (`dbaas/Dockerfile` →
   `ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.3.3`); the static-binary
   `qubership-core-base` ships no JRE.

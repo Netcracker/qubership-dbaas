@@ -42,7 +42,8 @@ black-box contract, toggling how the DBaaS connection is resolved:
   can only come from the mount.
 - **Pass B — REST fallback**: no mount, `API_DBAAS_ADDRESS` at the `dbaas-agent` stub → the client
   resolves each database over REST through the agent (Basic auth).
-- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_ENABLED=true`.
+- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_AUTH_MODE=hybrid`
+  (or `k8s`, which drops the legacy fallback).
   A `dbaas`-audience projected token is mounted at `/var/run/secrets/tokens/dbaas/token`; clearing the
   aggregator basic-auth creds makes `DbaasClientProducer` select the M2M client, which calls the
   aggregator directly with that token as a Bearer — no dbaas-agent.
@@ -67,8 +68,8 @@ to GitHub Packages.
 | `MICROSERVICE_NAME` | dbaas classifier `microserviceName` | `quarkus-test-app-service` |
 | `MICROSERVICE_NAMESPACE` | dbaas classifier `namespace` | `default` |
 | `API_DBAAS_ADDRESS` | REST target: dbaas-agent (Pass B) or the aggregator directly (Pass C) | `http://dbaas-aggregator:8080` |
-| `M2M_AUTH_MODE` | Pass C (`hybrid`): call the aggregator directly with a `dbaas`-audience projected token | `legacy` |
-| `QUARKUS_DBAAS_API_AGGREGATOR_USERNAME` / `_PASSWORD` | cleared in Pass C so the M2M client is selected | `dbaas` / `dbaas` |
+| `M2M_AUTH_MODE` | client mode: `hybrid` or `k8s` call the aggregator directly with a `dbaas`-audience projected token | `legacy` |
+| `QUARKUS_DBAAS_API_AGGREGATOR_USERNAME` / `_PASSWORD` | cleared outside `legacy` so the M2M client is selected | `dbaas` / `dbaas` |
 | `LOG_LEVEL` | log level | `INFO` |
 
 The `http://dbaas-aggregator:8080` default above is the standalone binary's fallback. The Helm chart

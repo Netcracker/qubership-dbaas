@@ -40,10 +40,10 @@ spec:
             secretName: '{{ .secretName }}'
         {{- end }}
         {{- end }}
-        # Direct-M2M phase: a Kubernetes projected service-account token scoped to the `dbaas`
-        # audience. M2MClientFactory.getDbaasOkHttpClient reads it from /var/run/secrets/tokens/dbaas
-        # and sends it as a Bearer straight to the aggregator (no dbaas-agent).
-        {{- if .Values.M2M_ENABLED }}
+        # A Kubernetes projected service-account token scoped to the `dbaas` audience. The client reads
+        # it from /var/run/secrets/tokens/dbaas and sends it as a Bearer straight to the aggregator
+        # (no dbaas-agent).
+        {{- if ne .Values.M2M_AUTH_MODE "legacy" }}
         - name: dbaas-m2m-token
           projected:
             sources:
@@ -71,11 +71,11 @@ spec:
             - name: API_DBAAS_ADDRESS
               value: '{{ .Values.API_DBAAS_ADDRESS }}'
             - name: M2M_AUTH_MODE
-              value: '{{ if .Values.M2M_ENABLED }}hybrid{{ else }}legacy{{ end }}'
-            # In the M2M phase, clear the aggregator basic-auth creds so DbaasClientProducer picks the
-            # M2M client (m2mDbaaSClient) over BasicDbaaSClient. Empty env overrides the username /
-            # password baked into application.properties (SmallRye maps empty -> Optional.empty()).
-            {{- if .Values.M2M_ENABLED }}
+              value: '{{ .Values.M2M_AUTH_MODE }}'
+            # In the hybrid and k8s modes, clear the aggregator basic-auth creds so DbaasClientProducer
+            # picks the M2M client (m2mDbaaSClient) over BasicDbaaSClient. Empty env overrides the
+            # username / password baked into application.properties (SmallRye maps empty -> Optional.empty()).
+            {{- if ne .Values.M2M_AUTH_MODE "legacy" }}
             - name: QUARKUS_DBAAS_API_AGGREGATOR_USERNAME
               value: ""
             - name: QUARKUS_DBAAS_API_AGGREGATOR_PASSWORD
@@ -95,7 +95,7 @@ spec:
               readOnly: true
             {{- end }}
             {{- end }}
-            {{- if .Values.M2M_ENABLED }}
+            {{- if ne .Values.M2M_AUTH_MODE "legacy" }}
             - name: dbaas-m2m-token
               mountPath: /var/run/secrets/tokens/dbaas
               readOnly: true

@@ -331,14 +331,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ─────────────────────── Phase C — direct M2M REST ───────────────────────
-      # Redeploy all three apps pointing DIRECTLY at the real aggregator, no mounted secrets, with a
-      # `dbaas`-audience projected token (M2M_ENABLED=true). Each client authenticates its aggregator
-      # call with its own Kubernetes token (no dbaas-agent), so a working /postgres* round-trip
-      # proves the direct-M2M path in every library. A legacy DBaaS turns that token away, and there
-      # the light client asserts the refusal and the fallback to dbaas-agent that follows it.
+      # Redeploy all three apps pointing DIRECTLY at the real aggregator, no mounted secrets, and with
+      # the cluster's client M2M auth mode. Each client authenticates its aggregator call with its own
+      # Kubernetes token (no dbaas-agent), so a working /postgres* round-trip proves the direct-M2M path
+      # in every library; in the k8s leg the go and quarkus clients run without a legacy fallback. A
+      # legacy DBaaS turns that token away, so there the spring probe stays hybrid and asserts the
+      # refusal and the fallback to dbaas-agent that follows it.
       - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
         run: |
-          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false true
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false "$M2M_AUTH_MODE" hybrid
 
       - name: "Phase C — wait for sample services"
         run: |
