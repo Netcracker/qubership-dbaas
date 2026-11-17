@@ -169,6 +169,18 @@ class AggregatedDatabaseAdministrationNoNamespaceControllerV3Test {
     }
 
     @Test
+    void testDeleteAll_EmptyBody() {
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("")
+                .when().delete("/deleteall")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", containsString("must not be null"));
+        verifyNoInteractions(deletionService);
+    }
+
+    @Test
     void testGetMarkedForDropDatabases() throws JsonProcessingException {
         List<String> namespaces = List.of("ns1", "ns2");
         DatabaseRegistry databaseRegistry = new DatabaseRegistry();

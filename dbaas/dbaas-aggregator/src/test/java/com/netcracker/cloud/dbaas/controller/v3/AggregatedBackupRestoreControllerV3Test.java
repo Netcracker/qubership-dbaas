@@ -190,6 +190,18 @@ class AggregatedBackupRestoreControllerV3Test {
         verifyNoInteractions(dbBackupsService);
     }
 
+    @Test
+    void testDeleteAllNamespaceBackups_EmptyBody() {
+        given().auth().preemptive().basic("backup_manager", "backup_manager")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("")
+                .when().delete("/deleteall")
+                .then()
+                .statusCode(BAD_REQUEST.getStatusCode())
+                .body("message", containsString("must not be null"));
+        verifyNoInteractions(dbBackupsService);
+    }
+
     private String deleteAllRequestBody(List<String> namespaces) throws JsonProcessingException {
         DeleteAllInNamespacesRequest request = new DeleteAllInNamespacesRequest();
         request.setNamespaces(new HashSet<>(namespaces));

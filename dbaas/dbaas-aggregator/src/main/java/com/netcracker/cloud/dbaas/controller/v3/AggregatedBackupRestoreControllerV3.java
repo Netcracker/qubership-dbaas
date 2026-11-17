@@ -14,6 +14,7 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -101,7 +102,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
             @APIResponse(responseCode = "200", description = "Successfully returned namespace backups.")})
     @POST
     public Response findNamespaceBackupsInNamespaces(@Parameter(description = "Namespaces to list namespace backups for", required = true)
-                                                     @Valid DeleteAllInNamespacesRequest request,
+                                                         @NotNull @Valid DeleteAllInNamespacesRequest request,
                                                      @Parameter(description = "Integer value to specify how many namespace backups have to be skipped")
                                                      @QueryParam("offset") @DefaultValue("0") Integer offset,
                                                      @Parameter(description = "Integer value to specify how many namespace backups have to be returned")
@@ -131,7 +132,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
     public Response dropAllNamespaceBackupsInNamespaces(@Parameter(description = "Boolean value to force remove or not remove namespace backups in namespaces if its can not be deleted")
                                                         @QueryParam("forceRemoveNotDeletableBackups") @DefaultValue("false") Boolean forceRemoveNotDeletableBackups,
                                                         @Parameter(description = "Namespaces to clean, operation would drop all namespace backups in that cloud project", required = true)
-                                                        @Valid DeleteAllInNamespacesRequest request) {
+                                                        @NotNull @Valid DeleteAllInNamespacesRequest request) {
         Set<String> namespaces = request.getNamespaces();
 
         log.info("Received request to drop all namespace backups in {} namespaces {}", namespaces.size(), namespaces);
