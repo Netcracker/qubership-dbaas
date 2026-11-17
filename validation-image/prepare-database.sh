@@ -206,7 +206,8 @@ fi
 if [[ ! -z "${POSTGRES_DBAAS_USER}" ]] && [[ ! -z "${POSTGRES_DBAAS_PASSWORD}" ]]; then
   echo "Create db as dbaas user"
   create_db ${connection_host} ${connection_port} ${pgDatabase} ${POSTGRES_DBAAS_USER} ${POSTGRES_DBAAS_USER} ${POSTGRES_DBAAS_PASSWORD}
-  create_secret ${pgDatabase} ${POSTGRES_DBAAS_USER} ${POSTGRES_DBAAS_PASSWORD}
+  db_user=${POSTGRES_DBAAS_USER}
+  db_password=${POSTGRES_DBAAS_PASSWORD}
 elif [[ ! -z "${POSTGRES_DBA_USER}" ]] && [[ ! -z "${POSTGRES_DBA_PASSWORD}" ]]; then
   echo "Create db as dba user"
   PG_USER=$(echo "dbaas_user_${NAMESPACE}" | tr '-' '_')
@@ -220,7 +221,8 @@ elif [[ ! -z "${POSTGRES_DBA_USER}" ]] && [[ ! -z "${POSTGRES_DBA_PASSWORD}" ]];
     exit 121
   fi
   create_db ${connection_host} ${connection_port} ${pgDatabase} ${PG_USER} ${POSTGRES_DBA_USER} ${POSTGRES_DBA_PASSWORD}
-  create_secret ${pgDatabase} ${PG_USER} ${PG_PASSWORD}
+  db_user=${PG_USER}
+  db_password=${PG_PASSWORD}
 else
   echo "Dbaas needs a postgres dbaas user for storing information, so you should pass dbaas specific user through POSTGRES_DBAAS_USER:POSTGRES_DBAAS_PASSWORD parameters
   or pass admin user through POSTGRES_DBA_USER:POSTGRES_DBA_PASSWORD for creating this user automatically"
@@ -228,4 +230,7 @@ else
   exit 121
 fi
 [[ $USE_POSTGRES_PORT_FORWARD == 'true' ]] && kill_process "${PORT_FORWARD_PID}"
+
+create_secret ${pgDatabase} ${db_user} ${db_password}
+
 exit 0
