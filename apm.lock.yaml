@@ -1,6 +1,36 @@
 lockfile_version: '1'
 apm_version: 0.34.0
 dependencies:
+- repo_url: _local/troubleshoot-dbaas
+  name: troubleshoot-dbaas
+  version: 1.0.0
+  package_type: apm_package
+  deployed_files:
+  - .agents/skills/troubleshoot-dbaas
+  - .agents/skills/troubleshoot-dbaas/SKILL.md
+  - .agents/skills/troubleshoot-dbaas/references/aggregator.md
+  - .agents/skills/troubleshoot-dbaas/references/common-workflows.md
+  - .agents/skills/troubleshoot-dbaas/references/log-signatures.md
+  - .agents/skills/troubleshoot-dbaas/references/operator.md
+  - .claude/skills/troubleshoot-dbaas
+  - .claude/skills/troubleshoot-dbaas/SKILL.md
+  - .claude/skills/troubleshoot-dbaas/references/aggregator.md
+  - .claude/skills/troubleshoot-dbaas/references/common-workflows.md
+  - .claude/skills/troubleshoot-dbaas/references/log-signatures.md
+  - .claude/skills/troubleshoot-dbaas/references/operator.md
+  deployed_file_hashes:
+    .agents/skills/troubleshoot-dbaas/SKILL.md: sha256:0d58d43a3011df91746f3aa3494368a8570bc7360cbb261493dafb7b5744141a
+    .agents/skills/troubleshoot-dbaas/references/aggregator.md: sha256:d4838cd282de592555d48322224ba7ae2a7e8094c02158c5a7e7704d342d0c47
+    .agents/skills/troubleshoot-dbaas/references/common-workflows.md: sha256:8ea25787d6475e0bc273c83a465e5165063fe7d4e25d418f13f59fcf2704f7e6
+    .agents/skills/troubleshoot-dbaas/references/log-signatures.md: sha256:19c0e667eb06d7f1fe64c7e0f4adf0c308a217ef3c4a5fda63dccb6550ca7b6c
+    .agents/skills/troubleshoot-dbaas/references/operator.md: sha256:164f7a4b478ce5c97e4b2559be16d0ff6162f3cdc5b36a7227b6f958fede01d3
+    .claude/skills/troubleshoot-dbaas/SKILL.md: sha256:0d58d43a3011df91746f3aa3494368a8570bc7360cbb261493dafb7b5744141a
+    .claude/skills/troubleshoot-dbaas/references/aggregator.md: sha256:d4838cd282de592555d48322224ba7ae2a7e8094c02158c5a7e7704d342d0c47
+    .claude/skills/troubleshoot-dbaas/references/common-workflows.md: sha256:8ea25787d6475e0bc273c83a465e5165063fe7d4e25d418f13f59fcf2704f7e6
+    .claude/skills/troubleshoot-dbaas/references/log-signatures.md: sha256:19c0e667eb06d7f1fe64c7e0f4adf0c308a217ef3c4a5fda63dccb6550ca7b6c
+    .claude/skills/troubleshoot-dbaas/references/operator.md: sha256:164f7a4b478ce5c97e4b2559be16d0ff6162f3cdc5b36a7227b6f958fede01d3
+  source: local
+  local_path: ./agent-packages/troubleshoot-dbaas
 - repo_url: netcracker/qubership-ai-packages
   materialization_repo_url: Netcracker/qubership-ai-packages
   name: adversarial-code-review
@@ -894,6 +924,60 @@ deployments:
   active_owner: netcracker/qubership-ai-packages/agent-packages/test-authoring
   content_hash: sha256:f45a916ab7182b7f3f29c2264e3ab1361c5d5adbbe44036e1a32d4d01e537b39
 - kind: project-relative
+  target: claude
+  value: .claude/skills/troubleshoot-dbaas
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/troubleshoot-dbaas/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:0d58d43a3011df91746f3aa3494368a8570bc7360cbb261493dafb7b5744141a
+- kind: project-relative
+  target: claude
+  value: .claude/skills/troubleshoot-dbaas/references/aggregator.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:d4838cd282de592555d48322224ba7ae2a7e8094c02158c5a7e7704d342d0c47
+- kind: project-relative
+  target: claude
+  value: .claude/skills/troubleshoot-dbaas/references/common-workflows.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:8ea25787d6475e0bc273c83a465e5165063fe7d4e25d418f13f59fcf2704f7e6
+- kind: project-relative
+  target: claude
+  value: .claude/skills/troubleshoot-dbaas/references/log-signatures.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:19c0e667eb06d7f1fe64c7e0f4adf0c308a217ef3c4a5fda63dccb6550ca7b6c
+- kind: project-relative
+  target: claude
+  value: .claude/skills/troubleshoot-dbaas/references/operator.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:164f7a4b478ce5c97e4b2559be16d0ff6162f3cdc5b36a7227b6f958fede01d3
+- kind: project-relative
   target: opencode
   value: .agents/skills/adversarial-code-review
   runtime: null
@@ -1379,3 +1463,57 @@ deployments:
   - netcracker/qubership-ai-packages/agent-packages/test-authoring
   active_owner: netcracker/qubership-ai-packages/agent-packages/test-authoring
   content_hash: sha256:f45a916ab7182b7f3f29c2264e3ab1361c5d5adbbe44036e1a32d4d01e537b39
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/troubleshoot-dbaas
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: null
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/troubleshoot-dbaas/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:0d58d43a3011df91746f3aa3494368a8570bc7360cbb261493dafb7b5744141a
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/troubleshoot-dbaas/references/aggregator.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:d4838cd282de592555d48322224ba7ae2a7e8094c02158c5a7e7704d342d0c47
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/troubleshoot-dbaas/references/common-workflows.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:8ea25787d6475e0bc273c83a465e5165063fe7d4e25d418f13f59fcf2704f7e6
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/troubleshoot-dbaas/references/log-signatures.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:19c0e667eb06d7f1fe64c7e0f4adf0c308a217ef3c4a5fda63dccb6550ca7b6c
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/troubleshoot-dbaas/references/operator.md
+  runtime: null
+  scope: project
+  owners:
+  - ./agent-packages/troubleshoot-dbaas
+  active_owner: ./agent-packages/troubleshoot-dbaas
+  content_hash: sha256:164f7a4b478ce5c97e4b2559be16d0ff6162f3cdc5b36a7227b6f958fede01d3
