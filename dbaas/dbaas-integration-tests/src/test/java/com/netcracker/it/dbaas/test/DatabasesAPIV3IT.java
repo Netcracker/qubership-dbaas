@@ -6,10 +6,6 @@ import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.response.SuccessfulRestoreUsersResponse;
 import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
-import io.fabric8.kubernetes.api.model.ServiceAccount;
-import io.fabric8.kubernetes.api.model.ServiceAccountBuilder;
-import io.fabric8.kubernetes.api.model.authentication.TokenRequest;
-import io.fabric8.kubernetes.api.model.authentication.TokenRequestBuilder;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import okhttp3.Request;
@@ -42,7 +38,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
 
     @BeforeAll
     static void setupAll() throws IOException {
-        kubernetesServiceAccountToken = getKubernetesServiceAccountToken();
+        kubernetesServiceAccountToken = helperV3.createKubernetesServiceAccountToken();
         helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
     }
 
@@ -65,11 +61,10 @@ public class DatabasesAPIV3IT extends AbstractIT {
 
         @Nested
         @EnableExtension
-        class DBaaS {
+        class DBaaS extends AbstractNamespaceTest {
 
             @Test
             void testDeleteAllNotExistingDbs() throws IOException {
-                var namespace = helperV3.generateTestNamespace();
                 log.info("Delete databases from an empty namespace via the databases V3 endpoint");
                 String responseBody = helperV3.deleteDatabases(DATABASES_V3, helperV3.getClusterDbaAuthorization(), namespace,
                         HttpStatus.SC_OK);
@@ -78,7 +73,6 @@ public class DatabasesAPIV3IT extends AbstractIT {
 
             @Test
             void testDeleteAllV3NotExistingDbs() throws IOException {
-                var namespace = helperV3.generateTestNamespace();
                 log.info("Delete databases from an empty namespace via the deleteall V3 endpoint");
                 String responseBody = helperV3.deleteDatabases(DATABASES_DELETE_V3, helperV3.getClusterDbaAuthorization(), namespace,
                         HttpStatus.SC_OK);
@@ -88,7 +82,6 @@ public class DatabasesAPIV3IT extends AbstractIT {
             @Test
             @Tag("Smoke")
             public void saveExternalDatabase() {
-                var namespace = helperV3.generateTestNamespace();
                 ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", namespace);
                 log.info("Save an external tarantool database");
                 ExternalDatabaseResponseV3 externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201, namespace);
@@ -105,7 +98,6 @@ public class DatabasesAPIV3IT extends AbstractIT {
 
             @Test
             public void updateExternalDatabaseConnectionProperties() {
-                var namespace = helperV3.generateTestNamespace();
                 Map<String, Object> firstConnectionProperty = new HashMap<>();
                 firstConnectionProperty.put("role", Role.ADMIN.getRoleValue());
                 firstConnectionProperty.put("username", "external-user-test");
@@ -138,7 +130,6 @@ public class DatabasesAPIV3IT extends AbstractIT {
             @Test
             @Tag("Smoke")
             public void getExternalDatabasesByClassifier() throws IOException {
-                var namespace = helperV3.generateTestNamespace();
                 ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", namespace);
                 log.info("Save an external tarantool database for the classifier lookup");
                 helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201, namespace);
@@ -339,35 +330,22 @@ public class DatabasesAPIV3IT extends AbstractIT {
     }
 
     @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-    abstract static class AbstractDatabaseApiTest {
+    abstract static class AbstractDatabaseApiTest extends AbstractNamespaceTest {
         protected abstract String databaseType();
 
-        protected String namespace;
         protected final String databaseType = databaseType();
 
-
-        private String skipMessage() {
-            return MessageFormat.format("No {0} adapter. Skip test.", databaseType);
-        }
-
-        private String multiUsersSkipMessage() {
-            return MessageFormat.format("No {0} adapter with the multiusers feature. Skip test.", databaseType);
-        }
-
-        private String tlsSkipMessage() {
-            return MessageFormat.format("No {0} adapter with the tls feature. Skip test.", databaseType);
-        }
+        private String skipMessage = MessageFormat.format("No {0} adapter. Skip test.", databaseType);
+        private String multiUsersSkipMessage = MessageFormat.format("No {0} adapter with the multiusers feature. Skip test.", databaseType);
+        private String tlsSkipMessage = MessageFormat.format("No {0} adapter with the tls feature. Skip test.", databaseType);
 
         @BeforeAll
         void beforeAll() {
             DbaasHelperV3.regenerateRequestId();
-            assumeTrue(helperV3.hasAdapterOfType(databaseType), skipMessage());
+            assumeTrue(helperV3.hasAdapterOfType(databaseType), skipMessage);
         }
 
-        @BeforeEach
-        void prepareNamespace() {
-            namespace = helperV3.generateTestNamespace();
-        }
+        dj
 
         @Test
         @Tag("Smoke")
@@ -386,14 +364,14 @@ public class DatabasesAPIV3IT extends AbstractIT {
             log.info("Create a {} database with the autotests settings", databaseType);
             DatabaseResponse databaseWithSettings = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false, settingsMap);
             log.info("Check that the created {} database echoes back the requested settings", databaseType);
-            assertEquals(helperV3.dynamicSettings(databaseType, settingsMap), databaseWithSettings.getSettings());
+            assertEquals(helperV3.applySettings(databaseType, settingsMap), databaseWithSettings.getSettings());
         }
 
         @Test
         @Tag("Smoke")
         void testUserCreatedAndConnecting() throws IOException {
             String logicalUserId = "test-service";
-            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage());
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
             log.info("Create a {} database for the user creation test", databaseType);
             DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
             log.info("Check the connection to the {} database created for the user test", databaseType);
@@ -405,7 +383,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
             log.info("Create an admin user in the {} database created for the user test", databaseType);
             GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
             log.info("Check the connection with the user created for the user test");
-            helperV3.checkConnectionUser(false, databaseType, user, created_1, "test", "test");
+            helperV3.checkConnectionUser(false, databaseType, user, "test", "test");
 
             log.info("Rotate the password of the user created for the user test");
             UserOperationRequest userOperationRequest = new UserOperationRequest();
@@ -419,18 +397,18 @@ public class DatabasesAPIV3IT extends AbstractIT {
             log.info("Check the connection with the rotated password");
             GetOrCreateUserResponse userWithNewPassword = new GetOrCreateUserResponse();
             userWithNewPassword.setConnectionProperties(newConnectionProperties);
-            helperV3.checkConnectionUser(false, databaseType, userWithNewPassword, created_1, "test", "test");
+            helperV3.checkConnectionUser(false, databaseType, userWithNewPassword, "test", "test");
 
             log.info("Delete the user created for the user test");
             helperV3.deleteUser(USER_API_URL_V3, userOperationRequest, 200);
             log.info("Check that the connection with the deleted user is no longer possible");
-            helperV3.checkConnectionUser(true, databaseType, userWithNewPassword, created_1, null, null);
+            helperV3.checkConnectionUser(true, databaseType, userWithNewPassword, null, null);
         }
 
         @Test
         void testGetAllDatabasesInNamespaceWithCreatedUsers() throws IOException {
             String logicalUserId = "test-service";
-            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage());
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
             log.info("Create a {} database for the namespace listing test", databaseType);
             DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
             log.info("Check the connection to the {} database created for the listing test", databaseType);
@@ -443,7 +421,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
             GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
 
             log.info("Check the connection with the user created for the listing test");
-            helperV3.checkConnectionUser(false, databaseType, user, created_1, "test", "test");
+            helperV3.checkConnectionUser(false, databaseType, user, "test", "test");
 
             log.info("List the namespace databases and check the user connection properties");
             Request request = helperV3.createRequest(String.format(DATABASES_LIST_V3, namespace),
@@ -461,7 +439,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
         @Test
         void testUserDeletedAfterDatabaseDeletion() throws IOException {
             String logicalUserId = "test-service";
-            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage());
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
             log.info("Create a {} database for the user deletion on database deletion test", databaseType);
             DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
             log.info("Check the connection to the {} database created for the user deletion test", databaseType);
@@ -474,7 +452,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
             GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
 
             log.info("Check the connection with the user created for the user deletion test");
-            helperV3.checkConnectionUser(false, databaseType, user, created_1, "test", "test");
+            helperV3.checkConnectionUser(false, databaseType, user, "test", "test");
 
             log.info("Delete all databases in the namespace of the user deletion test");
             helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), namespace);
@@ -487,7 +465,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
                     404);
 
             log.info("Check that the connection to the user fails after the database deletion");
-            helperV3.checkConnectionUser(true, databaseType, user, created_1, null, null);
+            helperV3.checkConnectionUser(true, databaseType, user, null, null);
 
             log.info("Delete the user after the database deletion");
             helperV3.deleteUser(USER_API_URL_V3, userOperationRequest, 204);
@@ -495,7 +473,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
 
         @Test
         void testUsersRestore() throws IOException {
-            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage());
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
             log.info("Create a {} database for the user restore test", databaseType);
             DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
             log.info("Check the connection to the {} database created for the user restore test", databaseType);
@@ -519,21 +497,21 @@ public class DatabasesAPIV3IT extends AbstractIT {
             var req = DatabaseCreateRequestV3.builder(new ClassifierBuilder().test("dbaas_auto_test_1").ns(kubernetesClient.getNamespace()).build(), databaseType)
                     .originService(TEST_MICROSERVICE_NAME)
                     .build();
-            DatabaseResponse created_1 = helperV3.createDatabaseWithK8sToken(kubernetesServiceAccountToken, String.format(DATABASES_V3, kubernetesClient.getNamespace()), req, 201);
+            try {
+                DatabaseResponse created_1 = helperV3.createDatabaseWithK8sToken(kubernetesServiceAccountToken, String.format(DATABASES_V3, kubernetesClient.getNamespace()), req, 201);
 
-            assertThat(created_1, inNamespace(kubernetesClient.getNamespace()));
-            assertFalse(created_1.isExternallyManageable());
-            log.info("Check connection to created with k8s token database");
-            helperV3.checkConnection(false, created_1, null, null, false);
-
-            helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), databaseType, req.getClassifier(), 200);
+                assertThat(created_1, inNamespace(kubernetesClient.getNamespace()));
+                assertFalse(created_1.isExternallyManageable());
+                log.info("Check connection to created with k8s token database");
+                helperV3.checkConnection(false, created_1, null, null, false);
+            } finally {
+                helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), databaseType, req.getClassifier(), 200);
+            }
         }
 
         @Test
         void testDatabaseCreatedWithNamePrefix() throws IOException {
-            // Redis doesn't allow use underscore in database name
-            assumeTrue(!REDIS_TYPE.equals(databaseType));
-            String namePrefix = "dbaas_autotests";
+            String namePrefix = "dbaasautotests";
             DatabaseResponse db = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false, null, namePrefix, null);
             helperV3.checkConnection(false, db, null, null, false);
             assertThat(db, inNamespace(namespace));
@@ -678,7 +656,7 @@ public class DatabasesAPIV3IT extends AbstractIT {
 
         @Test
         void testDatabaseCreatedAndConnectionContainsTLS() throws IOException {
-            assumeTrue(helperV3.isAdapterSupportTLSFeature(databaseType), tlsSkipMessage());
+            assumeTrue(helperV3.isAdapterSupportTLSFeature(databaseType), tlsSkipMessage);
             log.info("Create a {} database for the TLS connection properties check", databaseType);
             DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
             log.info("Check the tls flag in the connection properties of the {} database", databaseType);
@@ -712,26 +690,12 @@ public class DatabasesAPIV3IT extends AbstractIT {
         }
     }
 
-    private static String getKubernetesServiceAccountToken() {
-        ServiceAccount sa = new ServiceAccountBuilder()
-                .withNewMetadata()
-                .withName(TEST_SERVICE_ACCOUNT_NAME)
-                .endMetadata()
-                .build();
-        kubernetesClient.serviceAccounts().resource(sa).serverSideApply();
-        kubernetesClient.serviceAccounts()
-                .withName(TEST_SERVICE_ACCOUNT_NAME)
-                .waitUntilCondition(Objects::nonNull, 30, TimeUnit.SECONDS);
+    abstract static class AbstractNamespaceTest {
+        protected String namespace;
 
-        TokenRequest tokenRequest = new TokenRequestBuilder()
-                .withNewSpec()
-                .withAudiences("dbaas")
-                .withExpirationSeconds(3600L)
-                .endSpec()
-                .build();
-        TokenRequest result = kubernetesClient.serviceAccounts()
-                .withName(TEST_SERVICE_ACCOUNT_NAME)
-                .tokenRequest(tokenRequest);
-        return result.getStatus().getToken();
+        @BeforeEach
+        void prepareNamespace() {
+            namespace = helperV3.generateTestNamespace();
+        }
     }
 }

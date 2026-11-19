@@ -150,24 +150,6 @@ class BackupV3IT extends AbstractIT {
                 assertEquals(backupedLogicalDatabase2.getName(), restoredLogicalDatabase2.getName());
             }
 
-            @Tag("clickhouse")
-            @Test
-            void testBackupRestoreV1_testFailedBackup() throws IOException {
-                // TODO: remove the test in the future: the scenario is invalid
-                assumeTrue(helperV3.hasAdapterOfType(CLICKHOUSE_TYPE), MessageFormat.format("No {0} adapter. Skip test.", CLICKHOUSE_TYPE));
-
-                String namespace = helperV3.generateTestNamespace();
-                helperV3.createDatabase(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_1).ns(namespace).build(), CLICKHOUSE_TYPE, 201);
-
-                var backupRequest = new BackupRequestBuilder()
-                        .filterCriteria(fc -> fc.include(
-                                f -> f.dbType("clickhouse")
-                        ))
-                        .build();
-                var backupResponse = backupHelperV1.startBackup(backupRequest, false, 200);
-                assertEquals(BackupStatus.FAILED, backupResponse.getStatus());
-            }
-
             @Tag("postgresql")
             @Tag("cassandra")
             @Test
@@ -669,7 +651,7 @@ class BackupV3IT extends AbstractIT {
                     .type(databaseType)
                     .classifier(new ClassifierBuilder().ms(DBAAS_AUTO_TEST_2))
                     .versioning("new")
-                    .settings(helperV3.dynamicSettings(databaseType, null))
+                    .settings(helperV3.applySettings(databaseType, null))
                     .build().asPayload(activeNamespace, DBAAS_AUTO_TEST_2);
             declarativeHelper.applyDeclarativeConfig(payload);
 

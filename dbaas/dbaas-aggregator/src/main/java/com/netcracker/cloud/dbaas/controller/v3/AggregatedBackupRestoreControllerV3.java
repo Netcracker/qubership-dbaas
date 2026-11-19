@@ -100,6 +100,7 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
     )
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Successfully returned namespace backups.")})
+    @Path("/findall")
     @POST
     public Response findNamespaceBackupsInNamespaces(@Parameter(description = "Namespaces to list namespace backups for", required = true)
                                                          @NotNull @Valid DeleteAllInNamespacesRequest request,
@@ -107,6 +108,8 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
                                                      @QueryParam("offset") @DefaultValue("0") Integer offset,
                                                      @Parameter(description = "Integer value to specify how many namespace backups have to be returned")
                                                      @QueryParam("limit") @DefaultValue("20") Integer limit) {
+        assertNotProdMode();
+
         if (offset == null || offset < 0) {
             throw new BadRequestException("Query parameter 'offset' must be positive integer value");
         }

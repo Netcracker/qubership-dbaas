@@ -32,10 +32,9 @@ import com.netcracker.it.dbaas.entity.response.LostDatabasesResponse;
 import com.netcracker.it.dbaas.entity.response.OverallStatusResponse;
 import com.netcracker.it.dbaas.exceptions.CannotCheckData;
 import com.netcracker.it.dbaas.exceptions.CannotConnect;
-import io.fabric8.kubernetes.api.model.EnvVar;
-import io.fabric8.kubernetes.api.model.EnvVarSource;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.api.model.authentication.TokenRequest;
+import io.fabric8.kubernetes.api.model.authentication.TokenRequestBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.Getter;
 import lombok.NonNull;
@@ -96,12 +95,17 @@ public class DbaasHelperV3 {
             .withMaxRetries(12).withDelay(Duration.ofSeconds(5));
     private static final RetryPolicy<Connection> CLICKHOUSE_AUTH_RETRY_POLICY = new RetryPolicy<Connection>()
             .handleIf(DbaasHelperV3::isClickhouseAuthenticationError)
+            .onRetry(event -> log.warn("ClickHouse user DDL not yet applied, retrying the connection (attempt {})", event.getAttemptCount()))
             .withMaxRetries(12).withDelay(Duration.ofSeconds(5));
 
     private static boolean isClickhouseAuthenticationError(Throwable error) {
-        return error instanceof SQLException
-                && error.getMessage() != null
-                && error.getMessage().contains("AUTHENTICATION_FAILED");
+        while (error != null) {
+            if (error.getMessage() != null && error.getMessage().contains("AUTHENTICATION_FAILED")) {
+                return true;
+            }
+            error = error.getCause();
+        }
+        return false;
     }
 
     public static final MediaType JSON
@@ -132,6 +136,7 @@ public class DbaasHelperV3 {
     public static final String TEST_CLASSIFIER_KEY = "dbaas_auto_test";
 
     private static final String BACKUPS_V3 = "api/v3/dbaas/backups";
+    private static final String BACKUPS_FIND_ALL_V3 = BACKUPS_V3 + "/findall";
     private static final String BACKUPS_DELETE_V3 = BACKUPS_V3 + "/deleteall";
     private static final String NAMESPACE_BACKUPS_V3 = "api/v3/dbaas/%s/backups";
     private static final String NAMESPACE_BACKUPS_DELETE_V3 = NAMESPACE_BACKUPS_V3 + "/deleteall";
@@ -283,7 +288,7 @@ public class DbaasHelperV3 {
     }
 
     public boolean isAdapterSupportMultiusersFeature(String dbType) {
-        return hasGlobalPhysicalDatabase(dbType, database -> database.getSupportedRoles().size() >= 3);
+        return hasGlobalPhysicalDatabase(dbType, database -> database.getFeatures().getOrDefault("multiusers", false));
     }
 
     public boolean isAdapterSupportTLSFeature(String dbType) {
@@ -734,29 +739,28 @@ public class DbaasHelperV3 {
         }
     }
 
+    public void checkConnectionClickhouse(DatabaseResponse databaseToCheck, String setData, String checkData) throws SQLException, IOException {
+        checkConnectionClickhouse(databaseToCheck, false, setData, checkData);
+    }
+
     /**
      * The adapter creates and rotates users with CREATE USER and ALTER USER statements executed with
      * ON CLUSTER. ClickHouse applies such statements asynchronously on the replicas, so a replica
      * that has not applied the statement yet rejects the connection with AUTHENTICATION_FAILED.
      * Retry the connection until the statement is applied on the replica.
      */
-    private Connection connectClickhouseAwaitingUserDdl(DatabaseResponse databaseToCheck) {
-        var policy = CLICKHOUSE_AUTH_RETRY_POLICY
-                .onRetry(event -> log.warn("ClickHouse user DDL not yet applied, retrying the connection (attempt {})", event.getAttemptCount()));
-        return Failsafe.with(policy).get(() -> connectClickhouse(databaseToCheck));
-    }
-
-    public void checkConnectionClickhouse(DatabaseResponse databaseToCheck, String setData, String checkData) throws SQLException, IOException {
-        checkConnectionClickhouse(databaseToCheck, false, setData, checkData);
-    }
-
     public void checkConnectionClickhouse(DatabaseResponse databaseToCheck, Boolean expectCannotConnect, String setData, String checkData) throws SQLException, IOException {
+        if (expectCannotConnect) {
+            connectClickhouse(databaseToCheck, setData, checkData);
+        }
+        Failsafe.with(CLICKHOUSE_AUTH_RETRY_POLICY).run(() -> connectClickhouse(databaseToCheck, setData, checkData));
+    }
+
+    public void connectClickhouse(DatabaseResponse databaseToCheck, String setData, String checkData) {
         log.info("Check clickhouse connection");
 
         try (
-                var conn = expectCannotConnect
-                        ? connectClickhouse(databaseToCheck)
-                        : connectClickhouseAwaitingUserDdl(databaseToCheck);
+                var conn = connectClickhouse(databaseToCheck);
                 var stmt = conn.createStatement()
         ) {
             var tableName = "autotests";
@@ -885,18 +889,16 @@ public class DbaasHelperV3 {
     }
 
     public void checkConnectionUser(Boolean expectCannotConnect, String type, GetOrCreateUserResponse user,
-                                    DatabaseResponse ownerDatabase, String setData, String checkData) {
+                                    String setData, String checkData) {
         log.info("Check connection to user {} of type {}", user.getUserId(), type);
         log.info("User connection properties: {}", user.getConnectionProperties());
-        checkConnection(expectCannotConnect, wrapUserConnectionProperties(type, user, ownerDatabase), setData, checkData, false);
+        checkConnection(expectCannotConnect, wrapUserConnectionProperties(type, user), setData, checkData, false);
     }
 
-    private DatabaseResponse wrapUserConnectionProperties(String type, GetOrCreateUserResponse user, DatabaseResponse ownerDatabase) {
-        Map<String, Object> cp = new HashMap<>(user.getConnectionProperties());
-        ownerDatabase.getConnectionProperties().forEach(cp::putIfAbsent);
+    private DatabaseResponse wrapUserConnectionProperties(String type, GetOrCreateUserResponse user) {
         return DatabaseResponse.builder()
                 .type(type)
-                .connectionProperties(cp)
+                .connectionProperties(user.getConnectionProperties())
                 .build();
     }
 
@@ -1353,7 +1355,7 @@ public class DbaasHelperV3 {
     }
 
 
-    public Map<String, Object> dynamicSettings(String type, Map<String, Object> settings) {
+    public Map<String, Object> applySettings(String type, Map<String, Object> settings) {
         if (OPENSEARCH_TYPE.equalsIgnoreCase(type)) {
             Map<String, Object> mergedSettings = new HashMap<>(settings == null ? Map.of() : settings);
             mergedSettings.putIfAbsent("resourcePrefix", true);
@@ -1386,7 +1388,7 @@ public class DbaasHelperV3 {
         if (!StringUtils.isEmpty(physicalDatabaseId)) {
             createDbJson.put("physicalDatabaseId", physicalDatabaseId);
         }
-        createDbJson.put("settings", dynamicSettings(type, settings));
+        createDbJson.put("settings", applySettings(type, settings));
         String createDatabaseReqJson = new GsonBuilder().create().toJson(createDbJson);
         log.info("Create db: " + createDatabaseReqJson);
         return new Request.Builder()
@@ -1403,7 +1405,7 @@ public class DbaasHelperV3 {
         jsonReq.put("type", type);
         jsonReq.put("originService", classifier.get(MICROSERVICE_NAME));
         jsonReq.put("userRole", Role.ADMIN.getRoleValue());
-        jsonReq.put("settings", dynamicSettings(type, null));
+        jsonReq.put("settings", applySettings(type, null));
         String createDatabaseReqJson = new GsonBuilder().create().toJson(jsonReq);
 
         return new Request.Builder()
@@ -1591,7 +1593,7 @@ public class DbaasHelperV3 {
     }
 
     public List<NamespaceBackupV3> findNamespaceBackupsByNamespaces(List<String> namespaces) {
-        var request = createRequest(BACKUPS_V3, getBackupDaemonAuthorization(),
+        var request = createRequest(BACKUPS_FIND_ALL_V3, getBackupDaemonAuthorization(),
                 Map.of("namespaces", namespaces), "POST");
 
         return Arrays.asList(executeRequest(request, NamespaceBackupV3[].class, 200));
@@ -1801,5 +1803,28 @@ public class DbaasHelperV3 {
             log.error("Failed to calculate digest", e);
             throw new RuntimeException(e.getMessage());
         }
+    }
+
+    public String createKubernetesServiceAccountToken() {
+        ServiceAccount sa = new ServiceAccountBuilder()
+                .withNewMetadata()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .endMetadata()
+                .build();
+        kubernetesClient.serviceAccounts().resource(sa).serverSideApply();
+        kubernetesClient.serviceAccounts()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .waitUntilCondition(Objects::nonNull, 30, TimeUnit.SECONDS);
+
+        TokenRequest tokenRequest = new TokenRequestBuilder()
+                .withNewSpec()
+                .withAudiences("dbaas")
+                .withExpirationSeconds(3600L)
+                .endSpec()
+                .build();
+        TokenRequest result = kubernetesClient.serviceAccounts()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .tokenRequest(tokenRequest);
+        return result.getStatus().getToken();
     }
 }
