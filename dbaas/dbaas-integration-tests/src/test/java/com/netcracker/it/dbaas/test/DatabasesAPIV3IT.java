@@ -345,8 +345,6 @@ public class DatabasesAPIV3IT extends AbstractIT {
             assumeTrue(helperV3.hasAdapterOfType(databaseType), skipMessage);
         }
 
-        dj
-
         @Test
         @Tag("Smoke")
         void testDatabaseCreatedAndConnecting() throws IOException {
