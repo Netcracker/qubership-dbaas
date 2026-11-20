@@ -77,7 +77,7 @@ public class UserService {
             request.setUserRole("admin");
         }
 
-        EnsuredUser adapterResponse = adapter.createUser(db.getName(),
+        EnsuredUser adapterResponse = adapter.createUser(DBaaService.getDatabaseName(db),
                 null,
                 request.getUserRole(),
                 request.getUsernamePrefix());
@@ -162,7 +162,7 @@ public class UserService {
         EnsuredUser ensureUser = adapter.ensureUser(
                 user.getConnectionProperties().get("username").toString(),
                 null,
-                database.getName(),
+                DBaaService.getDatabaseName(database),
                 user.getUserRole());
 
         user.setConnectionProperties(ensureUser.getConnectionProperties());
