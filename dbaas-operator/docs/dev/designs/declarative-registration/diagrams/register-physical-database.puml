@@ -1,0 +1,74 @@
+@startuml
+title Declarative physical database registration
+
+skinparam sequenceFontSize 14
+
+participant "Kubernetes API" as K8s
+participant "DBaaS Operator" as Operator
+participant "DBaaS Adapter" as Adapter
+participant "DBaaS Aggregator" as Aggregator
+database "Registry" as Registry
+
+K8s -> Operator: reconcile PhysicalDatabase\n(created, spec changed, refresh annotation,\nsibling changed, periodic re-sync)
+
+opt spec.operatorNamespace belongs to another operator
+  Operator --> K8s: skip the resource, write no status
+end
+
+opt another CR claims the same spec.adapterAddress
+  Operator --> K8s: InvalidConfiguration, Stalled=True\nReason=RegistrationConflict
+end
+
+Operator -> K8s: read the credentials Secret
+opt the Secret is absent, a key is missing, or RBAC denies the read
+  Operator --> K8s: BackingOff, Reason=SecretError
+end
+
+Operator -> Adapter: probe\nGET {adapterAddress}/api/v2/adapter/physical_database\n(Basic Auth from the Secret)
+Adapter --> Operator: 200: physicalDatabaseId, type, supportedRoles,\nfeatures, labels, readOnlyHost, apiVersions
+opt the probe answers 401
+  Operator --> K8s: BackingOff, Reason=Unauthorized
+end
+opt the probe answers 404 / 503, is unreachable,\nor answers 200 without a required field
+  Operator --> K8s: BackingOff, Reason=AdapterError
+end
+
+Operator -> K8s: copy the answer into the status
+
+opt another CR reports the same status.physicalDatabaseId
+  Operator --> K8s: InvalidConfiguration, Stalled=True\nReason=RegistrationConflict
+end
+
+Operator -> Aggregator: register\nPUT /api/v3/dbaas/{type}/physical_databases/{phydbid}?internalMigration=true\n(spec: adapterAddress, Secret: credentials, probe: the rest,\nfixed: status="running", apiVersion="v2")
+
+alt the address or the identifier conflicts with the stored registration
+  Aggregator --> Operator: 409 Conflict\nCORE-DBAAS-4057 (address) / CORE-DBAAS-4011 (identifier)
+  Operator --> K8s: InvalidConfiguration, Stalled=True\nReason=AggregatorRejected
+else the physical database is not registered
+  Aggregator -> Registry: save the physical database\n(roles lowercased, password encrypted,\nthe first database of the type is flagged global)
+  Aggregator --> Operator: 201 Created
+  Operator --> K8s: Succeeded, Ready=True\nReason=PhysicalDatabaseRegistered
+else the registration is locked by a running migration
+  Aggregator --> Operator: 202 Accepted
+  Operator --> K8s: WaitingForDependency, Ready=False\nReason=RoleMigrationStarted
+else a role migration is required
+  Aggregator -> Registry: create or reuse the instruction\n(the parked registration request)
+  opt the instruction carries stored failures
+    Aggregator --> Operator: 500 with the stored failures\n(the migration restarts)
+    Operator --> K8s: BackingOff, Reason=AggregatorError
+  end
+  Aggregator --> Operator: 202 Accepted
+  note right of Aggregator: the internal migration runs;\nsee Internal role migration
+  Operator --> K8s: WaitingForDependency, Ready=False\nReason=RoleMigrationStarted
+else no migration is required
+  Aggregator -> Registry: update the row when a property differs,\nreset the caches
+  Aggregator --> Operator: 200 OK
+  Operator --> K8s: Succeeded, Ready=True\nReason=PhysicalDatabaseRegistered
+end
+
+note over Operator
+  On 202 the operator does not read the body.
+  It repeats the registration with the poll backoff
+  (5 s doubling to 1 min) until the aggregator answers 200.
+end note
+@enduml

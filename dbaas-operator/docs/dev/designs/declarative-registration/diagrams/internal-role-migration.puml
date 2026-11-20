@@ -1,0 +1,48 @@
+@startuml
+title Internal role migration
+
+skinparam sequenceFontSize 14
+
+participant "DBaaS Operator" as Operator
+participant "DBaaS Aggregator" as Aggregator
+database "Registry" as Registry
+participant "DBaaS Adapter" as Adapter
+
+note over Aggregator
+  Started by the registration process. The physical database
+  row keeps its old values until completion.
+end note
+
+Aggregator -> Registry: acquire the keep-alive lock\nroles-migration-{phydbid}-{type}
+note right: while the lock is held, every registration\nof this physical database answers 202
+
+loop while a logical database still lacks a required role
+  Aggregator -> Registry: next portion of logical databases\nmissing at least one required role
+  loop per logical database
+    Aggregator -> Aggregator: missed roles =\nrequired - existing
+    loop per missed role
+      Aggregator -> Adapter: PUT {address}/api/v2/dbaas/adapter/{type}/users\n(dbName, role)
+      Adapter --> Aggregator: 201: connection properties\nand resources
+    end
+  end
+
+  alt a user creation failed
+    Aggregator -> Registry: store the failure\n(database id, message) in the instruction
+    note over Aggregator: the migration stops;\nthe failure stays in the instruction,\nthe lock is released
+  end
+
+  Aggregator -> Registry: save the connection properties of the migrated databases,\ndrop the stored failures of the migrated databases,\nsave the instruction
+end
+
+group @Transactional
+  Aggregator -> Registry: apply the parked registration request,\ndelete the instruction
+  Aggregator -> Aggregator: reset the adapter and\nphysical database caches
+end
+Aggregator -> Registry: release the lock
+
+note over Operator, Aggregator
+  The operator learns the outcome on its next registration:
+  lock held - 202; stored failures of a previous run - 500
+  (and the migration restarts); after completion - 200.
+end note
+@enduml
