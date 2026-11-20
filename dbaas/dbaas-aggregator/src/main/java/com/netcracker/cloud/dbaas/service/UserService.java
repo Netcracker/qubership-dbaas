@@ -20,10 +20,8 @@ import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasReposi
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
-
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.lang.StringUtils;
 
 import java.util.*;
@@ -180,7 +178,7 @@ public class UserService {
 
         DbResource resource = database.getResources().stream()
                 .filter(dbResource -> dbResource.getKind().equals("user") &&
-                        dbResource.getName().equals(user.getConnectionProperties().get("username")))
+                        dbResource.getName().contains((String) user.getConnectionProperties().get("username")))
                 .findFirst()
                 .orElse(null);
         if (resource == null) {
