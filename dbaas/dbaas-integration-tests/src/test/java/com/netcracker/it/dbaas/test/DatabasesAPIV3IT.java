@@ -1,17 +1,11 @@
 package com.netcracker.it.dbaas.test;
 
 import com.google.common.collect.ImmutableMap;
-import com.mongodb.MongoSecurityException;
-import com.mongodb.MongoTimeoutException;
+import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtension;
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.response.SuccessfulRestoreUsersResponse;
-import com.netcracker.it.dbaas.exceptions.CannotConnect;
 import com.netcracker.it.dbaas.helpers.ClassifierBuilder;
 import com.netcracker.it.dbaas.helpers.DbaasHelperV3;
-import io.fabric8.kubernetes.api.model.ServiceAccount;
-import io.fabric8.kubernetes.api.model.ServiceAccountBuilder;
-import io.fabric8.kubernetes.api.model.authentication.TokenRequest;
-import io.fabric8.kubernetes.api.model.authentication.TokenRequestBuilder;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import okhttp3.Request;
@@ -21,9 +15,11 @@ import org.hamcrest.BaseMatcher;
 import org.hamcrest.Description;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import java.io.IOException;
-import java.sql.SQLException;
+import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -37,765 +33,667 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @Slf4j
 public class DatabasesAPIV3IT extends AbstractIT {
-    private String kubernetesServiceAccountToken;
+
+    private static String kubernetesServiceAccountToken;
 
     @BeforeAll
-    public void setupAll() {
-        kubernetesServiceAccountToken = getKubernetesServiceAccountToken();
+    static void setupAll() throws IOException {
+        kubernetesServiceAccountToken = helperV3.createKubernetesServiceAccountToken();
+        helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
     }
 
     @AfterAll
-    public void tearDownAll() {
+    static void tearDownAll() throws IOException {
+        helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
         kubernetesClient.serviceAccounts()
                 .withName(TEST_SERVICE_ACCOUNT_NAME)
                 .delete();
     }
 
-    @BeforeEach
-    public void initAndCleanDbs() throws IOException {
-        cleanDbs();
+    @Override
+    protected void closePortForwardAfterTest() {
     }
 
-    @AfterEach
-    public void cleanDbs() throws IOException {
-        log.info("Clean databases");
-        helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE);
-    }
+    @Nested
+    @EnableExtension
+    @Execution(ExecutionMode.CONCURRENT)
+    class Database {
 
-    private DatabaseCreateRequestV3.DatabaseCreateRequestV3Builder getPrimaryCreateDbRequestBuilder(String type, String testClassifierValue) {
-        return DatabaseCreateRequestV3.builder(new ClassifierBuilder().test(testClassifierValue).build(), type);
-    }
+        @Nested
+        @EnableExtension
+        class DBaaS extends AbstractNamespaceTest {
 
-    private DatabaseCreateRequestV3 getSimplePostgresCreateRequest(String testClassifierValue) {
-        return getPrimaryCreateDbRequestBuilder(POSTGRES_TYPE, testClassifierValue)
-                .namePrefix("dbaas_autotests")
-                .originService(TEST_MICROSERVICE_NAME)
-                .build();
-    }
-
-    private DatabaseCreateRequestV3 getSimpleMongoCreateRequest(String testClassifierValue) {
-        return getPrimaryCreateDbRequestBuilder(MONGODB_TYPE, testClassifierValue)
-                .namePrefix("dbaas_autotests")
-                .originService(TEST_MICROSERVICE_NAME)
-                .build();
-    }
-
-    @Tag("mongodb")
-    @Test
-    public void mongoTestDatabaseCreatedAndConnecting() throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
-        log.info("Create database");
-        DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimpleMongoCreateRequest("dbaas_auto_test_1"), 201);
-
-        assertThat(created_1, inNamespace(TEST_NAMESPACE));
-        assertFalse(created_1.isExternallyManageable());
-        log.info("Check connection to created database");
-        helperV3.checkConnectionMongo(created_1);
-    }
-
-    @Tag("mongodb")
-    @Test
-    public void mongoTestDatabaseCreatedAndConnectingWithK8sToken() throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
-        log.info("Create database with k8s token");
-        var req = getSimpleMongoCreateRequest("dbaas_auto_test_1");
-        DatabaseResponse created_1 = helperV3.createDatabaseWithK8sToken(kubernetesServiceAccountToken, String.format(DATABASES_V3, kubernetesClient.getNamespace()), req, 201);
-
-        assertThat(created_1, inNamespace(kubernetesClient.getNamespace()));
-        assertFalse(created_1.isExternallyManageable());
-        log.info("Check connection to created with k8s token database");
-        helperV3.checkConnectionMongo(created_1);
-
-        helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), MONGODB_TYPE, req.getClassifier(), 200);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void testDbsCleanedPostgres() throws IOException, SQLException {
-        log.info("Create database");
-        DatabaseResponse postgresDB = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE),
-                getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
-
-        log.info("Check connection to postgres database");
-        helperV3.checkConnectionPostgres(postgresDB);
-
-        assertThat(postgresDB, inNamespace(TEST_NAMESPACE));
-        log.info("Check connection to deleted databases");
-        cleanDbs();
-        Assertions.assertThrows(CannotConnect.class, () ->
-                Failsafe.with(DEFAULT_RETRY_POLICY).run(() ->
-                        helperV3.checkConnectionPostgres(postgresDB)));
-    }
-
-    @Test
-    void testDeleteAllNotExistingDbs() throws IOException {
-        String responseBody = helperV3.deleteDatabases(DbaasHelperV3.DATABASES_V3, helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE,
-                HttpStatus.SC_OK);
-        assertEquals("namespace " + TEST_NAMESPACE + " doesn't contain any databases and namespace specific resources", responseBody);
-    }
-
-
-    @Test
-    void testDeleteAllV3NotExistingDbs() throws IOException {
-        String responseBody = helperV3.deleteDatabases(DbaasHelperV3.DATABASES_V3 + "/deleteall", helperV3.getClusterDbaAuthorization(), TEST_NAMESPACE,
-                HttpStatus.SC_OK);
-        assertEquals("namespace " + TEST_NAMESPACE + " doesn't contain any databases and namespace specific resources", responseBody);
-    }
-
-
-    @Tag("mongodb")
-    @Test
-    public void testDbsCleanedMongo() throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
-        log.info("Create database");
-        DatabaseResponse mongoDB = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE),
-                getSimpleMongoCreateRequest("dbaas_auto_test_2"), 201);
-        log.info("Check connection to mongo database");
-        helperV3.checkConnectionMongo(mongoDB);
-        assertThat(mongoDB, inNamespace(TEST_NAMESPACE));
-        log.info("Check connection to deleted databases");
-        cleanDbs();
-        Assertions.assertThrows(CannotConnect.class, () ->
-                Failsafe.with(DEFAULT_RETRY_POLICY).run(() ->
-                        helperV3.checkConnectionMongo(mongoDB, true)));
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void postgresTestDatabaseCreatedAndConnecting() throws IOException, SQLException {
-        DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
-        log.info("Create database");
-        assertThat(created_1, inNamespace(TEST_NAMESPACE));
-        log.info("Check connection to created database");
-        helperV3.checkConnectionPostgres(created_1);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void postgresTestDatabaseCreatedAndConnectingWithK8sToken() throws IOException, SQLException {
-        log.info("Create database with k8s token");
-        var req = getSimplePostgresCreateRequest("dbaas_auto_test_1");
-        DatabaseResponse created_1 = helperV3.createDatabaseWithK8sToken(kubernetesServiceAccountToken, String.format(DATABASES_V3, kubernetesClient.getNamespace()), req, 201);
-
-        assertThat(created_1, inNamespace(kubernetesClient.getNamespace()));
-        log.info("Check connection to created with k8s token database");
-        helperV3.checkConnectionPostgres(created_1);
-
-        helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), POSTGRES_TYPE, req.getClassifier(), 200);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void postgresTestAsyncDatabaseCreatedAndConnecting() throws IOException, SQLException {
-        String requestUrl = String.format(DATABASES_V3_ASYNC, TEST_NAMESPACE);
-        Request createDbRequest = helperV3.createRequest(requestUrl, helperV3.getClusterDbaAuthorization(), getSimplePostgresCreateRequest("dbaas_auto_test_1"), "PUT");
-        log.info("request: {}", createDbRequest);
-        Response response = helperV3.executeRequest(createDbRequest, 202);
-        response.close();
-
-        DatabaseResponse createdResponse = Failsafe.with(AWAIT_DB_CREATION_RETRY_POLICY).get(() ->
-                helperV3.createDatabase(requestUrl, getSimplePostgresCreateRequest("dbaas_auto_test_1"), 200));
-        log.info("Create database");
-        assertThat(createdResponse, inNamespace(TEST_NAMESPACE));
-        log.info("Check connection to created database");
-        helperV3.checkConnectionPostgres(createdResponse);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void postgresTestDatabaseCreatedAndConnectionContainsTLS() throws IOException, SQLException {
-        DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
-        assumeTrue(helperV3.isTLSEnabledInDatabase(POSTGRES_TYPE, created_1.getPhysicalDatabaseId()), "Skip test because TLS is disabled in database");
-        log.info("Create database");
-        Map<String, Object> connectionProperties = created_1.getConnectionProperties();
-        assertTrue(connectionProperties.containsKey("tls"));
-        helperV3.checkConnectionPostgres(created_1);
-    }
-
-    @Tag("mongodb")
-    @Tag("Smoke")
-    @Test
-    public void createMongoDbInRegisteredPhysDb() throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
-        List<DatabaseResponse> createdMongoDb = createDatabaseInRegisteredPhysDb("mongodb");
-        log.debug("Was created {} mongo database one in each cluster", createdMongoDb.size());
-        log.debug("Check connect on created mongo databases");
-        createdMongoDb.forEach(database -> {
-            if (database.getPhysicalDatabaseId().equals("defaultMongoAdapter")) {
-                helperV3.checkConnectionMongo(database, false);
-            } else {
-                helperV3.checkConnectNotDefaultMongoCluster(database, false);
+            @Test
+            void testDeleteAllNotExistingDbs() throws IOException {
+                log.info("Delete databases from an empty namespace via the databases V3 endpoint");
+                String responseBody = helperV3.deleteDatabases(DATABASES_V3, helperV3.getClusterDbaAuthorization(), namespace,
+                        HttpStatus.SC_OK);
+                assertEquals("namespace " + namespace + " doesn't contain any databases and namespace specific resources", responseBody);
             }
-        });
-        cleanDbs();
-        log.debug("Check that mongo databases was deleted and connect does not exists");
-        createdMongoDb.forEach(database -> {
-            log.info("Check that database {} was deleted", database);
-            try {
-                if (database.getPhysicalDatabaseId().equals("defaultMongoAdapter")) {
-                    helperV3.checkConnectionMongo(database, true);
-                    fail(String.format("Database %s should be deleted not it was not", database.getName()));
-                } else {
-                    helperV3.checkConnectNotDefaultMongoCluster(database, true);
-                    fail(String.format("Database %s should be deleted not it was not", database));
-                }
-            } catch (CannotConnect | MongoTimeoutException | MongoSecurityException e) {
-                assertFalse(e.getMessage().equals(String.format("Database %s should be deleted not it was not", database)) ||
-                        e.getMessage().equals(String.format("Database %s should be deleted not it was not", database.getName())));
-                log.debug("Database {} was successfully deleted", database);
+
+            @Test
+            void testDeleteAllV3NotExistingDbs() throws IOException {
+                log.info("Delete databases from an empty namespace via the deleteall V3 endpoint");
+                String responseBody = helperV3.deleteDatabases(DATABASES_DELETE_V3, helperV3.getClusterDbaAuthorization(), namespace,
+                        HttpStatus.SC_OK);
+                assertEquals("namespace " + namespace + " doesn't contain any databases and namespace specific resources", responseBody);
             }
-        });
+
+            @Test
+            @Tag("Smoke")
+            public void saveExternalDatabase() {
+                ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", namespace);
+                log.info("Save an external tarantool database");
+                ExternalDatabaseResponseV3 externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201, namespace);
+                log.info("Check the type and the password of the saved external database");
+                assertNotNull(externalDatabaseResponse.getId());
+                assertTrue(externalDatabaseResponse.isExternallyManageable());
+                String type = externalDatabaseResponse.getType();
+                assertEquals("tarantool", type);
+                Object password = externalDatabaseResponse.getConnectionProperties().getFirst().get("password");
+                assertEquals("password", password);
+                log.info("Save the same external database again and expect an idempotent response");
+                helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 200, namespace);
+            }
+
+            @Test
+            public void updateExternalDatabaseConnectionProperties() {
+                Map<String, Object> firstConnectionProperty = new HashMap<>();
+                firstConnectionProperty.put("role", Role.ADMIN.getRoleValue());
+                firstConnectionProperty.put("username", "external-user-test");
+                firstConnectionProperty.put("password", "password");
+                List<Map<String, Object>> connectionProperties = new ArrayList<>();
+                connectionProperties.add(firstConnectionProperty);
+                ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", namespace);
+                log.info("Create an external tarantool database with one connection property");
+                ExternalDatabaseResponseV3 externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, connectionProperties, "tarantool", false, 201, namespace);
+                Assertions.assertEquals(connectionProperties, externalDatabaseResponse.getConnectionProperties());
+
+                Map<String, Object> newConnectionProperty = new HashMap<>();
+                newConnectionProperty.put("role", Role.ADMIN.getRoleValue());
+                newConnectionProperty.put("username", "external-user-test2");
+                newConnectionProperty.put("password", "password2");
+                connectionProperties.add(newConnectionProperty);
+                log.info("Update the connection properties with a second entry");
+                externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, connectionProperties, "tarantool", true, 201, namespace);
+                Assertions.assertEquals(connectionProperties, externalDatabaseResponse.getConnectionProperties());
+                assertEquals(connectionProperties.get(1).get("password"), externalDatabaseResponse.getConnectionProperties().get(1).get("password"));
+
+                log.info("Save the database with an empty list without the update flag and expect the properties to stay");
+                externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", false, 200, namespace);
+                Assertions.assertEquals(connectionProperties, externalDatabaseResponse.getConnectionProperties());
+
+                log.info("Reject the connection properties update with an empty list");
+                helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", true, 400, namespace);
+            }
+
+            @Test
+            @Tag("Smoke")
+            public void getExternalDatabasesByClassifier() throws IOException {
+                ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", namespace);
+                log.info("Save an external tarantool database for the classifier lookup");
+                helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201, namespace);
+                log.info("Get the external database by classifier and check that it has no id");
+                DatabaseResponse externalDatabase = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), classifier, namespace, "tarantool", 200);
+                assertNull(externalDatabase.getId());
+                assertTrue(externalDatabase.isExternallyManageable());
+            }
+        }
+
+        @Tag("postgresql")
+        @Nested
+        @EnableExtension
+        class Postgresql extends AbstractDatabaseApiTest {
+
+            @Override
+            protected String databaseType() {
+                return POSTGRES_TYPE;
+            }
+
+            @Test
+            void testInitialScript_LO() throws IOException {
+                log.info("Create a postgres database with the CREATE_LO_EXTENSION_IF_NOT_EXISTS initial script");
+                helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "check InitialScript_LO", 201, POSTGRES_TYPE,
+                        Collections.singletonList("CREATE_LO_EXTENSION_IF_NOT_EXISTS"), namespace, false, null, null, null);
+            }
+
+            @Test
+            void testSettingsUpdateCRUDScenarios() throws IOException {
+                String authorization = helperV3.getClusterDbaAuthorization();
+                log.info("Create a postgres database without settings for the settings CRUD scenarios");
+                DatabaseResponse initialDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, namespace, false);
+                assertNull(initialDatabase.getSettings());
+
+                //create : oldExtensions=[uuid-ossp], newExtensions=[bloom, uuid-ossp, seg]
+                log.info("Create the settings with the bloom, uuid-ossp and seg extensions");
+                Map<String, Object> settingsMap = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "seg"));
+                DatabaseResponse updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", settingsMap);
+                assertEquals(settingsMap, updatedDatabase.getSettings());
+                assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
+
+                //read : oldExtensions=[bloom, uuid-ossp, seg], newExtensions=[bloom, uuid-ossp, seg]
+                log.info("Read the settings back without changes");
+                updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", settingsMap);
+                assertEquals(settingsMap, updatedDatabase.getSettings());
+                assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
+
+                //update (add new extension):  oldExtensions=[bloom, uuid-ossp, seg], newExtensions=[bloom, uuid-ossp, plpqsql], actual=[bloom, uuid-ossp, seg, plpgsql]
+                log.info("Add the plpgsql extension to the settings");
+                settingsMap = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "plpgsql"));
+                updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", settingsMap);
+                Map<String, Object> expectedSettings = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "seg", "plpgsql"));
+                assertEquals(expectedSettings, updatedDatabase.getSettings());
+                assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
+
+                //update (add new extension):  [bloom, uuid-ossp, seg, plpgsql], newExtensions=[plpqsql], actual=[bloom, uuid-ossp, seg, plpgsql]
+                log.info("Update the settings with the already present plpgsql extension");
+                settingsMap = Collections.singletonMap("pgExtensions", List.of("plpgsql"));
+                updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", settingsMap);
+                expectedSettings = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "seg", "plpgsql"));
+                assertEquals(expectedSettings, updatedDatabase.getSettings());
+                assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
+
+                //delete : oldExtensions=[bloom, uuid-ossp, seg, plpgsql], dropExtensions=[bloom, uuid-ossp, seg], actual=[plpqsql]
+                log.info("Drop the bloom, uuid-ossp and seg extensions from the settings");
+                settingsMap = Map.of("pgExtensions", Collections.singletonList("plpgsql"), "dropExtensions", List.of("bloom", "uuid-ossp", "seg"));
+                updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", settingsMap);
+                expectedSettings = Collections.singletonMap("pgExtensions", List.of("plpgsql"));
+                assertEquals(expectedSettings, updatedDatabase.getSettings());
+                assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
+            }
+
+            @Test
+            void testUpdateSettingsExtremeCases() throws IOException {
+                String authorization = helperV3.getClusterDbaAuthorization();
+                Map<String, Object> settingsMap = Collections.singletonMap("pgExtensions", Collections.singletonList("uuid-ossp"));
+                log.info("Create a postgres database with the uuid-ossp extension for the extreme settings cases");
+                DatabaseResponse databaseWithSettings = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, namespace, false, settingsMap);
+                assertEquals(settingsMap, databaseWithSettings.getSettings());
+
+                // null settings
+                log.info("Update the database with null settings");
+                DatabaseResponse updatedDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", null);
+                assertEquals(databaseWithSettings.getSettings(), updatedDatabase.getSettings());
+                assertEquals(databaseWithSettings.getClassifier(), updatedDatabase.getClassifier());
+
+                // empty settings
+                log.info("Update the database with empty settings");
+                settingsMap = Collections.emptyMap();
+                updatedDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", settingsMap);
+                assertEquals(databaseWithSettings.getSettings(), updatedDatabase.getSettings());
+                assertEquals(databaseWithSettings.getClassifier(), updatedDatabase.getClassifier());
+
+                // empty extensions
+                log.info("Drop the uuid-ossp extension by the dropExtensions settings");
+                settingsMap = Collections.singletonMap("dropExtensions", List.of("uuid-ossp"));
+                updatedDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, namespace, false, null, "dbaas_autotests", settingsMap);
+                assertEquals(Collections.singletonMap("pgExtensions", Collections.EMPTY_LIST), updatedDatabase.getSettings());
+                assertEquals(databaseWithSettings.getClassifier(), updatedDatabase.getClassifier());
+            }
+
+        }
+
+        @Tag("mongodb")
+        @Nested
+        @EnableExtension
+        class Mongodb extends AbstractDatabaseApiTest {
+
+            @Override
+            protected String databaseType() {
+                return MONGODB_TYPE;
+            }
+
+        }
+
+        @Tag("opensearch")
+        @Nested
+        @EnableExtension
+        class Opensearch extends AbstractDatabaseApiTest {
+
+            @Override
+            protected String databaseType() {
+                return OPENSEARCH_TYPE;
+            }
+
+            @Test
+            @Tag("postgresql")
+            void testDeleteAllDatabasesInNamespaceAsync_ButOpensearchSync() throws Exception {
+                String clusterDbaAuthorization = helperV3.getClusterDbaAuthorization();
+                Map<String, Object> settingsMap = Collections.singletonMap("resourcePrefix", true);
+                log.info("Create two postgresql and one opensearch database in the namespace");
+                helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, namespace, false, null);
+                helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_2", 201, POSTGRES_TYPE, null, namespace, false, null);
+                helperV3.createDatabase(clusterDbaAuthorization, "opensearch1", 201, OPENSEARCH_TYPE, null, namespace, false, null, "test-prefix", settingsMap);
+                log.info("Try to create a duplicate opensearch database and expect a server error");
+                helperV3.createDatabase(clusterDbaAuthorization, "opensearch2", 500, OPENSEARCH_TYPE, null, namespace, false, null, "test-prefix", settingsMap);
+                log.info("Check that the namespace contains the three created databases");
+                List<DatabaseV3> databasesInNamespace = helperV3.getDatabasesByNamespace(namespace);
+                assertThat(databasesInNamespace, hasSize(3));
+
+                log.info("Delete all databases in the namespace via the deleteall endpoint");
+                helperV3.deleteDatabasesAsync(DATABASES_DELETE_V3, clusterDbaAuthorization, namespace, HttpStatus.SC_OK);
+
+                log.info("Recreate the opensearch database and wait until it is the only one left in the namespace");
+                DatabaseResponse ops2 = helperV3.createDatabase(clusterDbaAuthorization, "opensearch2", 201, OPENSEARCH_TYPE, null, namespace, false, null, "test-prefix", settingsMap);
+                Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(2)).withDelay(Duration.ofSeconds(1))).run(() -> {
+                    List<DatabaseV3> databases = helperV3.getDatabasesByNamespace(namespace);
+                    assertEquals(1, databases.size());
+                    assertEquals(ops2.getId(), databases.getFirst().getId());
+                });
+            }
+        }
+
+        @Tag("arangodb")
+        @Nested
+        @EnableExtension
+        class Arangodb extends AbstractDatabaseApiTest {
+
+            @Override
+            protected String databaseType() {
+                return ARANGODB_TYPE;
+            }
+        }
+
+        @Tag("cassandra")
+        @Nested
+        @EnableExtension
+        class Cassandra extends AbstractDatabaseApiTest {
+
+            @Override
+            protected String databaseType() {
+                return CASSANDRA_TYPE;
+            }
+        }
+
+        @Tag("clickhouse")
+        @Nested
+        @EnableExtension
+        class Clickhouse extends AbstractDatabaseApiTest {
+
+            @Override
+            protected String databaseType() {
+                return CLICKHOUSE_TYPE;
+            }
+        }
+
+        @Tag("redis")
+        @Nested
+        @EnableExtension
+        class Redis extends AbstractDatabaseApiTest {
+
+            @Override
+            protected String databaseType() {
+                return REDIS_TYPE;
+            }
+        }
+
     }
 
-    @Tag("postgresql")
-    @Test
-    public void testDeleteAllDatabasesInNamespaceUsingOldAPI() throws Exception {
-        checkDatabaseDeletion(DATABASES_V3);
-    }
+    @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+    abstract static class AbstractDatabaseApiTest extends AbstractNamespaceTest {
+        protected abstract String databaseType();
 
-    @Tag("postgresql")
-    @Test
-    public void testDeleteAllDatabasesInNamespaceUsingNewAPI() throws Exception {
-        checkDatabaseDeletion(DATABASES_DELETE_V3);
-    }
+        protected final String databaseType = databaseType();
 
-    private void checkDatabaseDeletion(String URL) throws Exception {
-        String clusterDbaAuthorization = helperV3.getClusterDbaAuthorization();
-        log.info("Create database");
-        helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null);
-        List<DatabaseV3> databasesInNamespace = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
-        assertThat(databasesInNamespace, hasSize(1));
+        private String skipMessage = MessageFormat.format("No {0} adapter. Skip test.", databaseType);
+        private String multiUsersSkipMessage = MessageFormat.format("No {0} adapter with the multiusers feature. Skip test.", databaseType);
+        private String tlsSkipMessage = MessageFormat.format("No {0} adapter with the tls feature. Skip test.", databaseType);
 
-        helperV3.deleteDatabases(URL, clusterDbaAuthorization, TEST_NAMESPACE, HttpStatus.SC_OK);
-        databasesInNamespace = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
-        assertThat(databasesInNamespace, hasSize(0));
-    }
+        @BeforeAll
+        void beforeAll() {
+            DbaasHelperV3.regenerateRequestId();
+            assumeTrue(helperV3.hasAdapterOfType(databaseType), skipMessage);
+        }
 
-    @Tag("postgresql")
-    @Tag("opensearch")
-    @Test
-    public void testDeleteAllDatabasesInNamespaceAsync_ButOpensearchSync() throws Exception {
-        assumeTrue(helperV3.hasAdapterOfType(OPENSEARCH_TYPE));
-        String clusterDbaAuthorization = helperV3.getClusterDbaAuthorization();
-        Map<String, Object> settingsMap = Collections.singletonMap("resourcePrefix", true);
-        helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null);
-        helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_2", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null);
-        helperV3.createDatabase(clusterDbaAuthorization, "opensearch1", 201, OPENSEARCH_TYPE, null, TEST_NAMESPACE, false, null, "test-prefix", settingsMap);
-        helperV3.createDatabase(clusterDbaAuthorization, "opensearch2", 500, OPENSEARCH_TYPE, null, TEST_NAMESPACE, false, null, "test-prefix", settingsMap);
-        List<DatabaseV3> databasesInNamespace = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
-        assertThat(databasesInNamespace, hasSize(3));
+        @Test
+        @Tag("Smoke")
+        void testDatabaseCreatedAndConnecting() throws IOException {
+            log.info("Create a {} database in a fresh test namespace", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            assertThat(created_1, inNamespace(namespace));
+            assertFalse(created_1.isExternallyManageable());
+            log.info("Check the connection to the created {} database", databaseType);
+            helperV3.checkConnection(false, created_1, "test_data", "test_data", false);
+        }
 
-        helperV3.deleteDatabasesAsync(DATABASES_DELETE_V3, clusterDbaAuthorization, TEST_NAMESPACE, HttpStatus.SC_OK);
+        @Test
+        void testDBCreationWithSettings() throws IOException {
+            Map<String, Object> settingsMap = Collections.singletonMap("autotestsSettings", true);
+            log.info("Create a {} database with the autotests settings", databaseType);
+            DatabaseResponse databaseWithSettings = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false, settingsMap);
+            log.info("Check that the created {} database echoes back the requested settings", databaseType);
+            assertEquals(helperV3.applySettings(databaseType, settingsMap), databaseWithSettings.getSettings());
+        }
 
-        DatabaseResponse ops2 = helperV3.createDatabase(clusterDbaAuthorization, "opensearch2", 201, OPENSEARCH_TYPE, null, TEST_NAMESPACE, false, null, "test-prefix", settingsMap);
-        Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(2)).withDelay(Duration.ofSeconds(1))).run(() -> {
-            List<DatabaseV3> databases = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
+        @Test
+        @Tag("Smoke")
+        void testUserCreatedAndConnecting() throws IOException {
+            String logicalUserId = "test-service";
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
+            log.info("Create a {} database for the user creation test", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            log.info("Check the connection to the {} database created for the user test", databaseType);
+            helperV3.checkConnection(false, created_1, null, null, false);
+
+            Map<String, Object> classifier = new ClassifierBuilder().test("dbaas_auto_test_1").ns(namespace).build();
+            GetOrCreateUserRequest getOrCreateUserRequest = new GetOrCreateUserRequest(classifier, logicalUserId,
+                    databaseType, null, "test", Role.ADMIN.getRoleValue());
+            log.info("Create an admin user in the {} database created for the user test", databaseType);
+            GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
+            log.info("Check the connection with the user created for the user test");
+            helperV3.checkConnectionUser(false, databaseType, user, "test", "test");
+
+            log.info("Rotate the password of the user created for the user test");
+            UserOperationRequest userOperationRequest = new UserOperationRequest();
+            userOperationRequest.setUserId(user.getUserId());
+            Map<String, Object> newConnectionProperties = helperV3.rotateUserPassword(USER_API_URL_V3 + "/rotate-password",
+                            userOperationRequest,
+                            200)
+                    .getConnectionProperties();
+            assertNotEquals(user.getConnectionPropertyAsString("password"), newConnectionProperties.get("password"));
+
+            log.info("Check the connection with the rotated password");
+            GetOrCreateUserResponse userWithNewPassword = new GetOrCreateUserResponse();
+            userWithNewPassword.setConnectionProperties(newConnectionProperties);
+            helperV3.checkConnectionUser(false, databaseType, userWithNewPassword, "test", "test");
+
+            log.info("Delete the user created for the user test");
+            helperV3.deleteUser(USER_API_URL_V3, userOperationRequest, 200);
+            log.info("Check that the connection with the deleted user is no longer possible");
+            helperV3.checkConnectionUser(true, databaseType, userWithNewPassword, null, null);
+        }
+
+        @Test
+        void testGetAllDatabasesInNamespaceWithCreatedUsers() throws IOException {
+            String logicalUserId = "test-service";
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
+            log.info("Create a {} database for the namespace listing test", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            log.info("Check the connection to the {} database created for the listing test", databaseType);
+            helperV3.checkConnection(false, created_1, null, null, false);
+
+            Map<String, Object> classifier = new ClassifierBuilder().test("dbaas_auto_test_1").ns(namespace).build();
+            GetOrCreateUserRequest getOrCreateUserRequest = new GetOrCreateUserRequest(classifier, logicalUserId,
+                    databaseType, null, "test", Role.ADMIN.getRoleValue());
+            log.info("Create a user in the {} database created for the listing test", databaseType);
+            GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
+
+            log.info("Check the connection with the user created for the listing test");
+            helperV3.checkConnectionUser(false, databaseType, user, "test", "test");
+
+            log.info("List the namespace databases and check the user connection properties");
+            Request request = helperV3.createRequest(String.format(DATABASES_LIST_V3, namespace),
+                    helperV3.getClusterDbaAuthorization(),
+                    null,
+                    "GET");
+            List<DatabaseV3> databases = Arrays.asList(helperV3.executeRequest(request, DatabaseV3[].class, 200));
             assertEquals(1, databases.size());
-            assertEquals(ops2.getId(), databases.getFirst().getId());
-        });
-    }
+            Optional<Map<String, Object>> connections = databases.getFirst().getConnectionProperties().stream()
+                    .filter(u -> u.get("logicalUserId") != null && u.get("logicalUserId").equals(logicalUserId))
+                    .findFirst();
+            assertTrue(connections.isPresent());
+        }
 
-    @Tag("postgresql")
-    @Test
-    @Tag("Smoke")
-    public void createPostgresDbInRegisteredPhysDb() throws IOException {
-        List<DatabaseResponse> createdPostgresDb = createDatabaseInRegisteredPhysDb("postgresql");
-        log.debug("Was created {} postgres database one in each clusters", createdPostgresDb.size());
-        log.debug("Check connect on created postgres databases");
-        createdPostgresDb.forEach(database -> {
+        @Test
+        void testUserDeletedAfterDatabaseDeletion() throws IOException {
+            String logicalUserId = "test-service";
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
+            log.info("Create a {} database for the user deletion on database deletion test", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            log.info("Check the connection to the {} database created for the user deletion test", databaseType);
+            helperV3.checkConnection(false, created_1, null, null, false);
+
+            Map<String, Object> classifier = new ClassifierBuilder().test("dbaas_auto_test_1").ns(namespace).build();
+            GetOrCreateUserRequest getOrCreateUserRequest = new GetOrCreateUserRequest(classifier, logicalUserId,
+                    databaseType, null, "test", Role.ADMIN.getRoleValue());
+            log.info("Create a user in the {} database created for the user deletion test", databaseType);
+            GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
+
+            log.info("Check the connection with the user created for the user deletion test");
+            helperV3.checkConnectionUser(false, databaseType, user, "test", "test");
+
+            log.info("Delete all databases in the namespace of the user deletion test");
+            helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), namespace);
+
+            log.info("Check that the user password rotation fails after the database deletion");
+            UserOperationRequest userOperationRequest = new UserOperationRequest();
+            userOperationRequest.setUserId(user.getUserId());
+            helperV3.rotateUserPasswordWithException(USER_API_URL_V3 + "/rotate-password",
+                    userOperationRequest,
+                    404);
+
+            log.info("Check that the connection to the user fails after the database deletion");
+            helperV3.checkConnectionUser(true, databaseType, user, null, null);
+
+            log.info("Delete the user after the database deletion");
+            helperV3.deleteUser(USER_API_URL_V3, userOperationRequest, 204);
+        }
+
+        @Test
+        void testUsersRestore() throws IOException {
+            assumeTrue(helperV3.isAdapterSupportMultiusersFeature(databaseType), multiUsersSkipMessage);
+            log.info("Create a {} database for the user restore test", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            log.info("Check the connection to the {} database created for the user restore test", databaseType);
+            helperV3.checkConnection(false, created_1, null, null, false);
+
+            Map<String, Object> classifier = new ClassifierBuilder().test("dbaas_auto_test_1").ns(namespace).build();
+            RestoreUsersRequest restoreUsersRequest = new RestoreUsersRequest(classifier, databaseType);
+            log.info("Restore the users of the {} database created for the user restore test", databaseType);
+            Request restoreUsers = helperV3.createRequest("api/v3/dbaas/users/restore", helperV3.getClusterDbaAuthorization(), restoreUsersRequest, "POST");
+            log.debug("Restore users request: {}", restoreUsers);
+            helperV3.executeRequest(restoreUsers, SuccessfulRestoreUsersResponse.class, 200);
+            log.info("Check the connection to the restored users");
+
+            helperV3.checkConnection(false, created_1, null, null, false);
+        }
+
+        @Test
+        void testDatabaseCreatedAndConnectingWithK8sToken() throws IOException {
+            log.info("Create database with k8s token");
+
+            var req = DatabaseCreateRequestV3.builder(new ClassifierBuilder().test("dbaas_auto_test_1").ns(kubernetesClient.getNamespace()).build(), databaseType)
+                    .originService(TEST_MICROSERVICE_NAME)
+                    .build();
             try {
-                if (database.getPhysicalDatabaseId().equals("defaultPostgresAdapter")) {
-                    helperV3.checkConnectionPostgres(database);
-                } else {
-                    helperV3.checkConnectNotDefaultPostgresCluster(database);
+                DatabaseResponse created_1 = helperV3.createDatabaseWithK8sToken(kubernetesServiceAccountToken, String.format(DATABASES_V3, kubernetesClient.getNamespace()), req, 201);
+
+                assertThat(created_1, inNamespace(kubernetesClient.getNamespace()));
+                assertFalse(created_1.isExternallyManageable());
+                log.info("Check connection to created with k8s token database");
+                helperV3.checkConnection(false, created_1, null, null, false);
+            } finally {
+                helperV3.deleteDatabasesByClassifierRequestWithK8sToken(kubernetesServiceAccountToken, kubernetesClient.getNamespace(), databaseType, req.getClassifier(), 200);
+            }
+        }
+
+        @Test
+        void testDatabaseCreatedWithNamePrefix() throws IOException {
+            String namePrefix = "dbaasautotests";
+            DatabaseResponse db = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false, null, namePrefix, null);
+            helperV3.checkConnection(false, db, null, null, false);
+            assertThat(db, inNamespace(namespace));
+            assertTrue(db.getName().contains(namePrefix));
+        }
+
+        @Test
+        @Tag("Smoke")
+        void testDbsCleaned() throws IOException {
+            log.info("Create a {} database for the cleaned databases check", databaseType);
+            DatabaseResponse db = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            log.info("Check the connection to the {} database created for the cleaned check", databaseType);
+            helperV3.checkConnection(false, db, null, null, false);
+            assertThat(db, inNamespace(namespace));
+            log.info("Delete all databases in the namespace of the cleaned check");
+            helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), namespace);
+            log.info("Check that the connection to the deleted {} database is no longer possible", databaseType);
+            helperV3.checkConnection(true, db, null, null, true);
+        }
+
+        @Test
+        void testAsyncDatabaseCreatedAndConnecting() throws IOException {
+            String requestUrl = String.format(DATABASES_V3_ASYNC, namespace);
+            log.info("Send the asynchronous create request for a {} database", databaseType);
+            Request createDbRequest = helperV3.createDatabaseRequest(requestUrl, helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", databaseType, namespace);
+            log.debug("Async create request: {}", createDbRequest);
+            Response response = helperV3.executeRequest(createDbRequest, 202);
+            response.close();
+
+            log.info("Wait for the asynchronous creation of the {} database", databaseType);
+            DatabaseResponse createdResponse = Failsafe.with(AWAIT_DB_CREATION_RETRY_POLICY).get(() ->
+                    helperV3.createDatabase(requestUrl, helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 200,
+                            databaseType, null, namespace, false, null, null, null));
+            assertThat(createdResponse, inNamespace(namespace));
+            log.info("Check the connection to the asynchronously created {} database", databaseType);
+            helperV3.checkConnection(false, createdResponse, null, null, false);
+        }
+
+        @Test
+        void testDeleteAllDatabasesInNamespace_OldApi() throws Exception {
+            checkDatabaseDeletion(DATABASES_V3, "databases");
+        }
+
+        @Test
+        void testDeleteAllDatabasesInNamespace_NewApi() throws Exception {
+            checkDatabaseDeletion(DATABASES_DELETE_V3, "deleteall");
+        }
+
+        private void checkDatabaseDeletion(String url, String apiName) throws Exception {
+            String clusterDbaAuthorization = helperV3.getClusterDbaAuthorization();
+            log.info("Create a {} database for the delete-all check via the {} API", databaseType, apiName);
+            helperV3.createDatabase(clusterDbaAuthorization, "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            List<DatabaseV3> databasesInNamespace = helperV3.getDatabasesByNamespace(namespace);
+            assertThat(databasesInNamespace, hasSize(1));
+
+            log.info("Delete all databases in the namespace via the {} API and check that the namespace is empty", apiName);
+            helperV3.deleteDatabases(url, clusterDbaAuthorization, namespace, HttpStatus.SC_OK);
+            databasesInNamespace = helperV3.getDatabasesByNamespace(namespace);
+            assertThat(databasesInNamespace, hasSize(0));
+        }
+
+        @Test
+        void testDuplicateNotCreated() throws IOException {
+            String authorization = helperV3.getClusterDbaAuthorization();
+            log.info("Create two {} databases in a fresh test namespace", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            assertThat(created_1, inNamespace(namespace));
+            log.info("Create the second {} database", databaseType);
+            DatabaseResponse created_2 = helperV3.createDatabase(authorization, "dbaas_auto_test_2", 201, databaseType, null, namespace, false);
+            assertThat(created_2, inNamespace(namespace));
+            log.info("Repeat the creation of the second {} database and expect a 200 response", databaseType);
+            DatabaseResponse duplicate_2 = helperV3.createDatabase(authorization, "dbaas_auto_test_2", 200, databaseType, null, namespace, false);
+            assertThat(duplicate_2, inNamespace(namespace));
+            log.info("Check that the repeated creation returns the same name without an id");
+            assertEquals(created_2.getName(), duplicate_2.getName());
+            assertNull(duplicate_2.getId());
+        }
+
+        @Test
+        void testGetNotExistingDb() throws IOException {
+            String authorization = helperV3.getClusterDbaAuthorization();
+            Map<String, Object> classifierMap = new HashMap<>();
+            classifierMap.put("dbClassifier", "default");
+            classifierMap.put("scope", "service");
+            classifierMap.put("microserviceName", "non-existing-service");
+            classifierMap.put("namespace", namespace);
+
+            log.info("Get a not existing {} database by classifier and expect a 404 response", databaseType);
+            try (Response response = helperV3.getDatabaseByClassifierAsResponse(authorization, classifierMap, databaseType, namespace)) {
+                assertThat(response.code(), is(404));
+            }
+        }
+
+        @Test
+        void testListDatabasesAnyType() throws IOException {
+            ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external_any_type", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", namespace);
+            log.info("Create an external and a {} database in a fresh test namespace", databaseType);
+            helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201, namespace);
+            helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_any_type", 201, databaseType, null, namespace, false);
+            List<DatabaseV3> databasesByNamespace = helperV3.getDatabasesByNamespace(namespace);
+            List<DatabaseV3> databasesByExternalClassifier = filterByClassifierField(databasesByNamespace, "typeLogicalDb", "external_any_type");
+            log.info("External databases in the namespace: {}", databasesByExternalClassifier);
+            List<DatabaseV3> databasesByAutotestClassifier = filterByClassifierField(databasesByNamespace, "dbaas_auto_test", "dbaas_auto_test_any_type");
+            log.info("Internal databases in the namespace: {}", databasesByAutotestClassifier);
+            databasesByExternalClassifier.addAll(databasesByAutotestClassifier);
+            List<DatabaseV3> notMarkedForDrop = filterByMarkNotForDrop(databasesByExternalClassifier);
+            log.info("Databases not marked for the drop: {}", notMarkedForDrop);
+            assertThat(notMarkedForDrop, hasSize(2));
+            Map<String, List<DatabaseV3>> databaseMap = notMarkedForDrop.stream().collect(Collectors.groupingBy(DatabaseV3::getType));
+            assertThat(databaseMap.get(databaseType), hasSize(1));
+            assertThat(databaseMap.get("tarantool"), hasSize(1));
+            assertFalse(databaseMap.get(databaseType).getFirst().isExternallyManageable());
+            assertTrue(databaseMap.get("tarantool").getFirst().isExternallyManageable());
+        }
+
+        @Test
+        void checkResponseWhenDatabaseIsNotCreatedYet() throws InterruptedException, ExecutionException {
+            Integer[] expectedAnswers = {201, 202};
+
+            log.info("Send three concurrent create requests for the same {} database", databaseType);
+            String requestId = DbaasHelperV3.getRequestId();
+            Callable<DatabaseResponse> requestToCreateDb = () -> {
+                DbaasHelperV3.setRequestId(requestId);
+                return helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", databaseType, null, namespace, false, expectedAnswers);
+            };
+            List<Callable<DatabaseResponse>> callableTasks = new ArrayList<>();
+            callableTasks.add(requestToCreateDb);
+            callableTasks.add(requestToCreateDb);
+            callableTasks.add(requestToCreateDb);
+
+            List<Future<DatabaseResponse>> receivedDatabases;
+            try (ExecutorService es = Executors.newFixedThreadPool(3)) {
+                receivedDatabases = es.invokeAll(callableTasks);
+            }
+            log.info("Check that all concurrent create requests received the connection properties");
+            for (Future<DatabaseResponse> db : receivedDatabases) {
+                DatabaseResponse currentDatabase = db.get();
+                assertThat(currentDatabase.getConnectionProperties(), is(notNullValue()));
+            }
+
+        }
+
+        @Test
+        void testDatabaseCreatedAndConnectionContainsTLS() throws IOException {
+            assumeTrue(helperV3.isAdapterSupportTLSFeature(databaseType), tlsSkipMessage);
+            log.info("Create a {} database for the TLS connection properties check", databaseType);
+            DatabaseResponse created_1 = helperV3.createDatabase(helperV3.getClusterDbaAuthorization(), "dbaas_auto_test_1", 201, databaseType, null, namespace, false);
+            log.info("Check the tls flag in the connection properties of the {} database", databaseType);
+            assertEquals(Boolean.TRUE, created_1.getConnectionProperties().get(TLS_FEATURE));
+            log.info("Check the connection to the created {} database", databaseType);
+            helperV3.checkConnection(false, created_1, null, null, false);
+        }
+
+        private List<DatabaseV3> filterByClassifierField(List<DatabaseV3> databases, String key, String value) {
+            return databases.stream().filter(database -> database.getClassifier().containsKey(key) && database.getClassifier().get(key).equals(value))
+                    .collect(Collectors.toList());
+        }
+
+        private List<DatabaseV3> filterByMarkNotForDrop(List<DatabaseV3> databases) {
+            return databases.stream().filter(database -> !database.getClassifier().containsKey("MARKED_FOR_DROP")).collect(Collectors.toList());
+        }
+
+        @NotNull
+        private BaseMatcher<DatabaseResponse> inNamespace(final String namespace) {
+            return new BaseMatcher<>() {
+                @Override
+                public void describeTo(Description description) {
+                    description.appendText("should have namespace " + namespace);
                 }
-            } catch (SQLException | CannotConnect | IOException e) {
-                fail("Error occurred during connect to db " + database + " : " + e.getMessage());
-            }
-        });
-        cleanDbs();
-        log.debug("Check that postgres databases was deleted and connect does not exists");
-        createdPostgresDb.forEach(database -> {
-            try {
-                log.info("Check that db {} was removed", database);
-                if (database.getPhysicalDatabaseId().equals("defaultPostgresAdapter")) {
-                    helperV3.checkConnectionPostgres(database);
-                    fail(String.format("Database %s should be deleted not it was not", database));
-                } else {
-                    helperV3.checkConnectNotDefaultPostgresCluster(database);
-                    fail(String.format("Database %s should be deleted not it was not", database.getName()));
+
+                @Override
+                public boolean matches(Object o) {
+                    return ((DatabaseResponse) o).getNamespace().equals(namespace);
                 }
-            } catch (SQLException | CannotConnect | IOException e) {
-                assertFalse(e.getMessage().equals(String.format("Database %s should be deleted not it was not", database)) ||
-                        e.getMessage().equals(String.format("Database %s should be deleted not it was not", database.getName())));
-                log.debug("Database {} was successfully deleted", database);
-            }
-        });
-    }
-
-    @NotNull
-    private List<DatabaseResponse> createDatabaseInRegisteredPhysDb(String typeDb) throws IOException {
-        RegisteredPhysicalDatabasesDTOV3 registeredPhysicalDatabases = helperV3.getRegisteredPhysicalDatabases(typeDb, helperV3.getClusterDbaAuthorization(), 200);
-        List<DatabaseResponse> createdDatabases = createDatabaseInOtherPhysicalDatabases(registeredPhysicalDatabases, typeDb);
-        int expectCountCreatedDb = registeredPhysicalDatabases.getIdentified().size();
-        assertThat(createdDatabases, hasSize(expectCountCreatedDb));
-        long countAdapters = createdDatabases.stream().map(DatabaseResponse::getPhysicalDatabaseId).distinct().count();
-        assertEquals(countAdapters, createdDatabases.size());
-        return createdDatabases;
-    }
-
-    private List<DatabaseResponse> createDatabaseInOtherPhysicalDatabases(RegisteredPhysicalDatabasesDTOV3 physicalDatabases, String dbType) throws IOException {
-        List<DatabaseResponse> createdDb = new ArrayList<>();
-        for (String physicalDatabaseId : physicalDatabases.getIdentified().keySet()) {
-            log.debug("Create database in cluster");
-            DatabaseCreateRequestV3.DatabaseCreateRequestV3Builder request = getPrimaryCreateDbRequestBuilder(dbType, "physical database identifier " + physicalDatabaseId)
-                    .physicalDatabaseId(physicalDatabaseId)
-                    .namePrefix("dbaas_autotests");
-            request.originService(TEST_MICROSERVICE_NAME);
-            request.physicalDatabaseId(physicalDatabaseId);
-            request.originService(TEST_MICROSERVICE_NAME);
-            DatabaseResponse clusterDb = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), request.build(), 201);
-            createdDb.add(clusterDb);
-        }
-        return createdDb;
-
-    }
-
-
-    @Tag("mongodb")
-    @Test
-    public void mongoTestDuplicateNotCreated() throws IOException {
-        assumeTrue(helperV3.hasAdapterOfType(MONGODB_TYPE), "No mongo adapter. Skip test.");
-        testDuplicateNotCreated(MONGODB_TYPE);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void postgresTestDuplicateNotCreated() throws IOException {
-        testDuplicateNotCreated(POSTGRES_TYPE);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void postgresTestInitialScript_LO() throws IOException {
-        log.info("Create databases");
-        log.info("Create first");
-        DatabaseCreateRequestV3.DatabaseCreateRequestV3Builder request = getPrimaryCreateDbRequestBuilder(POSTGRES_TYPE, "check InitialScript_LO")
-                .initScriptIdentifiers(Collections.singletonList("CREATE_LO_EXTENSION_IF_NOT_EXISTS"))
-                .originService(TEST_MICROSERVICE_NAME)
-                .namePrefix("dbaas_autotests");
-        helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), request.build(), 201);
-    }
-
-    @Test
-    @Tag("Smoke")
-    public void saveExternalDatabase() {
-        ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", TEST_NAMESPACE);
-        ExternalDatabaseResponseV3 externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201);
-        assertNotNull(externalDatabaseResponse.getId());
-        assertTrue(externalDatabaseResponse.isExternallyManageable());
-        String type = externalDatabaseResponse.getType();
-        assertEquals("tarantool", type);
-        Object password = externalDatabaseResponse.getConnectionProperties().getFirst().get("password");
-        assertEquals("password", password);
-        helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 200);
-    }
-
-    @Test
-    public void updateExternalDatabaseConnectionProperties() {
-        Map<String, Object> firstConnectionProperty = new HashMap<>();
-        firstConnectionProperty.put("role", Role.ADMIN.getRoleValue());
-        firstConnectionProperty.put("username", "external-user-test");
-        firstConnectionProperty.put("password", "password");
-        List<Map<String, Object>> connectionProperties = new ArrayList<>();
-        connectionProperties.add(firstConnectionProperty);
-        ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", TEST_NAMESPACE);
-        ExternalDatabaseResponseV3 externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, connectionProperties, "tarantool", false, 201);
-        Assertions.assertEquals(connectionProperties, externalDatabaseResponse.getConnectionProperties());
-
-        Map<String, Object> newConnectionProperty = new HashMap<>();
-        newConnectionProperty.put("role", Role.ADMIN.getRoleValue());
-        newConnectionProperty.put("username", "external-user-test2");
-        newConnectionProperty.put("password", "password2");
-        connectionProperties.add(newConnectionProperty);
-        externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, connectionProperties, "tarantool", true, 201);
-        Assertions.assertEquals(connectionProperties, externalDatabaseResponse.getConnectionProperties());
-        assertEquals(connectionProperties.get(1).get("password"), externalDatabaseResponse.getConnectionProperties().get(1).get("password"));
-
-        externalDatabaseResponse = helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", false, 200);
-        Assertions.assertEquals(connectionProperties, externalDatabaseResponse.getConnectionProperties());
-
-        helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, new ArrayList<>(), "tarantool", true, 400);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void getListDatabasesAnyType() throws IOException {
-        ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external_any_type", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", TEST_NAMESPACE);
-        helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201);
-        helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_any_type"), 201);
-        List<DatabaseV3> databasesByNamespace = helperV3.getDatabasesByNamespace(TEST_NAMESPACE);
-        List<DatabaseV3> databasesByExternalClassifier = filterByClassifierField(databasesByNamespace, "typeLogicalDb", "external_any_type");
-        log.info("external databases:{}", databasesByExternalClassifier);
-        List<DatabaseV3> databasesByAutotestClassifier = filterByClassifierField(databasesByNamespace, "dbaas_auto_test", "dbaas_auto_test_any_type");
-        log.info("internal databases:{}", databasesByAutotestClassifier);
-        databasesByExternalClassifier.addAll(databasesByAutotestClassifier);
-        List<DatabaseV3> notMarkedForDrop = filterByMarkNotForDrop(databasesByExternalClassifier);
-        log.info("databases not marked for the drop:{}", notMarkedForDrop);
-        assertThat(notMarkedForDrop, hasSize(2));
-        Map<String, List<DatabaseV3>> databaseMap = notMarkedForDrop.stream().collect(Collectors.groupingBy(DatabaseV3::getType));
-        assertThat(databaseMap.get(POSTGRES_TYPE), hasSize(1));
-        assertThat(databaseMap.get("tarantool"), hasSize(1));
-        assertFalse(databaseMap.get(POSTGRES_TYPE).getFirst().isExternallyManageable());
-        assertTrue(databaseMap.get("tarantool").getFirst().isExternallyManageable());
-    }
-
-    private List<DatabaseV3> filterByClassifierField(List<DatabaseV3> databases, String key, String value) {
-        return databases.stream().filter(database -> database.getClassifier().containsKey(key) && database.getClassifier().get(key).equals(value)
-        ).collect(Collectors.toList());
-    }
-
-    private List<DatabaseV3> filterByMarkNotForDrop(List<DatabaseV3> databases) {
-        return databases.stream().filter(database -> !database.getClassifier().containsKey("MARKED_FOR_DROP")).collect(Collectors.toList());
-    }
-
-    @Test
-    @Tag("Smoke")
-    public void getExternalDatabasesByClassifier() throws IOException {
-        ImmutableMap<String, Object> classifier = ImmutableMap.of("typeLogicalDb", "external", "microserviceName", TEST_MICROSERVICE_NAME, "scope", "service", "namespace", TEST_NAMESPACE);
-        helperV3.saveExternalDatabase(EXTERNALLY_MANAGEABLE_V3, classifier, "tarantool", 201);
-        DatabaseResponse externalDatabase = helperV3.getDatabaseByClassifierAsPOJO(helperV3.getClusterDbaAuthorization(), classifier, TEST_NAMESPACE, "tarantool", 200);
-        assertNull(externalDatabase.getId());
-        assertTrue(externalDatabase.isExternallyManageable());
-    }
-
-    private void testDuplicateNotCreated(String type) throws IOException {
-        String authorization = helperV3.getClusterDbaAuthorization();
-        log.info("Create databases");
-        log.info("Create first");
-        DatabaseResponse created_1 = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 201, type, null, TEST_NAMESPACE, false);
-        assertThat(created_1, inNamespace(TEST_NAMESPACE));
-        log.info("Create second");
-        DatabaseResponse created_2 = helperV3.createDatabase(authorization, "dbaas_auto_test_2", 201, type, null, TEST_NAMESPACE, false);
-        assertThat(created_2, inNamespace(TEST_NAMESPACE));
-        log.info("Create second copy");
-        DatabaseResponse duplicate_2 = helperV3.createDatabase(authorization, "dbaas_auto_test_2", 200, type, null, TEST_NAMESPACE, false);
-        assertThat(duplicate_2, inNamespace(TEST_NAMESPACE));
-        log.info("Check created databases");
-        assertEquals(created_2.getName(), duplicate_2.getName());
-        log.info("Check duplicate database pojo does not contain id");
-        assertNull(duplicate_2.getId());
-    }
-
-    @Tag("mongodb")
-    @Tag("postgresql")
-    @Test
-    public void testGetNotExistingDBs() throws IOException {
-        this.testGetNotExistingDB(MONGODB_TYPE);
-        this.testGetNotExistingDB(POSTGRES_TYPE);
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void testDBCreationWithSettings() throws IOException {
-        String authorization = helperV3.getClusterDbaAuthorization();
-        Map<String, Object> settingsMap = Collections.singletonMap("pgExtensions", Collections.singletonList("uuid-ossp"));
-        log.info("Create database");
-        DatabaseResponse databaseWithSettings = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false, settingsMap);
-        log.info("Check settings");
-        assertEquals(settingsMap, databaseWithSettings.getSettings());
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void testSettingsUpdateCRUDScenarios() throws IOException {
-        String authorization = helperV3.getClusterDbaAuthorization();
-        log.info("Create database");
-        DatabaseResponse initialDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false);
-        assertNull(initialDatabase.getSettings());
-
-        //create : oldExtensions=[uuid-ossp], newExtensions=[bloom, uuid-ossp, seg]
-        Map<String, Object> settingsMap = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "seg"));
-        DatabaseResponse updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        assertEquals(settingsMap, updatedDatabase.getSettings());
-        assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
-
-        //read : oldExtensions=[bloom, uuid-ossp, seg], newExtensions=[bloom, uuid-ossp, seg]
-        updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        assertEquals(settingsMap, updatedDatabase.getSettings());
-        assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
-
-        //update (add new extension):  oldExtensions=[bloom, uuid-ossp, seg], newExtensions=[bloom, uuid-ossp, plpqsql], actual=[bloom, uuid-ossp, seg, plpgsql]
-        settingsMap = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "plpgsql"));
-        updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        Map<String, Object> expectedSettings = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "seg", "plpgsql"));
-        assertEquals(expectedSettings, updatedDatabase.getSettings());
-        assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
-
-        //update (add new extension):  [bloom, uuid-ossp, seg, plpgsql], newExtensions=[plpqsql], actual=[bloom, uuid-ossp, seg, plpgsql]
-        settingsMap = Collections.singletonMap("pgExtensions", List.of("plpgsql"));
-        updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        expectedSettings = Collections.singletonMap("pgExtensions", Arrays.asList("bloom", "uuid-ossp", "seg", "plpgsql"));
-        assertEquals(expectedSettings, updatedDatabase.getSettings());
-        assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
-
-        //delete : oldExtensions=[bloom, uuid-ossp, seg, plpgsql], dropExtensions=[bloom, uuid-ossp, seg], actual=[plpqsql]
-        settingsMap = Map.of("pgExtensions", Collections.singletonList("plpgsql"), "dropExtensions", List.of("bloom", "uuid-ossp", "seg"));
-        updatedDatabase = helperV3.updateDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        expectedSettings = Collections.singletonMap("pgExtensions", List.of("plpgsql"));
-        assertEquals(expectedSettings, updatedDatabase.getSettings());
-        assertEquals(initialDatabase.getClassifier(), updatedDatabase.getClassifier());
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void testUpdateSettingsExtremeCases() throws IOException {
-        String authorization = helperV3.getClusterDbaAuthorization();
-        log.info("Create database");
-        Map<String, Object> settingsMap = Collections.singletonMap("pgExtensions", Collections.singletonList("uuid-ossp"));
-        DatabaseResponse databaseWithSettings = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 201, POSTGRES_TYPE, null, TEST_NAMESPACE, false, settingsMap);
-        assertEquals(settingsMap, databaseWithSettings.getSettings());
-
-        //null
-        settingsMap = null;
-        DatabaseResponse updatedDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        assertEquals(databaseWithSettings.getSettings(), updatedDatabase.getSettings());
-        assertEquals(databaseWithSettings.getClassifier(), updatedDatabase.getClassifier());
-
-        // empty settings
-        settingsMap = Collections.emptyMap();
-        updatedDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        assertEquals(databaseWithSettings.getSettings(), updatedDatabase.getSettings());
-        assertEquals(databaseWithSettings.getClassifier(), updatedDatabase.getClassifier());
-
-        // empty extensions
-        settingsMap = Collections.singletonMap("dropExtensions", List.of("uuid-ossp"));
-        updatedDatabase = helperV3.createDatabase(authorization, "dbaas_auto_test_1", 200, POSTGRES_TYPE, null, TEST_NAMESPACE, false, null, "dbaas_autotests", settingsMap);
-        assertEquals(Collections.singletonMap("pgExtensions", Collections.EMPTY_LIST), updatedDatabase.getSettings());
-        assertEquals(databaseWithSettings.getClassifier(), updatedDatabase.getClassifier());
-    }
-
-    @Tag("postgresql")
-    @Test
-    @Tag("Smoke")
-    public void testGetAllPhysicalDBs() throws IOException {
-        String authorization = helperV3.getClusterDbaAuthorization();
-        Map<String, PhysicalDatabaseRegistrationResponseDTOV3> registeredPhysicalDatabases =
-                helperV3.getRegisteredPhysicalDatabases("all", authorization, 200)
-                        .getIdentified();
-        assertFalse(registeredPhysicalDatabases.isEmpty(), "No physical db returned");
-        List<PhysicalDatabaseRegistrationResponseDTO> postgresqlDbs = registeredPhysicalDatabases.values().stream().filter(db -> Objects.equals(db.getType(), "postgresql")).collect(Collectors.toList());
-        assertFalse(postgresqlDbs.isEmpty(), "At least 1 postgresql db must be returned");
-    }
-
-    @Tag("postgresql")
-    @Test
-    public void checkResponseWhenDatabaseIsNotCreatedYet() throws InterruptedException, ExecutionException {
-        Integer[] expectedAnswers = {201, 202};
-
-        String requestId = DbaasHelperV3.getRequestId();
-        Callable<DatabaseResponse> requestToCreateDb = () -> {
-            DbaasHelperV3.setRequestId(requestId);
-            return helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), expectedAnswers);
-        };
-        List<Callable<DatabaseResponse>> callableTasks = new ArrayList<>();
-        callableTasks.add(requestToCreateDb);
-        callableTasks.add(requestToCreateDb);
-        callableTasks.add(requestToCreateDb);
-
-        List<Future<DatabaseResponse>> receivedDatabases;
-        try (ExecutorService es = Executors.newFixedThreadPool(3)) {
-            receivedDatabases = es.invokeAll(callableTasks);
-        }
-        for (Future<DatabaseResponse> db : receivedDatabases) {
-            DatabaseResponse currentDatabase = db.get();
-            assertThat(currentDatabase.getConnectionProperties(), is(notNullValue()));
+            };
         }
     }
 
-    @Tag("postgresql")
-    @Test
-    @Tag("Smoke")
-    void UserCreatedAndConnectingTest() throws IOException, SQLException {
-        String logicalUserId = "test-service";
-        DatabaseCreateRequestV3 createDbRequest = getSimplePostgresCreateRequest("dbaas_auto_test_1");
-        DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
-        log.info("Create database");
-        log.info("Check connection to created database");
-        helperV3.checkConnectionPostgres(created_1);
+    abstract static class AbstractNamespaceTest {
+        protected String namespace;
 
-        Map<String, Object> classifier = createDbRequest.getClassifier();
-        GetOrCreateUserRequest getOrCreateUserRequest = new GetOrCreateUserRequest(classifier, logicalUserId,
-                POSTGRES_TYPE, null, "test", Role.ADMIN.getRoleValue());
-        log.info("Creating user");
-        GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
-        log.info("Check connections to user");
-        helperV3.checkConnectionPostgresUser(user, "test", "test");
-
-        log.info("Rotate user password");
-        UserOperationRequest userOperationRequest = new UserOperationRequest();
-        userOperationRequest.setUserId(user.getUserId());
-        Map<String, Object> newConnectionProperties = helperV3.rotateUserPassword(USER_API_URL_V3 + "/rotate-password",
-                        userOperationRequest,
-                        200)
-                .getConnectionProperties();
-        assertNotEquals(user.getConnectionPropertyAsString("password"), newConnectionProperties.get("password"));
-
-        log.info("Check connections to user with new password");
-        GetOrCreateUserResponse userWithNewPassword = new GetOrCreateUserResponse();
-        userWithNewPassword.setConnectionProperties(newConnectionProperties);
-        helperV3.checkConnectionPostgresUser(userWithNewPassword, "test", "test");
-
-        log.info("Delete created user");
-        helperV3.deleteUser(USER_API_URL_V3, userOperationRequest, 200);
-        assertThrows(CannotConnect.class, () -> helperV3.checkConnectionPostgresUser(userWithNewPassword, "test", "test"));
-    }
-
-    @Tag("postgresql")
-    @Test
-    void getAllDatabasesInNamespaceWithCreatedUsersTest() throws IOException, SQLException {
-        String logicalUserId = "test-service";
-        DatabaseCreateRequestV3 createDbRequest = getSimplePostgresCreateRequest("dbaas_auto_test_1");
-        DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
-        log.info("Create database");
-        log.info("Check connection to created database");
-        helperV3.checkConnectionPostgres(created_1);
-
-        Map<String, Object> classifier = createDbRequest.getClassifier();
-        GetOrCreateUserRequest getOrCreateUserRequest = new GetOrCreateUserRequest(classifier, logicalUserId,
-                POSTGRES_TYPE, null, "test", Role.ADMIN.getRoleValue());
-        log.info("Creating user");
-        GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
-
-        log.info("Check connections to user");
-        helperV3.checkConnectionPostgresUser(user, "test", "test");
-
-        Request request = helperV3.createRequest(String.format("api/v3/dbaas/%s/databases/list", TEST_NAMESPACE),
-                helperV3.getClusterDbaAuthorization(),
-                null,
-                "GET");
-        List<DatabaseV3> databases = Arrays.asList(helperV3.executeRequest(request, DatabaseV3[].class, 200));
-        assertEquals(1, databases.size());
-        Optional<Map<String, Object>> connections = databases.getFirst().getConnectionProperties().stream()
-                .filter(u -> u.get("logicalUserId") != null && u.get("logicalUserId").equals(logicalUserId))
-                .findFirst();
-        assertTrue(connections.isPresent());
-    }
-
-    @Tag("postgresql")
-    @Test
-    void UserDeletedAfterDatabaseDeletionTest() throws IOException, SQLException {
-        String logicalUserId = "test-service";
-        DatabaseCreateRequestV3 createDbRequest = getSimplePostgresCreateRequest("dbaas_auto_test_1");
-        DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
-        log.info("Create database");
-        log.info("Check connection to created database");
-        helperV3.checkConnectionPostgres(created_1);
-
-        Map<String, Object> classifier = createDbRequest.getClassifier();
-        GetOrCreateUserRequest getOrCreateUserRequest = new GetOrCreateUserRequest(classifier, logicalUserId,
-                POSTGRES_TYPE, null, "test", Role.ADMIN.getRoleValue());
-        log.info("Creating user");
-        GetOrCreateUserResponse user = helperV3.getOrCreateUser(USER_API_URL_V3, getOrCreateUserRequest, 201);
-
-        log.info("Check connections to user");
-        helperV3.checkConnectionPostgresUser(user, "test", "test");
-
-        log.info("Clean databases");
-        helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), DbaasHelperV3.TEST_NAMESPACE);
-
-        log.info("Check that user is deleted too");
-        log.info("Try to rotate user password");
-        UserOperationRequest userOperationRequest = new UserOperationRequest();
-        userOperationRequest.setUserId(user.getUserId());
-        helperV3.rotateUserPasswordWithException(USER_API_URL_V3 + "/rotate-password",
-                userOperationRequest,
-                404);
-
-        log.info("Try to check connections to user");
-        assertThrows(CannotConnect.class, () -> helperV3.checkConnectionPostgresUser(user, "test", "test"));
-
-        log.info("Try to delete user");
-        helperV3.deleteUser(USER_API_URL_V3, userOperationRequest, 204);
-    }
-
-    @Tag("postgresql")
-    @Test
-    void UsersRestoreTest() throws IOException, SQLException {
-        DatabaseCreateRequestV3 createDbRequest = getSimplePostgresCreateRequest("dbaas_auto_test_1");
-        log.info("Create database");
-        DatabaseResponse created_1 = helperV3.createDatabase(String.format(DATABASES_V3, TEST_NAMESPACE), getSimplePostgresCreateRequest("dbaas_auto_test_1"), 201);
-        log.info("Check connection to created database");
-        helperV3.checkConnectionPostgres(created_1);
-
-        Map<String, Object> classifier = createDbRequest.getClassifier();
-        RestoreUsersRequest restoreUsersRequest = new RestoreUsersRequest(classifier, POSTGRES_TYPE);
-        log.info("Restore users");
-        restoreUsers(USER_API_URL_V3 + "/restore", restoreUsersRequest, 200);
-        log.info("Check connections to user");
-        helperV3.checkConnectionPostgres(created_1);
-    }
-
-
-    private void testGetNotExistingDB(String type) throws IOException {
-        String authorization = helperV3.getClusterDbaAuthorization();
-        log.info("Clean databases");
-        helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), DbaasHelperV3.TEST_NAMESPACE);
-        Map<String, Object> classifierMap = new HashMap<>();
-        classifierMap.put("dbClassifier", "default");
-        classifierMap.put("scope", "service");
-        classifierMap.put("microserviceName", "non-existing-service");
-        classifierMap.put("namespace", DbaasHelperV3.TEST_NAMESPACE);
-
-        log.info("Get not existing database by classifier");
-        try (Response response = helperV3.getDatabaseByClassifierAsResponse(authorization, classifierMap, type, DbaasHelperV3.TEST_NAMESPACE)) {
-            assertThat(response.code(), is(404));
+        @BeforeEach
+        void prepareNamespace() {
+            namespace = helperV3.generateTestNamespace();
         }
-        log.info("Clean databases");
-        helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), DbaasHelperV3.TEST_NAMESPACE);
-    }
-
-    @NotNull
-    private BaseMatcher<DatabaseResponse> inNamespace(final String namespace) {
-        return new BaseMatcher<>() {
-            @Override
-            public void describeTo(Description description) {
-                description.appendText("should have namespace " + namespace);
-            }
-
-            @Override
-            public boolean matches(Object o) {
-                return ((DatabaseResponse) o).getNamespace().equals(namespace);
-            }
-        };
-    }
-
-    public SuccessfulRestoreUsersResponse restoreUsers(String api, RestoreUsersRequest request, int expected) {
-        Request restoreUsers = helperV3.createRequest(api, helperV3.getClusterDbaAuthorization(), request, "POST");
-        log.info("request: {}", restoreUsers);
-        return helperV3.executeRequest(restoreUsers, SuccessfulRestoreUsersResponse.class, expected);
-    }
-
-    private String getKubernetesServiceAccountToken() {
-        ServiceAccount sa = new ServiceAccountBuilder()
-                .withNewMetadata()
-                .withName(TEST_SERVICE_ACCOUNT_NAME)
-                .endMetadata()
-                .build();
-        kubernetesClient.serviceAccounts().resource(sa).serverSideApply();
-        kubernetesClient.serviceAccounts()
-                .withName(TEST_SERVICE_ACCOUNT_NAME)
-                .waitUntilCondition(Objects::nonNull, 30, TimeUnit.SECONDS);
-
-        TokenRequest tokenRequest = new TokenRequestBuilder()
-                .withNewSpec()
-                .withAudiences("dbaas")
-                .withExpirationSeconds(3600L)
-                .endSpec()
-                .build();
-        TokenRequest result = kubernetesClient.serviceAccounts()
-                .withName(TEST_SERVICE_ACCOUNT_NAME)
-                .tokenRequest(tokenRequest);
-        return result.getStatus().getToken();
     }
 }

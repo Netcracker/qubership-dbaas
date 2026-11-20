@@ -32,10 +32,9 @@ import com.netcracker.it.dbaas.entity.response.LostDatabasesResponse;
 import com.netcracker.it.dbaas.entity.response.OverallStatusResponse;
 import com.netcracker.it.dbaas.exceptions.CannotCheckData;
 import com.netcracker.it.dbaas.exceptions.CannotConnect;
-import io.fabric8.kubernetes.api.model.EnvVar;
-import io.fabric8.kubernetes.api.model.EnvVarSource;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.*;
+import io.fabric8.kubernetes.api.model.authentication.TokenRequest;
+import io.fabric8.kubernetes.api.model.authentication.TokenRequestBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.Getter;
 import lombok.NonNull;
@@ -58,6 +57,8 @@ import org.opensearch.client.opensearch.indices.ExistsRequest;
 import org.opensearch.client.transport.httpclient5.ApacheHttpClient5TransportBuilder;
 import org.opentest4j.AssertionFailedError;
 import org.slf4j.MDC;
+import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.Jedis;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -72,12 +73,12 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.netcracker.it.dbaas.test.AbstractIT.*;
-import static io.undertow.server.handlers.SSLHeaderHandler.HTTPS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.oneOf;
@@ -92,6 +93,20 @@ public class DbaasHelperV3 {
             .withMaxRetries(-1).withDelay(Duration.ofSeconds(5)).withMaxDuration(Duration.ofMinutes(10));
     private static final RetryPolicy<Object> CASSANDRA_CHECK_RETRY_POLICY = new RetryPolicy<>()
             .withMaxRetries(12).withDelay(Duration.ofSeconds(5));
+    private static final RetryPolicy<Connection> CLICKHOUSE_AUTH_RETRY_POLICY = new RetryPolicy<Connection>()
+            .handleIf(DbaasHelperV3::isClickhouseAuthenticationError)
+            .onRetry(event -> log.warn("ClickHouse user DDL not yet applied, retrying the connection (attempt {})", event.getAttemptCount()))
+            .withMaxRetries(12).withDelay(Duration.ofSeconds(5));
+
+    private static boolean isClickhouseAuthenticationError(Throwable error) {
+        while (error != null) {
+            if (error.getMessage() != null && error.getMessage().contains("AUTHENTICATION_FAILED")) {
+                return true;
+            }
+            error = error.getCause();
+        }
+        return false;
+    }
 
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
@@ -103,8 +118,17 @@ public class DbaasHelperV3 {
     public static final String MARKED_FOR_DROP = "MARKED_FOR_DROP";
     public static final String MICROSERVICE_NAME = "microserviceName";
     public static final String NAMESPACE = "namespace";
+    public static final String TLS_FEATURE = "tls";
+
+    /**
+     * Ports of the ClickHouse HTTP interface. The adapter publishes the native port, and these two are the
+     * plaintext and the TLS HTTP ports of the same cluster.
+     */
+    private static final String CLICKHOUSE_HTTP_PORT = "8123";
+    private static final String CLICKHOUSE_TLS_HTTP_PORT = "8443";
 
     public static final String DATABASES_V3 = "api/v3/dbaas/%s/databases";
+    public static final String DATABASES_LIST_V3 = DATABASES_V3 + "/list";
     public static final String DATABASES_V3_ASYNC = DATABASES_V3 + "?async=true";
     public static final String DATABASES_DELETE_V3 = DATABASES_V3 + "/deleteall";
     public static final String EXTERNALLY_MANAGEABLE_V3 = "api/v3/dbaas/%s/databases/registration/externally_manageable";
@@ -112,6 +136,7 @@ public class DbaasHelperV3 {
     public static final String TEST_CLASSIFIER_KEY = "dbaas_auto_test";
 
     private static final String BACKUPS_V3 = "api/v3/dbaas/backups";
+    private static final String BACKUPS_FIND_ALL_V3 = BACKUPS_V3 + "/findall";
     private static final String BACKUPS_DELETE_V3 = BACKUPS_V3 + "/deleteall";
     private static final String NAMESPACE_BACKUPS_V3 = "api/v3/dbaas/%s/backups";
     private static final String NAMESPACE_BACKUPS_DELETE_V3 = NAMESPACE_BACKUPS_V3 + "/deleteall";
@@ -258,15 +283,23 @@ public class DbaasHelperV3 {
      */
     private static final Pattern SERVICE_NAME_WITH_NAMESPACE_PATTERN = Pattern.compile("(^.*?://|^)(.*?)\\.(.*?)(\\..*?)?:([0-9]+)(/?.*?$|$)");
 
-    /**
-     * Checks whether dbaas-aggregator has physical database adapter of the corresponding type.
-     *
-     * @param dbType physical database type, e.g. {@code mongodb}.
-     * @return {@code true} if dbaas-aggregator has adapters of this type, {@code false} otherwise.
-     */
-
-
     public boolean hasAdapterOfType(String dbType) {
+        return hasGlobalPhysicalDatabase(dbType, database -> true);
+    }
+
+    public boolean isAdapterSupportMultiusersFeature(String dbType) {
+        return hasGlobalPhysicalDatabase(dbType, database -> database.getFeatures().getOrDefault("multiusers", false));
+    }
+
+    public boolean isAdapterSupportTLSFeature(String dbType) {
+        return hasGlobalPhysicalDatabase(dbType, database -> isTlsFeatureEnabled(database.getFeatures()));
+    }
+
+    private boolean isTlsFeatureEnabled(Map<String, Boolean> features) {
+        return features != null && Boolean.TRUE.equals(features.get(TLS_FEATURE));
+    }
+
+    private boolean hasGlobalPhysicalDatabase(String dbType, Predicate<PhysicalDatabaseRegistrationResponseDTOV3> condition) {
         Request request = new Request.Builder()
                 .url(dbaasServiceUrl + String.format(PHYSICAL_DATABASE_MAIN_PATH_V3, dbType))
                 .addHeader("Authorization", "Basic " + clusterDbaAuthorization)
@@ -282,7 +315,7 @@ public class DbaasHelperV3 {
             log.info("Got physical databases of type {}: {}", dbType, body);
             RegisteredPhysicalDatabasesDTOV3 physicalDatabases = objectMapper.readValue(body, RegisteredPhysicalDatabasesDTOV3.class);
             for (PhysicalDatabaseRegistrationResponseDTOV3 database : physicalDatabases.getIdentified().values()) {
-                if (database.isGlobal() && adapterIsAvailable(database.getAdapterAddress())) {
+                if (database.isGlobal() && adapterIsAvailable(database.getAdapterAddress()) && condition.test(database)) {
                     return true;
                 }
             }
@@ -349,12 +382,11 @@ public class DbaasHelperV3 {
     }
 
     public void deleteLogicalDatabasesInNamespaces(List<String> namespaces) throws IOException {
-        var request = new Request.Builder()
-                .url(dbaasServiceUrl + String.format("api/v3/dbaas/databases/deleteall?namespaces=%s", String.join(",", namespaces)))
-                .addHeader("Authorization", "Basic " + getClusterDbaAuthorization())
-                .addHeader("X-Request-Id", getRequestId())
-                .delete()
-                .build();
+        var request = createRequest(
+                "api/v3/dbaas/databases/deleteall",
+                getClusterDbaAuthorization(),
+                Map.of("namespaces", namespaces),
+                "DELETE");
 
         try (var response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
@@ -364,6 +396,11 @@ public class DbaasHelperV3 {
             // wait for all logical databases to be deleted
             Failsafe.with(NAMESPACES_DBS_CLEANUP_POLICY).run(() -> {
                 var logicalDatabases = this.findLogicalDatabasesByNamespaces(namespaces);
+
+                if (!logicalDatabases.isEmpty()) {
+                    log.info("Still waiting for the deletion of {} logical databases in {} test namespaces",
+                            logicalDatabases.size(), namespaces.size());
+                }
 
                 assertTrue(logicalDatabases.isEmpty(), "Namespaces still have the following logical databases: " +
                         logicalDatabases.stream()
@@ -375,12 +412,11 @@ public class DbaasHelperV3 {
     }
 
     public void deleteNamespaceBackupsInNamespaces(List<String> namespaces) throws IOException {
-        var request = new Request.Builder()
-                .url(dbaasServiceUrl + String.format(BACKUPS_DELETE_V3 + "?forceRemoveNotDeletableBackups=true&namespaces=%s", String.join(",", namespaces)))
-                .addHeader("Authorization", "Basic " + getBackupDaemonAuthorization())
-                .addHeader("X-Request-Id", getRequestId())
-                .delete()
-                .build();
+        var request = createRequest(
+                BACKUPS_DELETE_V3 + "?forceRemoveNotDeletableBackups=true",
+                getBackupDaemonAuthorization(),
+                Map.of("namespaces", namespaces),
+                "DELETE");
 
         try (var response = executeWithPortForwardRetry(request)) {
             log.info("Response: {}", response);
@@ -390,6 +426,11 @@ public class DbaasHelperV3 {
             // wait for all namespace backups to be deleted
             Failsafe.with(DEFAULT_RETRY_POLICY.copy().withMaxDuration(Duration.ofMinutes(5))).run(() -> {
                 var namespaceBackups = this.findNamespaceBackupsByNamespaces(namespaces);
+
+                if (!namespaceBackups.isEmpty()) {
+                    log.info("Still waiting for the deletion of {} namespace backups in {} test namespaces",
+                            namespaceBackups.size(), namespaces.size());
+                }
 
                 assertTrue(namespaceBackups.isEmpty(), "Namespaces still have the following namespace backups: " +
                         namespaceBackups.stream()
@@ -699,6 +740,23 @@ public class DbaasHelperV3 {
     }
 
     public void checkConnectionClickhouse(DatabaseResponse databaseToCheck, String setData, String checkData) throws SQLException, IOException {
+        checkConnectionClickhouse(databaseToCheck, false, setData, checkData);
+    }
+
+    /**
+     * The adapter creates and rotates users with CREATE USER and ALTER USER statements executed with
+     * ON CLUSTER. ClickHouse applies such statements asynchronously on the replicas, so a replica
+     * that has not applied the statement yet rejects the connection with AUTHENTICATION_FAILED.
+     * Retry the connection until the statement is applied on the replica.
+     */
+    public void checkConnectionClickhouse(DatabaseResponse databaseToCheck, Boolean expectCannotConnect, String setData, String checkData) throws SQLException, IOException {
+        if (expectCannotConnect) {
+            connectClickhouse(databaseToCheck, setData, checkData);
+        }
+        Failsafe.with(CLICKHOUSE_AUTH_RETRY_POLICY).run(() -> connectClickhouse(databaseToCheck, setData, checkData));
+    }
+
+    public void connectClickhouse(DatabaseResponse databaseToCheck, String setData, String checkData) {
         log.info("Check clickhouse connection");
 
         try (
@@ -830,6 +888,20 @@ public class DbaasHelperV3 {
         }
     }
 
+    public void checkConnectionUser(Boolean expectCannotConnect, String type, GetOrCreateUserResponse user,
+                                    String setData, String checkData) {
+        log.info("Check connection to user {} of type {}", user.getUserId(), type);
+        log.info("User connection properties: {}", user.getConnectionProperties());
+        checkConnection(expectCannotConnect, wrapUserConnectionProperties(type, user), setData, checkData, false);
+    }
+
+    private DatabaseResponse wrapUserConnectionProperties(String type, GetOrCreateUserResponse user) {
+        return DatabaseResponse.builder()
+                .type(type)
+                .connectionProperties(user.getConnectionProperties())
+                .build();
+    }
+
     public Connection connectClickhouse(DatabaseResponse db) throws SQLException {
         String rawUrl = db.getConnectionPropertyAsString("url");
         rawUrl = rawUrl.replace("9000", "8123");
@@ -957,6 +1029,59 @@ public class DbaasHelperV3 {
         }
     }
 
+    public void checkConnectionRedis(DatabaseResponse databaseToCheck, Boolean expectFail, String setData, String checkData) {
+        var url = databaseToCheck.getConnectionPropertyAsString("url");
+        var password = getPassword(databaseToCheck);
+        assertNotNull(url);
+        assertNotNull(password);
+
+        try (Jedis jedis = connectRedis(databaseToCheck, expectFail)) {
+            try {
+                assertEquals("PONG", jedis.ping(), "Expect PING to be answered with PONG from redis " + databaseToCheck);
+            } catch (Throwable ex) {
+                throw new CannotConnect(ex);
+            }
+
+            if (setData != null) {
+                var key = "test_key";
+                var value = setData + "_value";
+                jedis.set(key, value);
+                log.info("data {} saved in redis db {}", setData, databaseToCheck);
+            }
+
+            try {
+                if (checkData != null) {
+                    var key = "test_key";
+                    var value = checkData + "_value";
+                    assertEquals(value, jedis.get(key));
+                    log.info("data {} checked in redis db {}", checkData, databaseToCheck);
+                }
+            } catch (Throwable ex) {
+                log.info("DatabaseV3 {}", databaseToCheck);
+                throw new CannotCheckData(ex);
+            }
+        } catch (Exception ex) {
+            throw new CannotConnect(ex);
+        }
+    }
+
+    public Jedis connectRedis(DatabaseResponse databaseToCheck, Boolean expectFail) {
+        var url = databaseToCheck.getConnectionPropertyAsString("url");
+        var password = getPassword(databaseToCheck);
+        assertNotNull(url);
+        assertNotNull(password);
+        var redis = createPortForward(url);
+        int timeoutMillis = expectFail ? 500 : 5000;
+        var clientConfig = DefaultJedisClientConfig.builder()
+                .password(password)
+                .connectionTimeoutMillis(timeoutMillis)
+                .socketTimeoutMillis(timeoutMillis)
+                .serverDefaultProtocol()
+                .build();
+        log.info("Connect to created redis database by url {}", redis);
+        return new Jedis(redis.getHost(), redis.getPort(), clientConfig);
+    }
+
     public void checkConnection(Boolean expectCannotConnect, DatabaseResponse db,
                                 String setData, String checkData, Boolean expectCannotCheckData) {
         try {
@@ -966,8 +1091,9 @@ public class DbaasHelperV3 {
                 case POSTGRES_TYPE -> checkConnectionPostgres(db, setData, checkData);
                 case OPENSEARCH_TYPE -> checkConnectionOpensearch(db, setData, checkData);
                 case CASSANDRA_TYPE -> checkConnectionCassandra(db, setData, checkData);
-                case CLICKHOUSE_TYPE -> checkConnectionClickhouse(db, setData, checkData);
+                case CLICKHOUSE_TYPE -> checkConnectionClickhouse(db, expectCannotConnect, setData, checkData);
                 case ARANGODB_TYPE -> checkConnectionArangodb(db, setData, checkData);
+                case REDIS_TYPE -> checkConnectionRedis(db, expectCannotConnect, setData, checkData);
                 case null, default -> fail("Database " + db + " has unknown type");
             }
             if (expectCannotConnect || expectCannotCheckData) {
@@ -1072,6 +1198,16 @@ public class DbaasHelperV3 {
                                            String physicalDatabaseId, String prefixName, Map<String, Object> settings) throws IOException {
         return createDatabase(String.format(DATABASES_V3, namespace), authorization, testClassifierValue, expected, type,
                 initialScriptIds, namespace, backupDisabled, physicalDatabaseId, prefixName, settings);
+    }
+
+    public DatabaseResponse createDatabase(String authorization, final String testClassifierValue, String type,
+                                           List<String> initialScriptIds, String namespace, Boolean backupDisabled, Integer... expected) throws IOException {
+        Request request = createDbRequest(authorization, testClassifierValue, type, initialScriptIds, namespace, backupDisabled, null, null, null);
+        return executeRequest(request, DatabaseResponse.class, expected);
+    }
+
+    public Request createDatabaseRequest(String uri, String authorization, final String testClassifierValue, String type, String namespace) {
+        return createDbRequest(uri, authorization, testClassifierValue, type, null, namespace, false, null, null, null);
     }
 
     public DatabaseResponse updateDatabase(String authorization, final String testClassifierValue, int expected, String type,
@@ -1219,6 +1355,15 @@ public class DbaasHelperV3 {
     }
 
 
+    public Map<String, Object> applySettings(String type, Map<String, Object> settings) {
+        if (OPENSEARCH_TYPE.equalsIgnoreCase(type)) {
+            Map<String, Object> mergedSettings = new HashMap<>(settings == null ? Map.of() : settings);
+            mergedSettings.putIfAbsent("resourcePrefix", true);
+            return mergedSettings;
+        }
+        return settings;
+    }
+
     private Request createDbRequest(String authorization, final String testClassifierValue, String type,
                                     List<String> initialScriptIds, String namespace, Boolean backupDisabled, String physicalDatabaseId,
                                     String prefixName, Map<String, Object> settings) {
@@ -1243,7 +1388,7 @@ public class DbaasHelperV3 {
         if (!StringUtils.isEmpty(physicalDatabaseId)) {
             createDbJson.put("physicalDatabaseId", physicalDatabaseId);
         }
-        createDbJson.put("settings", settings);
+        createDbJson.put("settings", applySettings(type, settings));
         String createDatabaseReqJson = new GsonBuilder().create().toJson(createDbJson);
         log.info("Create db: " + createDatabaseReqJson);
         return new Request.Builder()
@@ -1260,6 +1405,7 @@ public class DbaasHelperV3 {
         jsonReq.put("type", type);
         jsonReq.put("originService", classifier.get(MICROSERVICE_NAME));
         jsonReq.put("userRole", Role.ADMIN.getRoleValue());
+        jsonReq.put("settings", applySettings(type, null));
         String createDatabaseReqJson = new GsonBuilder().create().toJson(jsonReq);
 
         return new Request.Builder()
@@ -1268,46 +1414,6 @@ public class DbaasHelperV3 {
                 .addHeader("Authorization", "Basic " + getClusterDbaAuthorization())
                 .put(RequestBody.create(createDatabaseReqJson, JSON))
                 .build();
-    }
-
-    private static String getBasicAuthorization(String user, String password) {
-        return Base64.getEncoder().encodeToString((user + ":" + password).getBytes());
-    }
-
-    public List<DatabaseResponse> createDatabaseInOtherPhysicalDatabases(RegisteredPhysicalDatabasesDTO physicalDatabases, String namespace, String dbType) throws IOException {
-        List<DatabaseResponse> createdDb = new ArrayList<>();
-        for (String physicalDatabaseId : physicalDatabases.getIdentified().keySet()) {
-            log.debug("Create database in cluster");
-            DatabaseResponse clusterDb = createDatabase(clusterDbaAuthorization, "physical database identifier " + physicalDatabaseId, 201, dbType,
-                    null, namespace, false, physicalDatabaseId, "dbaas_autotests", null);
-            createdDb.add(clusterDb);
-        }
-        return createdDb;
-    }
-
-    public void checkConnectNotDefaultMongoCluster(DatabaseResponse database, boolean expectFail) {
-        try (MongoClient serviceMongoClient = connectMongo(database, expectFail)) {
-            serviceMongoClient.getDatabase(database.getName()).getCollection("autotestsData")
-                    .insertOne(new Document("testkey", "testvalue"));
-            assertEquals(
-                    "testvalue",
-                    serviceMongoClient.getDatabase(database.getName()).getCollection("autotestsData")
-                            .find(new Document("testkey", "testvalue"))
-                            .first().get("testkey")
-            );
-            log.info("Data was inserted successfully");
-        }
-    }
-
-    public void checkConnectNotDefaultPostgresCluster(DatabaseResponse database) throws SQLException, IOException {
-        try (Connection connection = connectPg(database);
-             Statement statement = connection.createStatement()) {
-            try {
-                assertTrue(statement.executeQuery("select 1;").next(), "Expect postgresql to return 1 row");
-            } catch (Throwable ex) {
-                throw new CannotConnect(ex);
-            }
-        }
     }
 
     public PasswordChangeResponse changePassword(Map<String, Object> classifier, String dbType, int expectHttpCode, String namespace) throws IOException {
@@ -1337,13 +1443,21 @@ public class DbaasHelperV3 {
     }
 
     public ExternalDatabaseResponseV3 saveExternalDatabase(String api, Map<String, Object> classifier, String dbType, int expectHttpCode) {
-        return saveExternalDatabase(api, classifier, getDefaultConnectionProperties(), dbType, false, expectHttpCode);
+        return saveExternalDatabase(api, classifier, getDefaultConnectionProperties(), dbType, false, expectHttpCode, TEST_NAMESPACE);
     }
 
     public ExternalDatabaseResponseV3 saveExternalDatabase(String api, Map<String, Object> classifier, List<Map<String, Object>> connectionProperties, String dbType, boolean updateConnectionProperties, int expectHttpCode) {
+        return saveExternalDatabase(api, classifier, connectionProperties, dbType, updateConnectionProperties, expectHttpCode, TEST_NAMESPACE);
+    }
+
+    public ExternalDatabaseResponseV3 saveExternalDatabase(String api, Map<String, Object> classifier, String dbType, int expectHttpCode, String namespace) {
+        return saveExternalDatabase(api, classifier, getDefaultConnectionProperties(), dbType, false, expectHttpCode, namespace);
+    }
+
+    public ExternalDatabaseResponseV3 saveExternalDatabase(String api, Map<String, Object> classifier, List<Map<String, Object>> connectionProperties, String dbType, boolean updateConnectionProperties, int expectHttpCode, String namespace) {
         ExternalDatabaseRequestV3 externalDatabase = createExternalDatabase(classifier, connectionProperties, dbType);
         externalDatabase.setUpdateConnectionProperties(updateConnectionProperties);
-        Request request = createRequest(String.format(api, TEST_NAMESPACE), clusterDbaAuthorization, externalDatabase, "PUT");
+        Request request = createRequest(String.format(api, namespace), clusterDbaAuthorization, externalDatabase, "PUT");
         return executeRequest(request, ExternalDatabaseResponseV3.class, expectHttpCode);
     }
 
@@ -1472,23 +1586,15 @@ public class DbaasHelperV3 {
     }
 
     public List<DatabaseV3> findLogicalDatabasesByNamespaces(List<String> namespaces) {
-        var request = new Request.Builder()
-                .url(dbaasServiceUrl + String.format("api/v3/dbaas/databases?namespaces=%s", String.join(",", namespaces)))
-                .addHeader("Authorization", "Basic " + getClusterDbaAuthorization())
-                .addHeader("X-Request-Id", getRequestId())
-                .get()
-                .build();
+        var request = createRequest("api/v3/dbaas/databases", getClusterDbaAuthorization(),
+                Map.of("namespaces", namespaces), "POST");
 
         return Arrays.asList(executeRequest(request, DatabaseV3[].class, 200));
     }
 
     public List<NamespaceBackupV3> findNamespaceBackupsByNamespaces(List<String> namespaces) {
-        var request = new Request.Builder()
-                .url(dbaasServiceUrl + String.format(BACKUPS_V3 + "?namespaces=%s", String.join(",", namespaces)))
-                .addHeader("Authorization", "Basic " + getBackupDaemonAuthorization())
-                .addHeader("X-Request-Id", getRequestId())
-                .get()
-                .build();
+        var request = createRequest(BACKUPS_FIND_ALL_V3, getBackupDaemonAuthorization(),
+                Map.of("namespaces", namespaces), "POST");
 
         return Arrays.asList(executeRequest(request, NamespaceBackupV3[].class, 200));
     }
@@ -1559,38 +1665,6 @@ public class DbaasHelperV3 {
         }
     }
 
-    public boolean isAdapterV2Available(String dbType) {
-        PhysicalDatabaseRegistrationResponseDTOV3 physicalDatabase;
-        try {
-            RegisteredPhysicalDatabasesDTOV3 registeredPhysicalDatabases = getRegisteredPhysicalDatabases(dbType, clusterDbaAuthorization, 200);
-            physicalDatabase = registeredPhysicalDatabases.getIdentified().values().iterator().next();
-        } catch (IOException e) {
-            log.error("Adapter with dbType = {} does not exist", dbType);
-            return false;
-        }
-        return physicalDatabase.getSupportedVersion().equals("v2");
-    }
-
-
-    public boolean isTLSEnabledInAdapter(String dbType, String physicalDatabaseId) {
-        String adapterAddress = getAdapterAddress(dbType, physicalDatabaseId);
-        assertNotNull(adapterAddress);
-        return adapterAddress.contains(HTTPS);
-    }
-
-    public boolean isTLSEnabledInDatabase(String dbType, String physicalDatabaseId) {
-        String adapterAddress = getAdapterAddress(dbType, physicalDatabaseId);
-        assertNotNull(adapterAddress);
-        String databaseName = getServiceNameFromUrl(adapterAddress);
-        String databaseNamespace = getServiceNamespaceFromUrl(adapterAddress);
-        Optional<Pod> dbPod = getAdapterPodByServiceName(databaseNamespace, databaseName);
-        if (dbPod.isEmpty()) {
-            throw new RuntimeException("Could not find adapter pod for database " + databaseName);
-        }
-        Optional<String> PGSSL = readEnvVariable(dbPod.get(), "PG_SSL");
-        return PGSSL.map(s -> s.equals("on")).orElse(false);
-    }
-
     public boolean isDefaultDatabaseDisabled(Pod dbaasPod) {
         Optional<String> isDefaultDatabaseDisabled = readEnvVariable(dbaasPod, "DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED");
         return isDefaultDatabaseDisabled.map(s -> s.equals("true")).orElse(false);
@@ -1608,17 +1682,6 @@ public class DbaasHelperV3 {
             }
         }
         return Optional.empty();
-    }
-
-    private String getAdapterAddress(String dbType, String physicalDatabaseId) {
-        try {
-            Map<String, PhysicalDatabaseRegistrationResponseDTOV3> identified = getRegisteredPhysicalDatabases(dbType, clusterDbaAuthorization, 200).getIdentified();
-            PhysicalDatabaseRegistrationResponseDTOV3 physicalDatabaseRegistrationResponseDTOV3 = identified.get(physicalDatabaseId);
-            return physicalDatabaseRegistrationResponseDTOV3.getAdapterAddress();
-        } catch (Exception e) {
-            log.error("An error occurred while receiving registered physical databases.", e);
-            return null;
-        }
     }
 
     public void deleteDatabasesByClassifierRequest(String namespace, String dbType, ClassifierWithRolesRequest classifierWithRolesRequest, int expected) throws IOException {
@@ -1740,5 +1803,28 @@ public class DbaasHelperV3 {
             log.error("Failed to calculate digest", e);
             throw new RuntimeException(e.getMessage());
         }
+    }
+
+    public String createKubernetesServiceAccountToken() {
+        ServiceAccount sa = new ServiceAccountBuilder()
+                .withNewMetadata()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .endMetadata()
+                .build();
+        kubernetesClient.serviceAccounts().resource(sa).serverSideApply();
+        kubernetesClient.serviceAccounts()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .waitUntilCondition(Objects::nonNull, 30, TimeUnit.SECONDS);
+
+        TokenRequest tokenRequest = new TokenRequestBuilder()
+                .withNewSpec()
+                .withAudiences("dbaas")
+                .withExpirationSeconds(3600L)
+                .endSpec()
+                .build();
+        TokenRequest result = kubernetesClient.serviceAccounts()
+                .withName(TEST_SERVICE_ACCOUNT_NAME)
+                .tokenRequest(tokenRequest);
+        return result.getStatus().getToken();
     }
 }
