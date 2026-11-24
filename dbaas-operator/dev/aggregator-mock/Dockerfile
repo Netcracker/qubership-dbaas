@@ -10,7 +10,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -o dbaas-aggregator ./dev/aggregator-mock/main.go
 
-FROM ghcr.io/netcracker/qubership-core-base:alpine-latest@sha256:891386ea91d90a1376e12f30b458fc23eb9793afd35f82817c90e4911cddd633
+FROM ghcr.io/netcracker/qubership-core-base:alpine-latest@sha256:a3af3751d9187ce7f8ffd67a5aa8465fee78056c79f964bfa7727ea00da681da
 WORKDIR /app
 COPY --chown=10001:0 --chmod=555 --from=builder /app/dbaas-aggregator /app/dbaas-aggregator
 USER 10001:10001
