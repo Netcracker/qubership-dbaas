@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 
 @ApplicationScoped
 @Slf4j
@@ -102,13 +103,13 @@ public class OperationService {
     @Nullable
     private Database findExistingOrphanFor(DatabaseRegistry database, DbaasAdapter newAdapter) {
         Optional<Database> oldDbOptional = logicalDbDbaasRepository.getDatabaseDbaasRepository()
-                .findByNameAndAdapterId(database.getName(), newAdapter.identifier());
+                .findByNameAndAdapterId(getDatabaseName(database), newAdapter.identifier());
         if (oldDbOptional.isEmpty()) return null;
         Database oldDb = oldDbOptional.get();
         if (oldDb.isMarkedForDrop()) {
             return oldDb;
         } else {
-            throw new RuntimeException("There is an existing logical DB that already uses %s name: %s".formatted(database.getName(), oldDb));
+            throw new RuntimeException("There is an existing logical DB that already uses %s name: %s".formatted(getDatabaseName(database), oldDb));
         }
     }
 

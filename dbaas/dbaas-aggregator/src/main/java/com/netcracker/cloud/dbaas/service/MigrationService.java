@@ -13,7 +13,6 @@ import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.UnregisteredPhysicalDatabaseException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.hibernate.exception.ConstraintViolationException;
@@ -22,6 +21,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.ENCRYPTED_PASSWORD_FIELD;
 import static com.netcracker.cloud.dbaas.service.PasswordEncryption.PASSWORD_FIELD;
 
@@ -219,7 +219,7 @@ public class MigrationService {
 
             boolean hasDatabaseKind = db.getResources().stream().anyMatch(res -> DbResource.DATABASE_KIND.equals(res.getKind()));
             if (!hasDatabaseKind) {
-                db.getResources().add(new DbResource(DbResource.DATABASE_KIND, db.getName()));
+                db.getResources().add(new DbResource(DbResource.DATABASE_KIND, getDatabaseName(db)));
             }
 
             boolean hasMissingPassword = db.getConnectionProperties() == null

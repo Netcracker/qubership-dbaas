@@ -6,7 +6,6 @@ import com.netcracker.cloud.dbaas.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.dto.backupV2.*;
 import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.entity.pg.backupV2.*;
-import com.netcracker.cloud.dbaas.entity.shared.AbstractDatabase;
 import com.netcracker.cloud.dbaas.enums.*;
 import com.netcracker.cloud.dbaas.exceptions.*;
 import com.netcracker.cloud.dbaas.mapper.BackupV2Mapper;
@@ -44,6 +43,7 @@ import java.util.stream.Stream;
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.entity.shared.AbstractDbState.DatabaseStateStatus.CREATED;
 import static com.netcracker.cloud.dbaas.enums.RestoreTaskStatus.NOT_STARTED;
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 import static io.quarkus.scheduler.Scheduled.ConcurrentExecution.SKIP;
 
 @Slf4j
@@ -209,7 +209,7 @@ public class DbBackupV2Service {
                     return new BackupDatabase(
                             UUID.randomUUID(),
                             logicalBackup,
-                            DBaaService.getDatabaseName(db),
+                            getDatabaseName(db),
                             databaseRegistries.stream().map(DatabaseRegistry::getClassifier).toList(),
                             db.getSettings(),
                             getBackupDatabaseUsers(db.getConnectionProperties()),
@@ -1453,7 +1453,7 @@ public class DbBackupV2Service {
             DatabaseRegistry databaseRegistry = opt.get();
 
             classifierDetails.setType(ClassifierType.REPLACED);
-            classifierDetails.setPreviousDatabase(databaseRegistry.getName());
+            classifierDetails.setPreviousDatabase(getDatabaseName(databaseRegistry));
 
             result.add(classifierDetails);
             foundClassifier.add(classifierDetails.getClassifier());
@@ -1470,7 +1470,7 @@ public class DbBackupV2Service {
             for (DatabaseRegistry databaseRegistry : database.getDatabaseRegistry()) {
                 if (!foundClassifier.contains(databaseRegistry.getClassifier())) {
                     result.add(
-                            new ClassifierDetails(ClassifierType.TRANSIENT_REPLACED, database.getName(), new TreeMap<>(databaseRegistry.getClassifier()), null)
+                            new ClassifierDetails(ClassifierType.TRANSIENT_REPLACED, getDatabaseName(database), new TreeMap<>(databaseRegistry.getClassifier()), null)
                     );
                 }
             }
@@ -1673,7 +1673,7 @@ public class DbBackupV2Service {
 
         if (!nonBackupableDatabases.isEmpty()) {
             String dbNames = nonBackupableDatabases.stream()
-                    .map(AbstractDatabase::getName)
+                    .map(DBaaService::getDatabaseName)
                     .collect(Collectors.joining(", "));
 
             if (ignoreNotBackupableDatabases) {

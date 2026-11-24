@@ -210,7 +210,7 @@ public class DBaaService {
         if (updatedDbName != null && !updatedDbName.isEmpty()) {
             DatabaseRegistry finalDatabase = databaseRegistry;
             boolean isDbNameProvidedInOldResources = databaseRegistry.getResources().stream()
-                    .anyMatch(dbResource -> dbResource.getName().equals(finalDatabase.getName()));
+                    .anyMatch(dbResource -> dbResource.getName().equals(getDatabaseName(finalDatabase)));
             if (updatedResources != null && !updatedResources.isEmpty()) {
                 boolean isDbNameProvidedInUpdatedResources = updatedResources.stream()
                         .anyMatch(dbResource -> (dbResource.getName().equals(updatedDbName)));
@@ -294,7 +294,7 @@ public class DBaaService {
         if (!databaseRegistry.isExternallyManageable()) {
             throw new DBCreateValidationException(Source.builder().pointer("/externallyManageable").build(),
                     String.format("Unable to save database %s as external manageable, because 'externallyManageable' flag has value %s",
-                            databaseRegistry.getName(), databaseRegistry.isExternallyManageable()));
+                            getDatabaseName(databaseRegistry), databaseRegistry.isExternallyManageable()));
         }
         encryption.encryptPassword(databaseRegistry.getDatabase());
         DatabaseRegistry savedDatabase = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveExternalDatabase(databaseRegistry);
@@ -366,8 +366,8 @@ public class DBaaService {
 
     private void backupRecord(DatabaseRegistry databaseRegistry) {
         DatabaseHistory databaseHistory = new DatabaseHistory(databaseRegistry);
-        Integer lastVersion = databaseHistoryDbaasRepository.getLastVersionByName(databaseRegistry.getName());
-        log.debug("Last version database record with name {} is {}", databaseRegistry.getName(), lastVersion);
+        Integer lastVersion = databaseHistoryDbaasRepository.getLastVersionByName(getDatabaseName(databaseRegistry));
+        log.debug("Last version database record with name {} is {}", getDatabaseName(databaseRegistry), lastVersion);
         databaseHistory.setVersion(lastVersion == null ? 0 : lastVersion + 1);
         databaseHistory.setChangeAction(DatabaseHistory.ChangeAction.UPDATE_CLASSIFIER);
         databaseHistoryDbaasRepository.save(databaseHistory);
@@ -375,8 +375,8 @@ public class DBaaService {
 
     private void backupRecordForUpdateConnectionProperties(DatabaseRegistry databaseRegistry) {
         DatabaseHistory databaseHistory = new DatabaseHistory(databaseRegistry);
-        Integer lastVersion = databaseHistoryDbaasRepository.getLastVersionByName(databaseRegistry.getName());
-        log.debug("Last version database record with name {} is {}", databaseRegistry.getName(), lastVersion);
+        Integer lastVersion = databaseHistoryDbaasRepository.getLastVersionByName(getDatabaseName(databaseRegistry));
+        log.debug("Last version database record with name {} is {}", getDatabaseName(databaseRegistry), lastVersion);
         databaseHistory.setVersion(lastVersion == null ? 0 : lastVersion + 1);
         databaseHistory.setChangeAction(DatabaseHistory.ChangeAction.UPDATE_CONNECTION_PROPERTIES);
         databaseHistoryDbaasRepository.save(databaseHistory);

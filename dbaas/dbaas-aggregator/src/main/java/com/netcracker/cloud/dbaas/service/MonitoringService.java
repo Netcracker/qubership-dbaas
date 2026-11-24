@@ -14,6 +14,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.MICROSERVICE_NAME;
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 
 @ApplicationScoped
 @Slf4j
@@ -52,7 +53,7 @@ public class MonitoringService {
             monitoringBuilder
                     .namespace(String.valueOf(db.getNamespace()))
                     .databaseType(String.valueOf(db.getType()))
-                    .databaseName(String.valueOf(db.getName()))
+                    .databaseName(String.valueOf(getDatabaseName(db)))
                     .externallyManageable(String.valueOf(db.isExternallyManageable()))
                     .host(String.valueOf(host))
                     .status(String.valueOf(adapterStatusMap.get(db.getAdapterId())));
@@ -92,12 +93,12 @@ public class MonitoringService {
         Map<String, DatabaseInfo> registered = databaseRegistryDbaasRepository.findAllInternalDatabases().stream()
                 .filter(db -> {
                     if (db.isMarkedForDrop()) {
-                        markedForDrop.add(new DatabaseInfo(db.getName()));
+                        markedForDrop.add(new DatabaseInfo(getDatabaseName(db)));
                         return false;
                     }
                     return true;
                 })
-                .map(DatabaseRegistry::getName)
+                .map(DBaaService::getDatabaseName)
                 .map(DatabaseInfo::new)
                 .collect(Collectors.toMap(DatabaseInfo::getName, Function.identity(), (n1, n2) -> n1));
 
@@ -136,12 +137,12 @@ public class MonitoringService {
                 .filter(db -> db.getType().equals(adapterType))
                 .filter(db -> {
                     if (db.isMarkedForDrop()) {
-                        markedForDrop.add(new DatabaseInfo(db.getName()));
+                        markedForDrop.add(new DatabaseInfo(getDatabaseName(db)));
                         return false;
                     }
                     return true;
                 })
-                .map(DatabaseRegistry::getName)
+                .map(DBaaService::getDatabaseName)
                 .map(DatabaseInfo::new)
                 .collect(Collectors.toMap(DatabaseInfo::getName, Function.identity(), (n1, n2) -> n1));
 

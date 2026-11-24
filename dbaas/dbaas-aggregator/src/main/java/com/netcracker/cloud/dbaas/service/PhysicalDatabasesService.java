@@ -792,7 +792,7 @@ public class PhysicalDatabasesService {
             additionalRoles.setId(database.getId());
             additionalRoles.setConnectionProperties(database.getConnectionProperties());
             additionalRoles.setResources(database.getResources());
-            additionalRoles.setDbName(database.getName());
+            additionalRoles.setDbName(getDatabaseName(database));
             additionalRolesList.add(additionalRoles);
         }
         instruction.setAdditionalRoles(additionalRolesList);

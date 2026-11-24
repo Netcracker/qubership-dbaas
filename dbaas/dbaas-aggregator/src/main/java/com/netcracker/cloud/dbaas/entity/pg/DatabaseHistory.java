@@ -12,6 +12,8 @@ import java.util.Date;
 import java.util.SortedMap;
 import java.util.UUID;
 
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
+
 @Data
 @NoArgsConstructor
 @Entity(name = "DatabaseHistory")
@@ -43,7 +45,7 @@ public class DatabaseHistory {
         this.database = databaseRegistry.getDatabase();
         this.classifier = databaseRegistry.getClassifier();
         this.type = databaseRegistry.getType();
-        this.name = databaseRegistry.getName();
+        this.name = getDatabaseName(databaseRegistry);
         this.date = new Date();
     }
 
