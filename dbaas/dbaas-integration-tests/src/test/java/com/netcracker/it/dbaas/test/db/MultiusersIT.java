@@ -17,22 +17,13 @@ import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoException;
 import com.netcracker.it.dbaas.entity.DatabaseResponse;
-import com.netcracker.it.dbaas.entity.PhysicalDatabaseRegistrationResponseDTOV3;
-import com.netcracker.it.dbaas.entity.RegisteredPhysicalDatabasesDTOV3;
 import com.netcracker.it.dbaas.exceptions.CannotConnect;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
-import okhttp3.Call;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.bson.Document;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.postgresql.util.PSQLException;
 
 import java.io.IOException;
@@ -214,31 +205,7 @@ public class MultiusersIT extends AbstractIT {
     }
 
     public boolean isAdapterSupportMultiusersFeature(String dbType) {
-        Request request = new Request.Builder()
-                .url(dbaasServiceUrl + String.format(helperV3.PHYSICAL_DATABASE_MAIN_PATH_V3, dbType))
-                .addHeader("Authorization", "Basic " + helperV3.getClusterDbaAuthorization())
-                .addHeader("X-Request-Id", getRequestId())
-                .get()
-                .build();
-        Call call = okHttpClient.newCall(request);
-        try (Response response = call.execute()) {
-            if (response.code() != 200) {
-                log.info("There are no physical databases of type {}.", dbType);
-                return false;
-            }
-            String body = response.body().string();
-            log.info("Got physical databases of type {}: {}", dbType, body);
-            RegisteredPhysicalDatabasesDTOV3 physicalDatabases = helperV3.objectMapper.readValue(body, RegisteredPhysicalDatabasesDTOV3.class);
-            for (PhysicalDatabaseRegistrationResponseDTOV3 database : physicalDatabases.getIdentified().values()) {
-                if (database.isGlobal() && helperV3.adapterIsAvailable(database.getAdapterAddress()) && database.getSupportedRoles().size() >= 3) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (IOException e) {
-            log.debug("Error while getting adapter by db type {}:", dbType, e);
-            return false;
-        }
+        return helperV3.isAdapterSupportMultiusersFeature(dbType);
     }
 
     public void checkConnectionPostgresForRole(DatabaseResponse databaseToCheck, String setData, String checkData, String role) {

@@ -6,6 +6,7 @@ import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @EqualsAndHashCode(callSuper=true)
@@ -14,4 +15,5 @@ import java.util.List;
 public class PhysicalDatabaseRegistrationResponseDTOV3 extends PhysicalDatabaseRegistrationResponseDTO {
     private String supportedVersion;
     private List<String> supportedRoles;
+    private Map<String, Boolean> features;
 }
