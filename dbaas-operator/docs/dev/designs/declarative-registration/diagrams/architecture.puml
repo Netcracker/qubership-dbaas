@@ -1,0 +1,49 @@
+@startuml
+title Declarative physical database registration
+
+skinparam componentStyle rectangle
+
+package "Kubernetes" {
+
+  package "Adapter namespace" as ns_adapter {
+    [PhysicalDatabase resource] as CR
+    [Credentials Secret] as Secret
+    [Role + RoleBinding] as RBAC
+    [DBaaS Adapter] as Adapter
+  }
+
+  package "DBaaS namespace" as ns_dbaas {
+    [DBaaS Operator] as Operator
+    [DBaaS Aggregator] as Aggregator
+    database "Registry (PostgreSQL)" as Registry
+  }
+}
+
+ns_adapter -[hidden]right- ns_dbaas
+
+Operator --> CR : watches
+Operator --> Secret : reads on every reconcile
+
+RBAC ..> Secret : grants read access
+note bottom of RBAC
+  Declared in the adapter's Helm chart:
+  grants the operator's ServiceAccount
+  read access to the credentials Secret.
+end note
+
+Operator --> Adapter : probe\nGET {adapterAddress}/api/v2/adapter/physical_database\n(Basic Auth from the Secret)
+Adapter ..> Operator : 200: the descriptor:\nphysicalDatabaseId, type, supportedRoles,\nfeatures, labels, readOnlyHost, apiVersions
+
+Operator --> Aggregator : register\nPUT /api/v3/dbaas/{type}/physical_databases/{phydbid}\n?internalMigration=true
+Aggregator ..> Operator : 201 created / 200 updated / 202 a migration runs\n500 stored migration failures / 409 conflict
+
+Aggregator --> Registry : physical database row,\ninstruction row
+Aggregator --> Adapter : internal role migration:\nPUT {adapterAddress}/api/v2/dbaas/adapter/{type}/users
+Adapter ..> Aggregator : 201: connection properties
+
+note bottom of Adapter
+  The adapter is passive: it never calls the
+  aggregator to register itself; it only serves
+  the descriptor and the user-creation calls.
+end note
+@enduml
