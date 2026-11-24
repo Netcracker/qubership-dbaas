@@ -9,8 +9,6 @@ status.
 - [Status and troubleshooting](status-and-troubleshooting.md): phases, conditions, retries, events, common failures
 - [DBaaS Operator Metrics](monitoring/DBaaS%20Operator%20Metrics.md)
 - [Onboarding a service](howto/onboarding.md)
-- [Declarative physical database registration: design](dev/designs/declarative-registration/declarative-registration.md):
-  how the operator and dbaas-aggregator register a physical database, and the contract with its adapter
 
 ## Custom Resources
 
