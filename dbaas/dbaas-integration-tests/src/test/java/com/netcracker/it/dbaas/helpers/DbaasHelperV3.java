@@ -98,16 +98,6 @@ public class DbaasHelperV3 {
             .onRetry(event -> log.warn("ClickHouse user DDL not yet applied, retrying the connection (attempt {})", event.getAttemptCount()))
             .withMaxRetries(12).withDelay(Duration.ofSeconds(5));
 
-    private static boolean isClickhouseAuthenticationError(Throwable error) {
-        while (error != null) {
-            if (error.getMessage() != null && error.getMessage().contains("AUTHENTICATION_FAILED")) {
-                return true;
-            }
-            error = error.getCause();
-        }
-        return false;
-    }
-
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
     public static final String TEST_NAMESPACE = "dbaas-autotests";
@@ -119,13 +109,6 @@ public class DbaasHelperV3 {
     public static final String MICROSERVICE_NAME = "microserviceName";
     public static final String NAMESPACE = "namespace";
     public static final String TLS_FEATURE = "tls";
-
-    /**
-     * Ports of the ClickHouse HTTP interface. The adapter publishes the native port, and these two are the
-     * plaintext and the TLS HTTP ports of the same cluster.
-     */
-    private static final String CLICKHOUSE_HTTP_PORT = "8123";
-    private static final String CLICKHOUSE_TLS_HTTP_PORT = "8443";
 
     public static final String DATABASES_V3 = "api/v3/dbaas/%s/databases";
     public static final String DATABASES_LIST_V3 = DATABASES_V3 + "/list";
@@ -743,12 +726,6 @@ public class DbaasHelperV3 {
         checkConnectionClickhouse(databaseToCheck, false, setData, checkData);
     }
 
-    /**
-     * The adapter creates and rotates users with CREATE USER and ALTER USER statements executed with
-     * ON CLUSTER. ClickHouse applies such statements asynchronously on the replicas, so a replica
-     * that has not applied the statement yet rejects the connection with AUTHENTICATION_FAILED.
-     * Retry the connection until the statement is applied on the replica.
-     */
     public void checkConnectionClickhouse(DatabaseResponse databaseToCheck, Boolean expectCannotConnect, String setData, String checkData) throws SQLException, IOException {
         if (expectCannotConnect) {
             connectClickhouse(databaseToCheck, setData, checkData);
@@ -1826,5 +1803,15 @@ public class DbaasHelperV3 {
                 .withName(TEST_SERVICE_ACCOUNT_NAME)
                 .tokenRequest(tokenRequest);
         return result.getStatus().getToken();
+    }
+
+    private static boolean isClickhouseAuthenticationError(Throwable error) {
+        while (error != null) {
+            if (error.getMessage() != null && error.getMessage().contains("AUTHENTICATION_FAILED")) {
+                return true;
+            }
+            error = error.getCause();
+        }
+        return false;
     }
 }
