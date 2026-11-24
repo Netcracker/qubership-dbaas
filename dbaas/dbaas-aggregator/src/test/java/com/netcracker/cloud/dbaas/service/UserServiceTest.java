@@ -1,5 +1,6 @@
 package com.netcracker.cloud.dbaas.service;
 
+import com.netcracker.cloud.dbaas.DatabaseType;
 import com.netcracker.cloud.dbaas.dto.EnsuredUser;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.GetOrCreateUserRequest;
@@ -10,6 +11,7 @@ import com.netcracker.cloud.dbaas.entity.pg.*;
 import com.netcracker.cloud.dbaas.exceptions.DbNotFoundException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.DatabaseRegistryDbaasRepository;
 import com.netcracker.cloud.dbaas.repositories.pg.jpa.DatabaseUserRepository;
+import com.netcracker.cloud.dbaas.utils.DatabaseBuilder;
 import lombok.extern.slf4j.Slf4j;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +28,7 @@ import static com.netcracker.cloud.dbaas.Constants.ROLE;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 @Slf4j
@@ -93,6 +96,41 @@ class UserServiceTest {
         verify(databaseRegistryDbaasRepository).saveAnyTypeLogDb(any());
     }
 
+    @Test
+    void testCreateUser_OpensearchDatabaseWithoutName() {
+        String resourcePrefix = "dbaas_opensearch_prefix";
+        Database database = createOpensearchDatabaseWithoutName(resourcePrefix);
+        GetOrCreateUserRequest request = createGetOrCreateUserRequest();
+        DbaasAdapter adapter = mock(DbaasAdapter.class);
+        EnsuredUser ensuredUser = new EnsuredUser(resourcePrefix, new HashMap<>(Map.of("username", "test-user")),
+                List.of(), true);
+        when(physicalDatabasesService.getAdapterByPhysDbId(any())).thenReturn(adapter);
+        when(adapter.createUser(any(), any(), any(), any())).thenReturn(ensuredUser);
+        when(dBaaService.getConnectionPropertiesService()).thenReturn(connectionPropertiesService);
+
+        userService.createUser(request, database);
+
+        verify(adapter).createUser(eq(resourcePrefix), isNull(), eq(request.getUserRole()),
+                eq(request.getUsernamePrefix()));
+    }
+
+    @Test
+    void testRotatePassword_OpensearchDatabaseWithoutName() {
+        String resourcePrefix = "dbaas_opensearch_prefix";
+        DatabaseUser user = new DatabaseUser();
+        user.setDatabase(createOpensearchDatabaseWithoutName(resourcePrefix));
+        user.setUserRole(Role.ADMIN.toString());
+        user.setConnectionProperties(new HashMap<>(Map.of("username", "test-user")));
+        DbaasAdapter adapter = mock(DbaasAdapter.class);
+        EnsuredUser ensuredUser = new EnsuredUser(resourcePrefix,
+                new HashMap<>(Map.of("username", "test-user", "password", "new-password")), List.of(), true);
+        when(physicalDatabasesService.getAdapterByPhysDbId(any())).thenReturn(adapter);
+        when(adapter.ensureUser(any(), any(), any(), any())).thenReturn(ensuredUser);
+
+        userService.rotatePassword(user);
+
+        verify(adapter).ensureUser(eq("test-user"), isNull(), eq(resourcePrefix), eq(Role.ADMIN.toString()));
+    }
 
     @Test
     void findDatabaseUserTest() {
@@ -202,6 +240,17 @@ class UserServiceTest {
         database.setConnectionProperties(new ArrayList(Arrays.asList(new HashMap<>())));
         database.setDatabaseRegistry(List.of(databaseRegistry));
         return database;
+    }
+
+    private Database createOpensearchDatabaseWithoutName(String resourcePrefix) {
+        return new DatabaseBuilder()
+                .type(DatabaseType.OPENSEARCH.name())
+                .name(null)
+                .connectionProperties(List.of(new HashMap<>(Map.of(
+                        ROLE, Role.ADMIN.toString(),
+                        "resourcePrefix", resourcePrefix))))
+                .registry()
+                .build();
     }
 
     private GetOrCreateUserRequest createGetOrCreateUserRequest() {
