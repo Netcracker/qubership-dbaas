@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create Tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@cdfcd0a8abd7ba80d7a04a4e9debfb4e24995f1a # v3.0.1
         with:
           ref: ${{ github.ref }}
           tag-name: v${{ inputs.version }}
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Delete Tag
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@cdfcd0a8abd7ba80d7a04a4e9debfb4e24995f1a # v3.0.1
         with:
           ref: ${{ github.ref }}
           tag-name: v${{ inputs.version }}
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Delete Tag on Failure
-        uses: netcracker/qubership-workflow-hub/actions/tag-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+        uses: netcracker/qubership-workflow-hub/actions/tag-action@cdfcd0a8abd7ba80d7a04a4e9debfb4e24995f1a # v3.0.1
         with:
           ref: ${{ github.ref }}
           tag-name: v${{ inputs.version }}
@@ -80,7 +80,7 @@ jobs:
   github-release:
     needs: [ mvn-build, go-build ]
     if: ${{ !inputs.dry-run }}
-    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+    uses: netcracker/qubership-workflow-hub/.github/workflows/release-drafter.yml@cdfcd0a8abd7ba80d7a04a4e9debfb4e24995f1a # v3.0.1
     with:
       version: ${{ inputs.version }}
       publish: true
