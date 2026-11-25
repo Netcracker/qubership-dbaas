@@ -2,14 +2,16 @@ package com.netcracker.it.dbaas.entity;
 
 import lombok.*;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+
+import static com.netcracker.it.dbaas.test.AbstractIT.OPENSEARCH_TYPE;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@RequiredArgsConstructor
 public class DatabaseCreateRequestV3 {
     @NonNull
     private Map<String, Object> classifier;
@@ -31,10 +33,24 @@ public class DatabaseCreateRequestV3 {
 
     private String userRole;
 
+    public DatabaseCreateRequestV3(@NonNull Map<String, Object> classifier, @NonNull String type) {
+        this.classifier = classifier;
+        this.type = type;
+        this.settings = defaultSettings(type);
+    }
+
     public static DatabaseCreateRequestV3.DatabaseCreateRequestV3Builder builder(Map<String, Object> classifier,
                                                                                  String type) {
         return new DatabaseCreateRequestV3.DatabaseCreateRequestV3Builder()
                 .classifier(classifier)
-                .type(type);
+                .type(type)
+                .settings(defaultSettings(type));
+    }
+
+    private static Map<String, Object> defaultSettings(String type) {
+        if (OPENSEARCH_TYPE.equals(type)) {
+            return Collections.singletonMap("resourcePrefix", true);
+        }
+        return null;
     }
 }

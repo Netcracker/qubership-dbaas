@@ -9353,7 +9353,7 @@
             "description": "Adapter already running or request validation failed"
           },
           "500": {
-            "description": "Unexpected server error. A known cause is a request without a required field: `adapterAddress`, `httpBasicCredentials`, `metadata`, or `metadata.features.multiusers` when an already registered adapter reports a different set of roles. The physical database is left unchanged. Add the missing field and send the request again."
+            "description": "Unexpected server error. A known cause is a request without a required field: `adapterAddress`, `httpBasicCredentials`, or `metadata`. The physical database is left unchanged. Add the missing field and send the request again."
           },
           "401": {
             "description": "Not Authorized"
@@ -9488,7 +9488,7 @@
   },
   "info": {
     "title": "DBaaS Aggregator API",
-    "version": "6.17.0",
+    "version": "6.17.1",
     "description": "This documentation presents the REST API for the \"Database as a Service\" (DBaaS) component. DBaaS acts as an aggregator for all adapters. It is designed to collect requests for managed databases and route them to the appropriate adapter. DBaaS stores information about all databases used in a cloud project. These databases are isolated by namespace. DBaaS uses a Classifier to identify databases within a cloud namespace. The Classifier includes service-related information such as scope, microservice name, tenant ID, and namespace."
   }
 }

@@ -64,8 +64,9 @@ public class ExampleService {
 - A feature with its own lifecycle gets its own versioned root, such as `/api/backups/v1` or `/api/bluegreen/v1`.
 - Keep the v3 API backward compatible: the operator, the client libraries and the integration tests depend on it.
 
-When an endpoint changes, update `docs/api/OpenAPI.json` and `docs/api/rest-api.md`. A change to
-`DbaasAdapterRestClientV2` regenerates `docs/api/adapter-contract.yaml` during the build; commit the regenerated file.
+When an endpoint changes, regenerate `docs/api/OpenAPI.json` by running `SwaggerOpenApiDocsTest`, and update
+`docs/api/rest-api.md` by hand. A change to `DbaasAdapterRestClientV2` regenerates `docs/api/adapter-contract.yaml`
+during the build; commit the regenerated file.
 
 ## Database
 

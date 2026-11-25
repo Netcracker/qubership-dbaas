@@ -3,6 +3,7 @@ package com.netcracker.cloud.dbaas.controller.v3;
 import com.netcracker.cloud.core.error.rest.tmf.TmfErrorResponse;
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
 import com.netcracker.cloud.dbaas.dto.CleanupMarkedForDropRequest;
+import com.netcracker.cloud.dbaas.dto.DeleteAllInNamespacesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.dto.v3.ChangedDatabaseResponse;
 import com.netcracker.cloud.dbaas.dto.v3.ChangedDatabasesCursor;
@@ -19,6 +20,8 @@ import com.netcracker.cloud.dbaas.service.ResponseHelper;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -31,7 +34,6 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
-import org.jboss.resteasy.annotations.Separator;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
@@ -39,9 +41,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.netcracker.cloud.dbaas.Constants.CLUSTER_OPERATOR;
-import static com.netcracker.cloud.dbaas.Constants.DB_CLIENT;
-import static com.netcracker.cloud.dbaas.Constants.NAMESPACE_CLEANER;
+import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.DbaasApiPath.*;
 
 @Slf4j
@@ -85,18 +85,14 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     )
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Successfully returned logical databases.")})
-    @GET
+    @POST
     @RolesAllowed(DB_CLIENT)
     public Response findLogicalDatabasesInNamespaces(@Parameter(description = "List of names of namespaces where logical databases have to be deleted from")
-                                                     @QueryParam("namespaces") @Separator(",") Set<String> namespaces,
+                                                         @NotNull @Valid DeleteAllInNamespacesRequest request,
                                                      @Parameter(description = "Integer value to specify how many logical databases have to be skipped")
                                                      @QueryParam("offset") @DefaultValue("0") Integer offset,
                                                      @Parameter(description = "Integer value to specify how many logical databases have to be returned")
                                                      @QueryParam("limit") @DefaultValue("20") Integer limit) {
-        if (CollectionUtils.isEmpty(namespaces)) {
-            throw new BadRequestException("Query parameter 'namespaces' must be not empty list of strings");
-        }
-
         if (offset == null || offset < 0) {
             throw new BadRequestException("Query parameter 'offset' must be positive integer value");
         }
@@ -105,7 +101,7 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
             throw new BadRequestException("Query parameter 'limit' must be a positive integer value between 1 and 100");
         }
 
-        return Response.ok(databaseDbaasRepository.findByNamespacesWithOffsetBasedPagination(namespaces, offset, limit)).build();
+        return Response.ok(databaseDbaasRepository.findByNamespacesWithOffsetBasedPagination(request.getNamespaces(), offset, limit)).build();
     }
 
     @Operation(summary = "V3. Clean all logical databases in namespaces",
@@ -121,10 +117,8 @@ public class AggregatedDatabaseAdministrationNoNamespaceControllerV3 extends Abs
     @RolesAllowed(NAMESPACE_CLEANER)
     @Transactional
     public Response dropAllLogicalDatabasesInNamespaces(@Parameter(description = "Namespaces to clean, operation would drop all logical databases in that cloud project", required = true)
-                                                        @QueryParam("namespaces") @Separator(",") Set<String> namespaces) {
-        if (CollectionUtils.isEmpty(namespaces)) {
-            throw new BadRequestException("Query parameter 'namespaces' must be not empty list of strings");
-        }
+                                                            @NotNull @Valid DeleteAllInNamespacesRequest request) {
+        Set<String> namespaces = request.getNamespaces();
 
         log.info("Received request to drop all logical databases in {} namespaces {}", namespaces.size(), namespaces);
 

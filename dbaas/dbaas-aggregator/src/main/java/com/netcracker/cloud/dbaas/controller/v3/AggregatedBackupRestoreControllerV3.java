@@ -1,32 +1,32 @@
 package com.netcracker.cloud.dbaas.controller.v3;
 
 import com.netcracker.cloud.dbaas.controller.abstact.AbstractController;
+import com.netcracker.cloud.dbaas.dto.DeleteAllInNamespacesRequest;
 import com.netcracker.cloud.dbaas.dto.Source;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceBackup;
 import com.netcracker.cloud.dbaas.entity.pg.backup.NamespaceRestoration;
 import com.netcracker.cloud.dbaas.exceptions.BackupNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.BackupRestorationNotFoundException;
 import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteBackupOperationException;
-import com.netcracker.cloud.dbaas.exceptions.ForbiddenDeleteOperationException;
 import com.netcracker.cloud.dbaas.repositories.dbaas.BackupsDbaasRepository;
 import com.netcracker.cloud.dbaas.service.DBBackupsService;
-import com.netcracker.cloud.dbaas.service.DbaaSHelper;
-import org.apache.commons.collections4.CollectionUtils;
-import org.eclipse.microprofile.openapi.annotations.Operation;
-import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
-import org.eclipse.microprofile.openapi.annotations.media.Content;
-import org.eclipse.microprofile.openapi.annotations.media.Schema;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
-import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
-import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-import org.jboss.resteasy.annotations.Separator;
+import org.apache.commons.collections4.CollectionUtils;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import java.text.MessageFormat;
 import java.util.Objects;
@@ -95,21 +95,20 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
     }
 
     @Operation(summary = "V3. Find namespace backups in namespaces",
-        description = "Lists namespace backups prepared for specified namespaces",
-        hidden = true
+            description = "Lists namespace backups prepared for specified namespaces",
+            hidden = true
     )
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Successfully returned namespace backups.")})
-    @GET
-    public Response findNamespaceBackupsInNamespaces(@Parameter(description = "List of names of namespaces where namespace backups have to be deleted from")
-                                                     @QueryParam("namespaces") @Separator(",") Set<String> namespaces,
+            @APIResponse(responseCode = "200", description = "Successfully returned namespace backups.")})
+    @Path("/findall")
+    @POST
+    public Response findNamespaceBackupsInNamespaces(@Parameter(description = "Namespaces to list namespace backups for", required = true)
+                                                         @NotNull @Valid DeleteAllInNamespacesRequest request,
                                                      @Parameter(description = "Integer value to specify how many namespace backups have to be skipped")
                                                      @QueryParam("offset") @DefaultValue("0") Integer offset,
                                                      @Parameter(description = "Integer value to specify how many namespace backups have to be returned")
                                                      @QueryParam("limit") @DefaultValue("20") Integer limit) {
-        if (CollectionUtils.isEmpty(namespaces)) {
-            throw new BadRequestException("Query parameter 'namespaces' must be not empty list of strings");
-        }
+        assertNotProdMode();
 
         if (offset == null || offset < 0) {
             throw new BadRequestException("Query parameter 'offset' must be positive integer value");
@@ -119,16 +118,16 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
             throw new BadRequestException("Query parameter 'limit' must be a positive integer value between 1 and 100");
         }
 
-        return Response.ok(backupsDbaasRepository.findByNamespacesWithOffsetBasedPagination(namespaces, offset, limit)).build();
+        return Response.ok(backupsDbaasRepository.findByNamespacesWithOffsetBasedPagination(request.getNamespaces(), offset, limit)).build();
     }
 
     @Operation(summary = "V3. Clean all namespace backups in namespaces",
-        description = "Drops all namespace backups for the specified namespaces",
-        hidden = true
+            description = "Drops all namespace backups for the specified namespaces",
+            hidden = true
     )
     @APIResponses({
-        @APIResponse(responseCode = "200", description = "Namespace backups were successfully dropped in specified namespaces", content = @Content(schema = @Schema(implementation = String.class))),
-        @APIResponse(responseCode = "403", description = "Dbaas is working in PROD mode. Deleting namespace backups is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
+            @APIResponse(responseCode = "200", description = "Namespace backups were successfully dropped in specified namespaces", content = @Content(schema = @Schema(implementation = String.class))),
+            @APIResponse(responseCode = "403", description = "Dbaas is working in PROD mode. Deleting namespace backups is prohibited", content = @Content(schema = @Schema(implementation = String.class)))
     })
     @Path("/deleteall")
     @DELETE
@@ -136,10 +135,8 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
     public Response dropAllNamespaceBackupsInNamespaces(@Parameter(description = "Boolean value to force remove or not remove namespace backups in namespaces if its can not be deleted")
                                                         @QueryParam("forceRemoveNotDeletableBackups") @DefaultValue("false") Boolean forceRemoveNotDeletableBackups,
                                                         @Parameter(description = "Namespaces to clean, operation would drop all namespace backups in that cloud project", required = true)
-                                                        @QueryParam("namespaces") @Separator(",") Set<String> namespaces) {
-        if (CollectionUtils.isEmpty(namespaces)) {
-            throw new BadRequestException("Query parameter 'namespaces' must be not empty list of strings");
-        }
+                                                        @NotNull @Valid DeleteAllInNamespacesRequest request) {
+        Set<String> namespaces = request.getNamespaces();
 
         log.info("Received request to drop all namespace backups in {} namespaces {}", namespaces.size(), namespaces);
 
@@ -161,8 +158,8 @@ public class AggregatedBackupRestoreControllerV3 extends AbstractController {
             if (CollectionUtils.isNotEmpty(notDeletableNamespaceBackupIds)) {
 
                 throw new ForbiddenDeleteBackupOperationException(MessageFormat.format(
-                    "It is forbidden to delete {0} namespace backups with ids {1} because its can not be deleted, probably its had been failed to be collected or processing",
-                    notDeletableNamespaceBackupIds.size(), notDeletableNamespaceBackupIds
+                        "It is forbidden to delete {0} namespace backups with ids {1} because its can not be deleted, probably its had been failed to be collected or processing",
+                        notDeletableNamespaceBackupIds.size(), notDeletableNamespaceBackupIds
                 ));
             }
         }
