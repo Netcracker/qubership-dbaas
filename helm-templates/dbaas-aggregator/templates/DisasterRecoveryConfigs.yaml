@@ -17,6 +17,8 @@ metadata:
     netcracker.cloud/part-of: disaster-recovery
     netcracker.cloud/used-by: cluster-replicator
     profiles-package-type: default
+    app.kubernetes.io/managed-by: saasDeployer
+    app.kubernetes.io/part-of: disaster-recovery
 data:
   hot-standby: |-
     default-replicas: 1
