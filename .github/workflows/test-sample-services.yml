@@ -326,10 +326,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Spring stays hybrid in every mode: its probe asserts the legacy refusal and the agent fallback after it.
       - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
         run: |
-          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false "$M2M_AUTH_MODE" hybrid
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false "$M2M_AUTH_MODE"
 
       - name: "Phase C — wait for sample services"
         run: |

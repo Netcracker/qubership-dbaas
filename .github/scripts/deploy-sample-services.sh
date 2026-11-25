@@ -6,7 +6,6 @@ set -euo pipefail
 AGG_URL="$1"
 MOUNT_SECRETS="$2"
 M2M_AUTH_MODE="${3:-legacy}"
-SPRING_M2M_AUTH_MODE="${4:-$M2M_AUTH_MODE}"
 
 helm upgrade --install "$GO_SERVICE_NAME" \
   test-apps/go-test-app-service/helm-templates/go-test-app-service \
@@ -28,7 +27,7 @@ helm upgrade --install "$SPRING_SERVICE_NAME" \
   --set TAG="$SPRING_IMAGE_TAG" \
   --set IMAGE_PULL_POLICY="Never" \
   --set MOUNT_SECRETS="$MOUNT_SECRETS" \
-  --set M2M_AUTH_MODE="$SPRING_M2M_AUTH_MODE" \
+  --set M2M_AUTH_MODE="$M2M_AUTH_MODE" \
   --set API_DBAAS_ADDRESS="$AGG_URL"
 
 helm upgrade --install "$QUARKUS_SERVICE_NAME" \
