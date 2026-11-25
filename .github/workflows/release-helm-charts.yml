@@ -1,8 +1,8 @@
 ---
 name: "[release] Helm Charts"
 
-# Releases the Helm charts and builds qubership-dbaas-transfer:<version>, the
-# image the internal GitLab release pipeline takes the charts from.
+# Releases the Helm charts and builds qubership-dbaas-transfer:<version>, an
+# image containing the aggregator and operator Helm charts.
 # release-dbaas.yml calls it as its last job. The reusable workflow cuts
 # release-<version> from main as it is when the chart job runs, which can
 # include commits merged after the service release started. It then creates the

@@ -13,34 +13,14 @@ metadata:
 spec:
     replicas: {{ .Values.REPLICAS | default 1 }}
     strategy:
-        {{- /* A non-empty DEPLOYMENT_STRATEGY_TYPE wins; DBAAS_RECREATE_DEPLOYMENT_STRATEGY=true is the legacy switch for recreate. */}}
-        {{- $strategyType := default "" .Values.DEPLOYMENT_STRATEGY_TYPE }}
-        {{- if and (eq $strategyType "") (eq (.Values.DBAAS_RECREATE_DEPLOYMENT_STRATEGY | toString | lower) "true") }}
-        {{- $strategyType = "recreate" }}
-        {{- end }}
-        {{- if eq $strategyType "recreate" }}
+{{ if  (.Values.DBAAS_RECREATE_DEPLOYMENT_STRATEGY) }}
         type: Recreate
-        {{- else if eq $strategyType "best_effort_controlled_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: 0
-            maxUnavailable: 80%
-        {{- else if eq $strategyType "ramped_slow_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: 1
-            maxUnavailable: 0
-        {{- else if eq $strategyType "custom_rollout" }}
-        type: RollingUpdate
-        rollingUpdate:
-            maxSurge: {{ .Values.DEPLOYMENT_STRATEGY_MAXSURGE | default "25%" }}
-            maxUnavailable: {{ .Values.DEPLOYMENT_STRATEGY_MAXUNAVAILABLE | default "25%" }}
-        {{- else }}
+{{ else }}
         type: RollingUpdate
         rollingUpdate:
             maxSurge: 25%
             maxUnavailable: 25%
-        {{- end }}
+{{ end }}
     template:
         metadata:
             labels:

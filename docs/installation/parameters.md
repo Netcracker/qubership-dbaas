@@ -6,8 +6,6 @@
         + [POSTGRES_DBA_USER / POSTGRES_DBA_PASSWORD](#postgres_dba_user--postgres_dba_password)
         + [POSTGRES_DBAAS_DATABASE_NAME / POSTGRES_DBAAS_USER / POSTGRES_DBAAS_PASSWORD](#postgres_dbaas_database_name--postgres_dbaas_user--postgres_dbaas_password)
         + [DBAAS_RECREATE_DEPLOYMENT_STRATEGY](#dbaas_recreate_deployment_strategy)
-        + [DEPLOYMENT_STRATEGY_TYPE / DEPLOYMENT_STRATEGY_MAXSURGE / DEPLOYMENT_STRATEGY_MAXUNAVAILABLE](#deployment_strategy_type--deployment_strategy_maxsurge--deployment_strategy_maxunavailable)
-        + [Horizontal Pod Autoscaler (HPA_*)](#horizontal-pod-autoscaler-hpa_)
         + [POSTGRES_HOST](#postgres_host)
         + [DBAAS_PREMATURE_REGISTRATION_ADAPTER_ADDRESSES](#dbaas_premature_registration_adapter_addresses)
         + [DBAAS_DEFAULT_PHYSICAL_DATABASES_DISABLED](#dbaas_default_physical_databases_disabled)
@@ -119,59 +117,6 @@ Thus, after start up DBaaS Aggregator, platform stabilizes situation and service
 | Default | Recommended                                                                                                 | 
 |---------|-------------------------------------------------------------------------------------------------------------|
 | false   | We recommend to use this mode in migration procedure for consistent data. Note that you will have down time |  
-
-`DBAAS_RECREATE_DEPLOYMENT_STRATEGY` is kept for backward compatibility. A non-empty
-[DEPLOYMENT_STRATEGY_TYPE](#deployment_strategy_type--deployment_strategy_maxsurge--deployment_strategy_maxunavailable) takes precedence over it.
-
-#### DEPLOYMENT_STRATEGY_TYPE / DEPLOYMENT_STRATEGY_MAXSURGE / DEPLOYMENT_STRATEGY_MAXUNAVAILABLE
-
-Selects the DBaaS Aggregator Deployment strategy. The values are the same as for the DBaaS Operator.
-
-| DEPLOYMENT_STRATEGY_TYPE         | Deployment strategy                                                                     |
-|----------------------------------|-----------------------------------------------------------------------------------------|
-| `recreate`                       | `Recreate`                                                                              |
-| `best_effort_controlled_rollout` | `RollingUpdate` with `maxSurge: 0` and `maxUnavailable: 80%`                            |
-| `ramped_slow_rollout`            | `RollingUpdate` with `maxSurge: 1` and `maxUnavailable: 0`                              |
-| `custom_rollout`                 | `RollingUpdate` with `DEPLOYMENT_STRATEGY_MAXSURGE` and `DEPLOYMENT_STRATEGY_MAXUNAVAILABLE` |
-
-The strategy is chosen in this order:
-
-1. A non-empty `DEPLOYMENT_STRATEGY_TYPE`.
-2. Otherwise, `DBAAS_RECREATE_DEPLOYMENT_STRATEGY: true` selects `Recreate`.
-3. Otherwise, `RollingUpdate` with `maxSurge: 25%` and `maxUnavailable: 25%`.
-
-| Parameter                          | Default   | Example                                      |
-|------------------------------------|-----------|----------------------------------------------|
-| DEPLOYMENT_STRATEGY_TYPE           | (not set) | `ramped_slow_rollout`                        |
-| DEPLOYMENT_STRATEGY_MAXSURGE       | `25%`     | `50%`, `2`; used only with `custom_rollout`  |
-| DEPLOYMENT_STRATEGY_MAXUNAVAILABLE | `25%`     | `50%`, `2`; used only with `custom_rollout`  |
-
-#### Horizontal Pod Autoscaler (HPA_*)
-
-The chart always renders a `HorizontalPodAutoscaler` for the DBaaS Aggregator Deployment, the same way as the DBaaS
-Operator chart. With `HPA_ENABLED: false` both scaling policies are `Disabled`, `minReplicas` is 1 and `maxReplicas`
-is 9999, so the autoscaler does not change the replica count. The `apiVersion` is `autoscaling/v2` on Kubernetes 1.25+
-and OpenShift 4.10+, otherwise `autoscaling/v2beta2`; it is chosen from `PAAS_PLATFORM` and `PAAS_VERSION`
-(default `1.25`).
-
-The CPU target is relative to the CPU request:
-`averageUtilization = HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT * CPU_LIMIT / CPU_REQUEST`. The `dev`, `dev-ha`, `prod`
-and `prod-nonha` resource profiles set the HPA parameters; `HPA_ENABLED` is `false` only in `dev`.
-
-| Parameter                                         | Default    | Description                                            |
-|---------------------------------------------------|------------|--------------------------------------------------------|
-| HPA_ENABLED                                       | `false`    | Enables horizontal autoscaling                         |
-| HPA_MIN_REPLICAS                                  | `REPLICAS` | Lower replica limit                                    |
-| HPA_MAX_REPLICAS                                  | (not set)  | Upper replica limit; required with `HPA_ENABLED: true` |
-| HPA_AVG_CPU_UTILIZATION_TARGET_PERCENT            | `75`       | Average CPU utilization target, percent of `CPU_LIMIT` |
-| HPA_SCALING_UP_STABILIZATION_WINDOW_SECONDS       | `0`        | Scale-up stabilization window                          |
-| HPA_SCALING_UP_SELECT_POLICY                      | `Max`      | `Min`, `Max` or `Disabled`                             |
-| HPA_SCALING_UP_PODS_VALUE / _PERIOD_SECONDS       | (not set)  | `Pods` scale-up policy                                 |
-| HPA_SCALING_UP_PERCENT_VALUE / _PERIOD_SECONDS    | (not set)  | `Percent` scale-up policy                              |
-| HPA_SCALING_DOWN_STABILIZATION_WINDOW_SECONDS     | `300`      | Scale-down stabilization window                        |
-| HPA_SCALING_DOWN_SELECT_POLICY                    | `Max`      | `Min`, `Max` or `Disabled`                             |
-| HPA_SCALING_DOWN_PODS_VALUE / _PERIOD_SECONDS     | (not set)  | `Pods` scale-down policy                               |
-| HPA_SCALING_DOWN_PERCENT_VALUE / _PERIOD_SECONDS  | (not set)  | `Percent` scale-down policy                            |
 
 #### POSTGRES_HOST
 
