@@ -1,5 +1,5 @@
 ---
-name: Cleanup Old Docker Container Versions
+name: "[util] Cleanup Docker"
 run-name: "${{ github.event_name }} - ${{ github.actor }}"
 on:
     schedule:

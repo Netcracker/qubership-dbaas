@@ -7,6 +7,7 @@ import com.netcracker.cloud.junit.cloudcore.extension.annotations.EnableExtensio
 import com.netcracker.it.dbaas.entity.*;
 import com.netcracker.it.dbaas.entity.backup.v1.BackupStatus;
 import com.netcracker.it.dbaas.entity.backup.v1.RestoreStatus;
+import com.netcracker.it.dbaas.entity.composite.CompositeStructureDto;
 import com.netcracker.it.dbaas.helpers.*;
 import com.netcracker.it.dbaas.test.AbstractIT;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
@@ -22,18 +23,15 @@ import net.jodah.failsafe.Failsafe;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static com.netcracker.it.dbaas.entity.config.RolesRegistration.DeclarativeRoleConfigBuilder;
 import static com.netcracker.it.dbaas.helpers.BGHelper.TEST_NAMESPACE_CANDIDATE;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_NAMESPACE_PATTERN;
 import static com.netcracker.it.dbaas.helpers.OperatorHelper.*;
@@ -48,6 +46,8 @@ public class OperatorIT extends AbstractIT {
     private static BackupHelperV1 backupHelperV1;
     private static BackupHelperV3 backupHelperV3;
     private static BalancingRulesHelperV3 balancingRulesHelperV3;
+    private static CompositeStructureHelperV1 compositeStructureHelperV1;
+    private static DeclarativeConfigHelper declarativeConfigHelper;
 
     // The operator deploy carries no Secret RBAC, so OperatorIT grants it per-namespace Secret
     // access with a Role + RoleBinding, mirroring real onboarding.
@@ -62,6 +62,8 @@ public class OperatorIT extends AbstractIT {
         backupHelperV1 = new BackupHelperV1(helperV3);
         backupHelperV3 = new BackupHelperV3(helperV3);
         balancingRulesHelperV3 = new BalancingRulesHelperV3(helperV3);
+        compositeStructureHelperV1 = new CompositeStructureHelperV1(helperV3);
+        declarativeConfigHelper = new DeclarativeConfigHelper(helperV3);
         cleanUp();
         createOperatorSecretRbac();
     }
@@ -1902,6 +1904,137 @@ public class OperatorIT extends AbstractIT {
                             "aggregator must not be mutated when the spec is rejected");
                 }
             }
+        }
+    }
+
+    @Nested
+    @EnableExtension
+    @Execution(ExecutionMode.SAME_THREAD)
+    class CompositeStructure {
+        private static final String APP_NAME_LABEL = "app.kubernetes.io/name";
+        private static final String ADMIN_ROLE = "admin";
+
+        @BeforeEach
+        @AfterEach
+        void cleanup() throws IOException {
+            kubernetesClient.genericKubernetesResources(CRD_DATABASE_SECRET_CLAIM)
+                    .inNamespace(NAMESPACE).withLabel(TEST_ID, TEST_ID).delete();
+            cleanupDatabasesWithRoles();
+            helperV3.deleteAllLogicalDatabasesAndNamespaceBackupsInTestNamespaces();
+            compositeStructureHelperV1.deleteCompositeStructuresWithAutotestNamespaces();
+        }
+
+        // temporary WA for proper database_role rows cleanup
+        private void cleanupDatabasesWithRoles() throws IOException {
+            for (String namespace : helperV3.findAllRegisteredNamespaces()) {
+                if (DbaasHelperV3.TEST_NAMESPACE_PATTERN.matcher(namespace).matches()) {
+                    helperV3.deleteDatabases(helperV3.getClusterDbaAuthorization(), namespace);
+                }
+            }
+        }
+
+        @Test
+        void testCrossNamespaceClaimCreatesSecretWhenCompositeRegistersBothNamespaces() throws Exception {
+            String ownerNamespace = helperV3.generateTestNamespace();
+            String ownerService = generateName();
+            String consumerService = generateName();
+            String claimName = generateName();
+            String secretName = generateName();
+
+            var database = helperV3.createDatabase(ownerClassifier(ownerService, ownerNamespace), POSTGRES_TYPE, 201);
+            grantServiceRole(ownerNamespace, ownerService, consumerService);
+
+            var claim = createCR(CRD_DATABASE_SECRET_CLAIM, buildDatabaseSecretClaimCR(claimName, consumerService,
+                    ownerService, ownerNamespace, secretName, ADMIN_ROLE, POSTGRES_TYPE));
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_BACKING_OFF, STATUS_FALSE, REASON_NAMESPACE_NOT_IN_COMPOSITE, STATUS_FALSE);
+            assertNull(getSecret(secretName));
+
+            createCompositeStructure(ownerNamespace, Set.of(ownerNamespace, NAMESPACE));
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+            Secret secret = getSecret(secretName);
+            assertNotNull(secret);
+            assertSecretOwnedByCR(secret, claim);
+            assertEquals(consumerService, secret.getMetadata().getLabels().get(APP_NAME_LABEL));
+            assertSecretContainsConnectionProperties(secret, CONNECTION_PROPERTIES_KEY,
+                    database.getConnectionProperties());
+            assertSecretContainsMetadata(secret, ownerService, ownerNamespace, POSTGRES_TYPE, ADMIN_ROLE);
+        }
+
+        @Test
+        void testCrossNamespaceClaimWaitsForGrantThenFollowsPasswordRotation() throws Exception {
+            String ownerNamespace = helperV3.generateTestNamespace();
+            String ownerService = generateName();
+            String consumerService = generateName();
+            String claimName = generateName();
+            String secretName = generateName();
+            Map<String, Object> ownerDbClassifier = ownerClassifier(ownerService, ownerNamespace);
+
+            helperV3.createDatabase(ownerDbClassifier, POSTGRES_TYPE, 201);
+            declarativeConfigHelper.applyDeclarativeConfig(new DeclarativeRoleConfigBuilder()
+                    .disableGlobalPermissions()
+                    .build()
+                    .asPayload(ownerNamespace, ownerService));
+            createCompositeStructure(ownerNamespace, Set.of(ownerNamespace, NAMESPACE));
+
+            var claim = createCR(CRD_DATABASE_SECRET_CLAIM, buildDatabaseSecretClaimCR(claimName, consumerService,
+                    ownerService, ownerNamespace, secretName, ADMIN_ROLE, POSTGRES_TYPE));
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_BACKING_OFF, STATUS_FALSE, REASON_ACCESS_POLICY_NOT_READY, STATUS_FALSE);
+            assertNull(getSecret(secretName));
+
+            grantServiceRole(ownerNamespace, ownerService, consumerService);
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_CREATED, STATUS_FALSE);
+
+            String passwordBeforeRotation = extractPasswordFromSecret(getSecret(secretName));
+            helperV3.changePassword(ownerDbClassifier, POSTGRES_TYPE, 200, ownerNamespace);
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_SUCCEEDED, STATUS_TRUE, REASON_SECRET_ROTATED, STATUS_FALSE);
+
+            Secret rotatedSecret = getSecret(secretName);
+            assertNotNull(rotatedSecret);
+            assertFalse(passwordBeforeRotation.equals(extractPasswordFromSecret(rotatedSecret)),
+                    "Secret password must change after rotation");
+            assertSecretOwnedByCR(rotatedSecret, claim);
+            assertSecretContainsMetadata(rotatedSecret, ownerService, ownerNamespace, POSTGRES_TYPE, ADMIN_ROLE);
+        }
+
+        @Test
+        void testCrossNamespaceClaimStaysRejectedWhenGrantExistsOutsideComposite() throws Exception {
+            String ownerNamespace = helperV3.generateTestNamespace();
+            String ownerService = generateName();
+            String consumerService = generateName();
+            String claimName = generateName();
+            String secretName = generateName();
+
+            helperV3.createDatabase(ownerClassifier(ownerService, ownerNamespace), POSTGRES_TYPE, 201);
+            grantServiceRole(ownerNamespace, ownerService, consumerService);
+            createCompositeStructure(ownerNamespace, Set.of(ownerNamespace));
+
+            var claim = createCR(CRD_DATABASE_SECRET_CLAIM, buildDatabaseSecretClaimCR(claimName, consumerService,
+                    ownerService, ownerNamespace, secretName, ADMIN_ROLE, POSTGRES_TYPE));
+            waitForDesiredState(CRD_DATABASE_SECRET_CLAIM, claim,
+                    PHASE_BACKING_OFF, STATUS_FALSE, REASON_NAMESPACE_NOT_IN_COMPOSITE, STATUS_FALSE);
+            assertNull(getSecret(secretName));
+        }
+
+        private void grantServiceRole(String ownerNamespace, String ownerService, String consumerService)
+                throws IOException {
+            declarativeConfigHelper.applyDeclarativeConfig(new DeclarativeRoleConfigBuilder()
+                    .service(consumerService, ADMIN_ROLE)
+                    .build()
+                    .asPayload(ownerNamespace, ownerService));
+        }
+
+        private Map<String, Object> ownerClassifier(String ownerService, String ownerNamespace) {
+            return new ClassifierBuilder().ms(ownerService).ns(ownerNamespace).build();
+        }
+
+        private void createCompositeStructure(String compositeId, Set<String> namespaces) {
+            compositeStructureHelperV1.saveCompositeStructure(new CompositeStructureDto(compositeId, namespaces));
         }
     }
 

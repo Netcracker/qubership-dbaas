@@ -47,6 +47,35 @@ addresses one generated resource as
 ``<source path>#<doc index>#<item index>#<declaration index>`` (all 1-based) and
 is required whenever that resource's default name would be templated or would
 mix literal text with a Helm expression.
+
+A plan whose recorded hashes no longer match is stale (exit 3), except when
+running it against the repository as it is now writes nothing and passes
+validation: then ``--apply`` reports ``unchanged``. A stale plan that fails in
+any other way exits 3. A plain root deletes its sources, so the same plain plan
+applied twice stays stale.
+
+Every ``valid``, ``changed``, and ``unchanged`` result carries
+``internalDatabases``: one entry per generated ``InternalDatabase``, describing
+the repository as it is once the run's changes are written. The mounted-secret
+migration copies ``rootRelativeOutputFile``, ``outputSha256``, ``name``, and
+``documentIndex`` into a datasource's ``internalDatabase`` field to reuse the
+resource::
+
+    {
+      "contractVersion": 1, "repoRoot": "/abs/repo", "root": "chart", "rootKind": "helm",
+      "outputFile": "chart/templates/dbaas-operator-resources.yaml",
+      "rootRelativeOutputFile": "templates/dbaas-operator-resources.yaml",
+      "outputSha256": "<hash>", "documentIndex": 1, "name": "orders-db",
+      "metadataNamespace": "{{ .Values.NAMESPACE }}",
+      "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
+      "capabilityGuard": "dbaas.netcracker.com/v1", "documentGuard": null,
+      "type": "postgresql", "classifier": {"microserviceName": "orders", "scope": "service"},
+      "canonicalIdentity": "{\"microserviceName\":\"orders\",\"scope\":\"service\"}|postgresql",
+      "source": {"path": "chart/templates/dbaas-configuration.json", "sha256": "<hash or null>"}
+    }
+
+``documentGuard`` is the source's own whole-document guard carried into the
+output, and ``source.sha256`` is ``null`` for a deleted source.
 """
 
 from __future__ import annotations
@@ -80,6 +109,10 @@ EXIT_VALIDATION = 5
 
 _GUARD_IF = re.compile(r"^\s*\{\{-?\s*if\b.*-?\}\}\s*$")
 _GUARD_END = re.compile(r"^\s*\{\{-?\s*end\s*-?\}\}\s*$")
+# The operator-absent guard this writer wraps a preserved legacy source in.
+_FALLBACK_GUARD_IF = re.compile(
+    r'^\s*\{\{-?\s*if\s+not\s+\(\.Capabilities\.APIVersions\.Has\s+"[^"]+"\)\s*-?\}\}\s*$'
+)
 _ANY_VALUE_REF = re.compile(r"\.Values\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)")
 
 # A standalone Helm action: the whole line, once stripped, is one (or more
@@ -470,6 +503,50 @@ def _is_phantom_empty_node(node: Any) -> bool:
 
 
 def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]]]:
+    """Split a YAML source as ``_split_documents`` does.
+
+    Writer version 4.0.0 wrapped every document of a fully migrated
+    multi-document source in one operator-absent guard. Per document, that
+    guard reads as a partial guard. When it encloses the whole file, every
+    document inside it is read as already migrated, as if each one carried
+    its own operator-absent guard.
+    """
+
+    try:
+        return _split_documents(text, rel)
+    except UnsupportedError:
+        wrapped = _whole_file_fallback_guard(text)
+        if wrapped is None:
+            raise
+    open_end, close_start, action = wrapped
+    _, docs = _split_documents(text[open_end:close_start], rel)
+    for doc in docs:
+        doc["start"] += open_end
+        doc["end"] += open_end
+        doc["fallback"] = {"guard": doc["guard"], "guardAction": doc["guardAction"], "inner": doc["inner"]}
+        doc["guardAction"] = action
+    return (text[: docs[0]["start"]] if docs else ""), docs
+
+
+def _whole_file_fallback_guard(text: str) -> tuple[int, int, str] | None:
+    """Return ``(end of the opening line, start of the closing line, guard
+    action)`` when the first and last non-comment lines of ``text`` are an
+    operator-absent guard and its ``{{- end }}``, and ``None`` otherwise."""
+
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    meaningful = [i for i, line in enumerate(lines) if line.strip() and not line.lstrip().startswith("#")]
+    if len(meaningful) < 2:
+        return None
+    first, last = meaningful[0], meaningful[-1]
+    if not _FALLBACK_GUARD_IF.match(lines[first].rstrip("\r\n")) or not _GUARD_END.match(lines[last].rstrip("\r\n")):
+        return None
+    return offsets[first + 1], offsets[last], lines[first].strip()
+
+
+def _split_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]]]:
     """Return ``(preamble, docs)``: one ``docs`` entry per top-level document,
     with an exact byte span that starts at that document's own leading
     ``---`` marker (if any) and ends just before the next one -- not
@@ -504,45 +581,30 @@ def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]
     except yaml.YAMLError as exc:
         raise UnsupportedError(f"{rel}: not valid YAML: {exc}") from None
 
-    marker_starts = [
-        m.start() for m in re.finditer(r"^---(?:[ \t]+#[^\r\n]*)?[ \t]*\r?\n", text, re.M)
+    boundaries = [
+        (_guard_lines_start(text, m.start()), m.start(), m.end())
+        for m in re.finditer(r"^---(?:[ \t]+#[^\r\n]*)?[ \t]*\r?\n", text, re.M)
     ]
     docs = []
     for node in nodes:
-        preceding = [m for m in marker_starts if m <= node.start_mark.index]
-        start = preceding[-1] if preceding else 0
-        following = [m for m in marker_starts if m > node.start_mark.index]
-        end = following[0] if following else len(text)
-        raw = text[start:end]
-        content = raw[raw.index("\n") + 1 :] if raw.startswith("---") else raw
-        lines = content.splitlines(keepends=True)
-        guard = None
-        guard_action = None
-        inner = content
-        meaningful = [
-            index for index, line in enumerate(lines)
-            if line.strip() and not line.lstrip().startswith("#")
-        ]
-        if (
-            len(meaningful) >= 2
-            and _GUARD_IF.match(lines[meaningful[0]].rstrip("\r\n"))
-            and _GUARD_END.match(lines[meaningful[-1]].rstrip("\r\n"))
-        ):
-            first, last = meaningful[0], meaningful[-1]
-            guard = ("".join(lines[: first + 1]), "".join(lines[last:]))
-            guard_action = lines[first].strip()
-            inner = "".join(lines[first + 1:last])
-        elif any(_GUARD_IF.match(l.rstrip("\r\n")) for l in lines):
-            # An unmatched {{- if ... }} (no whole-document guard pair found
-            # above) is genuinely a partial guard. A standalone {{- end }}
-            # with no such "if" is not necessarily one -- it is the same
-            # closing token range/with/define/block use, and is otherwise
-            # reported more specifically as nested Helm control flow (see
-            # _contains_standalone_helm_action in build_root) rather than
-            # misreported as a mismatched guard here.
-            raise UnsupportedError(
-                f"{rel}: a Helm guard action does not wrap the entire document; partial guards are unsupported"
-            )
+        preceding = [b for b in boundaries if b[0] <= node.start_mark.index]
+        following = [b for b in boundaries if b[0] > node.start_mark.index]
+        start = preceding[-1][0] if preceding else 0
+        end = following[0][0] if following else len(text)
+        if preceding:
+            # The document's own "---" line is not content. Guard lines placed
+            # before it (see _guard_lines_start) are, and stay in front.
+            _, marker_start, marker_end = preceding[-1]
+            content = text[start:marker_start] + text[marker_end:end]
+        else:
+            content = text[start:end]
+        guard, guard_action, inner = _whole_document_guard(content, rel)
+        fallback = None
+        if guard_action is not None and _FALLBACK_GUARD_IF.match(guard_action):
+            # A fallback guard written by an earlier run may itself wrap the
+            # source's own whole-document guard; record that inner guard too.
+            inner_guard, inner_action, inner_body = _whole_document_guard(inner, rel)
+            fallback = {"guard": inner_guard, "guardAction": inner_action, "inner": inner_body}
         try:
             value = yaml.safe_load(_mask_for_value(inner))
         except yaml.YAMLError as exc:
@@ -554,9 +616,59 @@ def _split_yaml_documents(text: str, rel: str) -> tuple[str, list[dict[str, Any]
             "guard": guard,
             "guardAction": guard_action,
             "inner": inner,
+            "fallback": fallback,
         })
     preamble = text[: docs[0]["start"]] if docs else ""
     return preamble, docs
+
+
+def _guard_lines_start(text: str, marker_start: int) -> int:
+    """Return where the run of ``{{- if ... }}`` lines directly above a ``---``
+    marker begins, or ``marker_start`` when there is none.
+
+    Such a guard belongs to the document after the marker. The writer itself
+    produces this shape: wrapping a span that starts with its own ``---`` puts
+    the fallback guard on the line above the marker.
+    """
+
+    start = marker_start
+    while start > 0:
+        line_start = text.rfind("\n", 0, start - 1) + 1
+        if not _GUARD_IF.match(text[line_start:start].rstrip("\r\n")):
+            break
+        start = line_start
+    return start
+
+
+def _whole_document_guard(content: str, rel: str) -> tuple[tuple[str, str] | None, str | None, str]:
+    """Return ``(guard, guard action, inner)`` for one document's content.
+
+    ``guard`` is the ``(prefix, suffix)`` text around ``inner`` when one
+    ``{{- if ... }}``/``{{- end }}`` pair wraps every non-comment line, and
+    ``None`` otherwise.
+    """
+
+    lines = content.splitlines(keepends=True)
+    meaningful = [
+        index for index, line in enumerate(lines)
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if (
+        len(meaningful) >= 2
+        and _GUARD_IF.match(lines[meaningful[0]].rstrip("\r\n"))
+        and _GUARD_END.match(lines[meaningful[-1]].rstrip("\r\n"))
+    ):
+        first, last = meaningful[0], meaningful[-1]
+        guard = ("".join(lines[: first + 1]), "".join(lines[last:]))
+        return guard, lines[first].strip(), "".join(lines[first + 1:last])
+    if any(_GUARD_IF.match(line.rstrip("\r\n")) for line in lines):
+        # An unmatched {{- if ... }} is a partial guard. A standalone
+        # {{- end }} with no "if" is the closing token of range/with/define/
+        # block too, and build_root reports it as nested Helm control flow.
+        raise UnsupportedError(
+            f"{rel}: a Helm guard action does not wrap the entire document; partial guards are unsupported"
+        )
+    return None, None, content
 
 
 def _document_supported(value: Any) -> bool:
@@ -606,6 +718,18 @@ def parse_source(repo_root: Path, rel: str) -> tuple[str, list[dict[str, Any]], 
     # write, so it cannot by itself tell "had a BOM" from "never had one."
     text = (raw[3:] if has_bom else raw).decode("utf-8")
     if path.suffix.lower() == ".json":
+        # An earlier helm-root run wrapped the whole JSON file in the
+        # operator-absent guard. Read the JSON inside it and report the guard,
+        # so build_root can keep the file as it is.
+        fallback_action = None
+        lines = text.splitlines(keepends=True)
+        if (
+            len(lines) >= 2
+            and _FALLBACK_GUARD_IF.match(lines[0].rstrip("\r\n"))
+            and _GUARD_END.match(lines[-1].rstrip("\r\n"))
+        ):
+            fallback_action = lines[0].strip()
+            text = "".join(lines[1:-1])
         try:
             data = json.loads(text, parse_constant=convert.reject_json_constant)
         except ValueError as exc:
@@ -618,7 +742,11 @@ def parse_source(repo_root: Path, rel: str) -> tuple[str, list[dict[str, Any]], 
         # or left untouched), so its BOM is never something this writer
         # needs to reproduce.
         values = data if isinstance(data, list) else [data]
-        return text, [{"value": v} for v in values], True, ""
+        original = ("\N{ZERO WIDTH NO-BREAK SPACE}" if has_bom else "") + "".join(lines)
+        return text, [
+            {"value": v, "jsonFallbackGuardAction": fallback_action, "original": original}
+            for v in values
+        ], True, ""
     if yaml is None:
         raise UnsupportedError("PyYAML is required to read YAML sources")
     preamble, docs = _split_yaml_documents(text, rel)
@@ -655,8 +783,11 @@ def _args_for_root(root: dict[str, Any]) -> argparse.Namespace:
     return ns
 
 
-def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | None], list[str]]:
-    """Return (changes for this root, warnings). Raises PlanError/UnsupportedError."""
+def build_root(
+    repo_root: Path, root: dict[str, Any]
+) -> tuple[dict[str, str | None], list[str], list[dict[str, Any]]]:
+    """Return (changes for this root, warnings, handoff entries for its
+    InternalDatabase resources). Raises PlanError/UnsupportedError."""
 
     args = _args_for_root(root)
     capability_guard = root.get("capabilityGuard")
@@ -666,6 +797,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
     errors: list[str] = []
     resources: list[dict[str, Any]] = []
     entries: list[tuple[dict[str, Any], tuple[str, str] | None]] = []
+    origins: list[str] = []  # the source path of each entries[] item
     changes: dict[str, str | None] = {}
 
     for source in root["sources"]:
@@ -679,12 +811,19 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
             raise UnsupportedError(f"{rel}: no document to migrate")
 
         doc_results: list[tuple[dict[str, Any], bool]] = []  # (doc, fully_supported)
+        negated_action = _negated_guard_open(capability_guard).strip() if capability_guard else None
         for doc_index, doc in enumerate(docs, start=1):
             value = doc["value"]
-            doc["capabilityFallbackGuard"] = bool(
-                capability_guard
-                and doc.get("guardAction") == _negated_guard_open(capability_guard).strip()
-            )
+            if is_json:
+                doc["capabilityFallbackGuard"] = bool(
+                    negated_action and doc.get("jsonFallbackGuardAction") == negated_action
+                )
+            else:
+                doc["capabilityFallbackGuard"] = bool(
+                    negated_action
+                    and doc.get("fallback") is not None
+                    and doc.get("guardAction") == negated_action
+                )
             if value is None:
                 doc_results.append((doc, False))
                 continue
@@ -703,19 +842,19 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
             # still the literal loop-variable expression, not one entry per
             # service. That is not a lossy-but-usable conversion, it is a
             # corrupted one -- block instead of emitting it.
-            if not is_json and _contains_standalone_helm_action(doc["inner"]):
+            # The fallback guard was written by an earlier run to keep the legacy
+            # declaration for operator-absent clusters. It is not source
+            # semantics to carry into the generated native CR; the source's own
+            # guard, if any, is the one inside it.
+            source_view = doc["fallback"] if doc["capabilityFallbackGuard"] and not is_json else doc
+            if not is_json and _contains_standalone_helm_action(source_view["inner"]):
                 raise UnsupportedError(
                     f"{rel}#{doc_index}: contains nested Helm control flow (if/else/range/with/"
                     "assignment) inside the declaration being converted; this cannot be preserved "
                     "in the static generated resource and is not supported for automatic "
                     "conversion -- migrate this document manually"
                 )
-            guard = doc.get("guard") if not is_json else None
-            if doc["capabilityFallbackGuard"]:
-                # This guard was emitted by an earlier run to retain the
-                # legacy declaration only for operator-absent clusters. It is
-                # not source semantics to carry into the generated native CR.
-                guard = None
+            guard = source_view.get("guard") if not is_json else None
             for item_index, item in enumerate(convert.as_legacy_items(value), start=1):
                 kind = str(item.get("kind", ""))
                 sub_kind = str(item.get("subKind", ""))
@@ -766,6 +905,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                             ) from None
                         resources.append(resource)
                         entries.append((resource, guard))
+                        origins.append(rel)
                 elif legacy_kind == "dbpolicy":
                     key = _name_key(rel, doc_index, item_index, 1)
                     override = overrides.get(key)
@@ -783,6 +923,7 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
                         ) from None
                     resources.append(resource)
                     entries.append((resource, guard))
+                    origins.append(rel)
 
         # A JSON file is one atomic unit: only fully-removable when every
         # top-level element converted; otherwise the whole array is "mixed"
@@ -796,32 +937,29 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
             # issue #776: preserve the source under capabilityGuard instead of
             # deleting it -- the native CR (in the output file) and the legacy
             # declaration (here) render in opposite, mutually exclusive branches.
-            changes[rel] = _wrap_in_negated_guard(capability_guard, text) if capability_guard else None
-        elif all(supported for _d, supported in doc_results):
-            if capability_guard:
-                if len(doc_results) == 1 and doc_results[0][0]["capabilityFallbackGuard"]:
-                    changes[rel] = text
-                else:
-                    changes[rel] = preamble + _wrap_in_negated_guard(
-                        capability_guard, text[docs[0]["start"]:]
-                    )
-            else:
+            if not capability_guard:
                 changes[rel] = None
+            elif docs[0]["capabilityFallbackGuard"]:
+                changes[rel] = docs[0]["original"]
+            else:
+                changes[rel] = _wrap_in_negated_guard(capability_guard, text)
         elif not any(supported for _d, supported in doc_results):
             changes[rel] = preamble + text[docs[0]["start"]:]  # report it without changing its bytes
         elif capability_guard:
             # Every document keeps its original position; a supported one is
-            # wrapped to the operator-absent branch in place rather than removed.
-            parts = [
-                (
-                    text[d["start"]:d["end"]]
-                    if d["capabilityFallbackGuard"]
-                    else _wrap_in_negated_guard(capability_guard, text[d["start"]:d["end"]])
-                ) if supported
-                else text[d["start"]:d["end"]]
-                for d, supported in doc_results
-            ]
-            changes[rel] = preamble + "".join(parts)
+            # wrapped to the operator-absent branch in place rather than
+            # removed. Each document gets its own guard, so a later run reads
+            # every document back as one fallback-guarded document.
+            changes[rel] = _rewrite_documents(
+                text, preamble, doc_results,
+                lambda d, supported, span: (
+                    _wrap_in_negated_guard(capability_guard, span)
+                    if supported and not d["capabilityFallbackGuard"]
+                    else span
+                ),
+            )
+        elif all(supported for _d, supported in doc_results):
+            changes[rel] = None
         else:
             # The preamble (if any) is reattached whenever some document
             # survives, regardless of which document(s) that is.
@@ -845,7 +983,103 @@ def build_root(repo_root: Path, root: dict[str, Any]) -> tuple[dict[str, str | N
 
     output_text = _render_output(entries, capability_guard)
     changes[root["outputFile"]] = output_text
-    return changes, warnings
+    handoff = [
+        {
+            "documentIndex": index,
+            "resource": resource,
+            "documentGuard": guard[0].splitlines()[-1].strip() if guard else None,
+            "sourcePath": origin,
+        }
+        for index, ((resource, guard), origin) in enumerate(zip(entries, origins), start=1)
+        if resource["kind"] == "InternalDatabase"
+    ]
+    return changes, warnings, handoff
+
+
+def _rewrite_documents(
+    text: str,
+    preamble: str,
+    doc_results: list[tuple[dict[str, Any], bool]],
+    transform: Any,
+) -> str:
+    """Rebuild a YAML source with ``transform(doc, supported, span)`` applied to
+    each document's span. Text between two spans (a comment-only region) and
+    after the last one is kept as it is."""
+
+    parts = [preamble]
+    position = doc_results[0][0]["start"]
+    for doc, supported in doc_results:
+        parts.append(text[position:doc["start"]])
+        parts.append(transform(doc, supported, text[doc["start"]:doc["end"]]))
+        position = doc["end"]
+    parts.append(text[position:])
+    return "".join(parts)
+
+
+def internal_database_inventory(
+    repo_root: Path,
+    root: dict[str, Any],
+    handoff: list[dict[str, Any]],
+    changes: dict[str, str | None],
+) -> list[dict[str, Any]]:
+    """Describe each generated ``InternalDatabase`` for the mounted-secret
+    migration, as the repository holds it once this run's changes are written.
+
+    Each entry carries ``contractVersion`` 1. The mounted-secret writer reads the
+    output file again and checks it against its own plan, so these values tell
+    the plan author which datasource each resource belongs to.
+    """
+
+    output_rel = root["outputFile"]
+    output_content = changes[output_rel]
+    output_sha256 = hashlib.sha256(output_content.encode("utf-8")).hexdigest()
+    root_prefix = f"{root['root']}/" if root["root"] else ""
+    entries = []
+    for item in handoff:
+        resource = item["resource"]
+        spec = resource["spec"]
+        source_rel = item["sourcePath"]
+        source_content = changes.get(source_rel)
+        entries.append({
+            "contractVersion": 1,
+            "repoRoot": str(repo_root),
+            "root": root["root"],
+            "rootKind": root["kind"],
+            "outputFile": output_rel,
+            "rootRelativeOutputFile": output_rel[len(root_prefix):],
+            "outputSha256": output_sha256,
+            "documentIndex": item["documentIndex"],
+            "name": resource["metadata"]["name"],
+            "metadataNamespace": resource["metadata"]["namespace"],
+            "operatorNamespace": spec["operatorNamespace"],
+            "capabilityGuard": root.get("capabilityGuard"),
+            "documentGuard": item["documentGuard"],
+            "type": spec.get("type"),
+            "classifier": spec.get("classifier"),
+            "canonicalIdentity": canonical_identity(spec.get("classifier"), spec.get("type")),
+            "source": {
+                "path": source_rel,
+                "sha256": (
+                    hashlib.sha256(source_content.encode("utf-8")).hexdigest()
+                    if source_content is not None
+                    else None
+                ),
+            },
+        })
+    return entries
+
+
+def canonical_identity(classifier: Any, db_type: Any) -> str:
+    """The ``canonical(wire classifier)|lowercase(type)`` key the mounted-secret
+    contract compares; ``extraKeys`` is flattened to top-level keys and a
+    top-level key wins over the same key inside it."""
+
+    wire = {key: value for key, value in (classifier or {}).items() if key != "extraKeys"}
+    for key, value in ((classifier or {}).get("extraKeys") or {}).items():
+        wire.setdefault(key, value)
+    wire.pop("namespace", None)
+    canonical = json.dumps(wire, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return f"{canonical}|{str(db_type or '').lower()}"
 
 
 def _render_output(
@@ -1171,27 +1405,56 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         plan = load_plan(args.plan)
-        check_source_hashes(repo_root, plan)
-        check_output_ownership(repo_root, plan)
+        # A plan whose recorded hashes no longer match is stale, unless running
+        # it now writes nothing and passes validation: the same plan applied a
+        # second time reports "unchanged". Any other failure of a stale plan is
+        # reported as the stale error, so the plan is rebuilt first.
+        try:
+            check_source_hashes(repo_root, plan)
+            check_output_ownership(repo_root, plan)
+            plan_error = None
+        except (StaleSourceError, UnsupportedError) as exc:
+            plan_error = exc
 
         all_changes: dict[str, str | None] = {}
         warnings: list[str] = []
-        for root in plan["roots"]:
-            root_changes, root_warnings = build_root(repo_root, root)
-            all_changes.update(root_changes)
-            warnings.extend(root_warnings)
-
-        materialize_and_validate(repo_root, plan, all_changes)
+        inventory: list[dict[str, Any]] = []
+        try:
+            for root in plan["roots"]:
+                root_changes, root_warnings, handoff = build_root(repo_root, root)
+                all_changes.update(root_changes)
+                warnings.extend(root_warnings)
+                inventory.extend(internal_database_inventory(repo_root, root, handoff, root_changes))
+            file_lists = classify(repo_root, all_changes)
+            touched = file_lists["createdFiles"] or file_lists["modifiedFiles"] or file_lists["deletedFiles"]
+            if plan_error is not None and touched:
+                raise plan_error
+            materialize_and_validate(repo_root, plan, all_changes)
+        except Exception:
+            if plan_error is not None:
+                raise plan_error from None
+            raise
+        if plan_error is not None:
+            warnings.append(
+                "the plan's recorded hashes do not match the repository, but running it writes nothing "
+                "and passes validation; nothing is written"
+            )
 
         if args.mode == "check":
-            print(json.dumps({"status": "valid", "warnings": warnings, **classify(repo_root, all_changes)}))
+            print(json.dumps({
+                "status": "valid", "warnings": warnings, **file_lists, "internalDatabases": inventory,
+            }))
             return EXIT_OK
 
-        check_source_hashes(repo_root, plan)
-        check_output_ownership(repo_root, plan)
-        file_lists = commit(repo_root, all_changes)
-        touched = file_lists["createdFiles"] or file_lists["modifiedFiles"] or file_lists["deletedFiles"]
-        result = {"status": "changed" if touched else "unchanged", "warnings": warnings, **file_lists}
+        if touched:
+            check_source_hashes(repo_root, plan)
+            check_output_ownership(repo_root, plan)
+            file_lists = commit(repo_root, all_changes)
+            touched = file_lists["createdFiles"] or file_lists["modifiedFiles"] or file_lists["deletedFiles"]
+        result = {
+            "status": "changed" if touched else "unchanged", "warnings": warnings, **file_lists,
+            "internalDatabases": inventory,
+        }
         print(json.dumps(result))
         return EXIT_OK
 

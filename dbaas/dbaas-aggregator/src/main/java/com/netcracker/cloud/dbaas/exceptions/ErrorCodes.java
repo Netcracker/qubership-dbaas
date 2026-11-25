@@ -54,8 +54,8 @@ public enum ErrorCodes implements ErrorCode {
             "Invalid classifier. %s. Classifier: %s"),
     CORE_DBAAS_4011(
             "CORE-DBAAS-4011",
-            "Invalid physical identifier",
-            "Invalid physical identifier. %s"),
+            "Physical database identifier conflict",
+            "Physical database identifier conflict. %s"),
     CORE_DBAAS_4012(
             "CORE-DBAAS-4012",
             "Backup not found",
@@ -260,6 +260,10 @@ public enum ErrorCodes implements ErrorCode {
             "Adapter request failed",
             "Request to the adapter failed: %s"
     ),
+    CORE_DBAAS_4057(
+            "CORE-DBAAS-4057",
+            "Physical database address conflict",
+            "Physical database address conflict. %s"),
     CORE_DBAAS_7002(
             "CORE-DBAAS-7002",
             "trackingId not found",

@@ -525,10 +525,14 @@ var _ = Describe("DatabaseSecretClaim Controller", func() {
 
 		It("stops on a foreign target Secret before checking composite membership", func() {
 			fixture.compositeBody = `[{"id":"` + ownerNamespace + `","namespaces":["` + ownerNamespace + `","sibling"]}]`
-			createCrossNamespaceClaim("reporting-service")
+			// The ownership check reads the Secret through the cache, and a freshly
+			// created Secret can be answered from the API server before the cache sees
+			// it. Read through a client that bypasses the cache to wait for the stored
+			// Secret, so the reconcile below always finds it.
 			Expect(k8sClient.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
 				Name: secretName, Namespace: ns,
 			}})).To(Succeed())
+			createCrossNamespaceClaim("reporting-service")
 
 			ds, result, err := reconcileAndFetch()
 			Expect(err).NotTo(HaveOccurred())

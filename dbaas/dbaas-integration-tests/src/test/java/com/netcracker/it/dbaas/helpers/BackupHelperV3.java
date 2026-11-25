@@ -33,7 +33,6 @@ import java.util.stream.Collectors;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_CLASSIFIER_KEY;
 import static com.netcracker.it.dbaas.helpers.DbaasHelperV3.TEST_MICROSERVICE_NAME;
 import static com.netcracker.it.dbaas.test.AbstractIT.DEFAULT_RETRY_POLICY;
-import static com.netcracker.it.dbaas.test.AbstractIT.OPENSEARCH_TYPE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -306,21 +305,11 @@ public class BackupHelperV3 {
                 var testClassifierValue = entry.getKey();
                 var databaseType = entry.getValue();
 
-                var prefixName = "dbaas_autotests";
-                Map<String, Object> settingsMap = null;
-
-                if (OPENSEARCH_TYPE.equalsIgnoreCase(databaseType)) {
-                    prefixName = null;
-                    settingsMap = Collections.singletonMap("resourcePrefix", true);
-                }
-
                 var databaseCreateRequest = DatabaseCreateRequestV3.builder(
                                 new ClassifierBuilder().test(testClassifierValue).ns(namespace).build(),
                                 databaseType
                         )
                         .type(databaseType)
-                        .namePrefix(prefixName)
-                        .settings(settingsMap)
                         .originService(TEST_MICROSERVICE_NAME)
                         .backupDisabled(false)
                         .build();

@@ -6,6 +6,8 @@ import com.netcracker.cloud.dbaas.dto.RegisteredPhysicalDatabasesDTO;
 import com.netcracker.cloud.dbaas.dto.role.Role;
 import com.netcracker.cloud.dbaas.dto.v3.*;
 import com.netcracker.cloud.dbaas.entity.pg.PhysicalDatabase;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseAddressConflictException;
+import com.netcracker.cloud.dbaas.exceptions.PhysicalDatabaseIdConflictException;
 import com.netcracker.cloud.dbaas.integration.config.PostgresqlContainerResource;
 import com.netcracker.cloud.dbaas.service.PhysicalDatabasesService;
 import io.quarkus.test.InjectMock;
@@ -121,6 +123,38 @@ class PhysicalDatabaseRegistrationControllerV3Test {
                 .when().put("/{phydbid}", PHYDBID)
                 .then()
                 .statusCode(BAD_REQUEST.getStatusCode());
+    }
+
+    @Test
+    void testRegister_physicalDatabaseIdConflictReturnsConflictWithCode4011() throws JsonProcessingException {
+        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenThrow(new PhysicalDatabaseIdConflictException("The address is registered with another identifier"));
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", TEST_TYPE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .when().put("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(CONFLICT.getStatusCode())
+                .body("code", is("CORE-DBAAS-4011"));
+    }
+
+    @Test
+    void testRegister_physicalDatabaseAddressConflictReturnsConflictWithCode4057() throws JsonProcessingException {
+        final PhysicalDatabaseRegistryRequestV3 physicalDatabaseRegistryRequest = getPhysicalDatabaseRegistryRequestV3Sample();
+        when(physicalDatabasesService.registerPhysicalDatabase(physicalDatabaseRegistryRequest, TEST_TYPE, PHYDBID.toString(), false))
+                .thenThrow(new PhysicalDatabaseAddressConflictException("The identifier is registered with another address"));
+
+        given().auth().preemptive().basic("cluster-dba", "someDefaultPassword")
+                .pathParam("type", TEST_TYPE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsString(physicalDatabaseRegistryRequest))
+                .when().put("/{phydbid}", PHYDBID)
+                .then()
+                .statusCode(CONFLICT.getStatusCode())
+                .body("code", is("CORE-DBAAS-4057"));
     }
 
     @Test

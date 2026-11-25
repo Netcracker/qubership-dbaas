@@ -1,0 +1,561 @@
+<svg xmlns="http://www.w3.org/2000/svg" contentStyleType="text/css"
+     data-diagram-type="SEQUENCE" height="1826px" preserveAspectRatio="none"
+     style="width:1180px;height:1826px;background:#FFFFFF;" version="1.1" viewBox="0 0 1180 1826" width="1180px"
+     zoomAndPan="magnify">
+    <title>Declarative physical database registration</title>
+    <defs/>
+    <g>
+        <text fill="#000000" font-family="sans-serif" font-size="14" font-weight="bold" lengthAdjust="spacing"
+              textLength="280.123" x="451.2627" y="29.5332">Declarative physical database registration
+        </text>
+        <rect fill="none" height="48.7031" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="187.2734"/>
+        <rect fill="none" height="65.0547" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="249.9766"/>
+        <rect fill="none" height="48.7031" style="stroke:#000000;stroke-width:1.5;" width="422.6553" x="20"
+              y="359.3828"/>
+        <rect fill="none" height="48.7031" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="531.8438"/>
+        <rect fill="none" height="61.375" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="594.5469"/>
+        <rect fill="none" height="65.0547" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="700.2734"/>
+        <rect fill="none" height="801.8906" style="stroke:#000000;stroke-width:1.5;" width="1163.6484" x="10"
+              y="858.7344"/>
+        <rect fill="none" height="95.4063" style="stroke:#000000;stroke-width:1.5;" width="900.7866" x="20"
+              y="1288.8672"/>
+        <g>
+            <title>Kubernetes API</title>
+            <rect fill="#000000" fill-opacity="0.00000" height="1639.4609" width="8" x="82.0308" y="107.2188"/>
+            <line style="stroke:#181818;stroke-width:0.5;stroke-dasharray:5,5;" x1="86" x2="86" y1="107.2188"
+                  y2="1746.6797"/>
+        </g>
+        <g>
+            <title>DBaaS Operator</title>
+            <rect fill="#000000" fill-opacity="0.00000" height="1639.4609" width="8" x="357.5249" y="107.2188"/>
+            <line style="stroke:#181818;stroke-width:0.5;stroke-dasharray:5,5;" x1="360.7769" x2="360.7769"
+                  y1="107.2188" y2="1746.6797"/>
+        </g>
+        <g>
+            <title>DBaaS Adapter</title>
+            <rect fill="#000000" fill-opacity="0.00000" height="1639.4609" width="8" x="709.6289" y="107.2188"/>
+            <line style="stroke:#181818;stroke-width:0.5;stroke-dasharray:5,5;" x1="712.9878" x2="712.9878"
+                  y1="107.2188" y2="1746.6797"/>
+        </g>
+        <g>
+            <title>DBaaS Aggregator</title>
+            <rect fill="#000000" fill-opacity="0.00000" height="1639.4609" width="8" x="841.0283" y="107.2188"/>
+            <line style="stroke:#181818;stroke-width:0.5;stroke-dasharray:5,5;" x1="844.27" x2="844.27" y1="107.2188"
+                  y2="1746.6797"/>
+        </g>
+        <g>
+            <title>Registry</title>
+            <rect fill="#000000" fill-opacity="0.00000" height="1639.4609" width="8" x="1130.9761" y="107.2188"/>
+            <line style="stroke:#181818;stroke-width:0.5;stroke-dasharray:5,5;" x1="1134.3037" x2="1134.3037"
+                  y1="107.2188" y2="1746.6797"/>
+        </g>
+        <g class="participant participant-head" data-participant="K8s">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="112.0615" x="30" y="74.6094"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="98.0615"
+                  x="37" y="96.1426">Kubernetes API
+            </text>
+        </g>
+        <g class="participant participant-tail" data-participant="K8s">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="112.0615" x="30" y="1745.6797"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="98.0615"
+                  x="37" y="1767.2129">Kubernetes API
+            </text>
+        </g>
+        <g class="participant participant-head" data-participant="Operator">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="117.4961" x="302.7769" y="74.6094"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="103.4961"
+                  x="309.7769" y="96.1426">DBaaS Operator
+            </text>
+        </g>
+        <g class="participant participant-tail" data-participant="Operator">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="117.4961" x="302.7769" y="1745.6797"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="103.4961"
+                  x="309.7769" y="1767.2129">DBaaS Operator
+            </text>
+        </g>
+        <g class="participant participant-head" data-participant="Adapter">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="111.2822" x="657.9878" y="74.6094"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="97.2822"
+                  x="664.9878" y="96.1426">DBaaS Adapter
+            </text>
+        </g>
+        <g class="participant participant-tail" data-participant="Adapter">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="111.2822" x="657.9878" y="1745.6797"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="97.2822"
+                  x="664.9878" y="1767.2129">DBaaS Adapter
+            </text>
+        </g>
+        <g class="participant participant-head" data-participant="Aggregator">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="131.5166" x="779.27" y="74.6094"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="117.5166"
+                  x="786.27" y="96.1426">DBaaS Aggregator
+            </text>
+        </g>
+        <g class="participant participant-tail" data-participant="Aggregator">
+            <rect fill="#E2E2F0" height="31.6094" rx="2.5" ry="2.5" style="stroke:#181818;stroke-width:0.5;"
+                  width="131.5166" x="779.27" y="1745.6797"/>
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="117.5166"
+                  x="786.27" y="1767.2129">DBaaS Aggregator
+            </text>
+        </g>
+        <g class="participant participant-head" data-participant="Registry">
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="51.3447"
+                  x="1106.3037" y="104.1426">Registry
+            </text>
+            <path d="M1116.9761,53.6094 C1116.9761,43.6094 1134.9761,43.6094 1134.9761,43.6094 C1134.9761,43.6094 1152.9761,43.6094 1152.9761,53.6094 L1152.9761,79.6094 C1152.9761,89.6094 1134.9761,89.6094 1134.9761,89.6094 C1134.9761,89.6094 1116.9761,89.6094 1116.9761,79.6094 L1116.9761,53.6094"
+                  fill="#E2E2F0" style="stroke:#181818;stroke-width:0.5;"/>
+            <path d="M1116.9761,53.6094 C1116.9761,63.6094 1134.9761,63.6094 1134.9761,63.6094 C1134.9761,63.6094 1152.9761,63.6094 1152.9761,53.6094"
+                  fill="none" style="stroke:#181818;stroke-width:0.5;"/>
+        </g>
+        <g class="participant participant-tail" data-participant="Registry">
+            <text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacing" textLength="51.3447"
+                  x="1106.3037" y="1760.2129">Registry
+            </text>
+            <path d="M1116.9761,1773.2891 C1116.9761,1763.2891 1134.9761,1763.2891 1134.9761,1763.2891 C1134.9761,1763.2891 1152.9761,1763.2891 1152.9761,1773.2891 L1152.9761,1799.2891 C1152.9761,1809.2891 1134.9761,1809.2891 1134.9761,1809.2891 C1134.9761,1809.2891 1116.9761,1809.2891 1116.9761,1799.2891 L1116.9761,1773.2891"
+                  fill="#E2E2F0" style="stroke:#181818;stroke-width:0.5;"/>
+            <path d="M1116.9761,1773.2891 C1116.9761,1783.2891 1134.9761,1783.2891 1134.9761,1783.2891 C1134.9761,1783.2891 1152.9761,1783.2891 1152.9761,1773.2891"
+                  fill="none" style="stroke:#181818;stroke-width:0.5;"/>
+        </g>
+        <g class="message" data-participant-1="K8s" data-participant-2="Operator">
+            <polygon fill="#181818" points="349.5249,168.2734,359.5249,172.2734,349.5249,176.2734,353.5249,172.2734"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="86.0308" x2="355.5249" y1="172.2734" y2="172.2734"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="159.6943"
+                  x="93.0308" y="134.7139">reconcile PhysicalDatabase
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="251.4941"
+                  x="93.0308" y="151.0654">(created, spec changed, refresh annotation,
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="193.6543"
+                  x="93.0308" y="167.417">sibling changed, periodic re-sync)
+            </text>
+        </g>
+        <path d="M20,187.2734 L85.2109,187.2734 L85.2109,195.625 L75.2109,205.625 L20,205.625 L20,187.2734"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="48.7031" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="187.2734"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="20.2109" x="35" y="201.7686">opt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="290.9521" x="100.2109" y="200.6924">[spec.operatorNamespace belongs to another operator]
+        </text>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,223.9766,87.0308,227.9766,97.0308,231.9766,93.0308,227.9766"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="227.9766"
+                  y2="227.9766"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="190.0298"
+                  x="103.0308" y="223.1201">skip the resource, write no status
+            </text>
+        </g>
+        <path d="M20,249.9766 L85.2109,249.9766 L85.2109,258.3281 L75.2109,268.3281 L20,268.3281 L20,249.9766"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="65.0547" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="249.9766"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="20.2109" x="35" y="264.4717">opt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="269.5913" x="100.2109" y="263.3955">[another CR claims the same spec.adapterAddress]
+        </text>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,303.0313,87.0308,307.0313,97.0308,311.0313,93.0308,307.0313"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="307.0313"
+                  y2="307.0313"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="196.1997"
+                  x="103.0308" y="285.8232">InvalidConfiguration, Stalled=True
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="165.1152"
+                  x="103.0308" y="302.1748">Reason=RegistrationConflict
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,340.3828,87.0308,344.3828,97.0308,348.3828,93.0308,344.3828"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="91.0308" x2="360.5249" y1="344.3828" y2="344.3828"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="155.3652"
+                  x="103.0308" y="339.5264">read the credentials Secret
+            </text>
+        </g>
+        <path d="M20,359.3828 L85.2109,359.3828 L85.2109,367.7344 L75.2109,377.7344 L20,377.7344 L20,359.3828"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="48.7031" style="stroke:#000000;stroke-width:1.5;" width="422.6553" x="20"
+              y="359.3828"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="20.2109" x="35" y="373.8779">opt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="337.4443" x="100.2109" y="372.8018">[the Secret is absent, a key is missing, or RBAC denies
+            the read]
+        </text>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,396.0859,87.0308,400.0859,97.0308,404.0859,93.0308,400.0859"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="400.0859"
+                  y2="400.0859"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="189.668"
+                  x="103.0308" y="395.2295">BackingOff, Reason=SecretError
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="Adapter">
+            <polygon fill="#181818" points="701.6289,466.1406,711.6289,470.1406,701.6289,474.1406,705.6289,470.1406"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="361.5249" x2="707.6289" y1="470.1406" y2="470.1406"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="33.249"
+                  x="368.5249" y="432.5811">probe
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="328.104"
+                  x="368.5249" y="448.9326">GET {adapterAddress}/api/v2/adapter/physical_database
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="163.2808"
+                  x="368.5249" y="465.2842">(Basic Auth from the Secret)
+            </text>
+        </g>
+        <g class="message" data-participant-1="Adapter" data-participant-2="Operator">
+            <polygon fill="#181818" points="372.5249,512.8438,362.5249,516.8438,372.5249,520.8438,368.5249,516.8438"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="366.5249" x2="712.6289" y1="516.8438"
+                  y2="516.8438"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="276.0596"
+                  x="378.5249" y="495.6357">200: physicalDatabaseId, type, supportedRoles,
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="250.0151"
+                  x="378.5249" y="511.9873">features, labels, readOnlyHost, apiVersions
+            </text>
+        </g>
+        <path d="M20,531.8438 L85.2109,531.8438 L85.2109,540.1953 L75.2109,550.1953 L20,550.1953 L20,531.8438"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="48.7031" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="531.8438"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="20.2109" x="35" y="546.3389">opt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="125.9307" x="100.2109" y="545.2627">[the probe answers 401]
+        </text>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,568.5469,87.0308,572.5469,97.0308,576.5469,93.0308,572.5469"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="572.5469"
+                  y2="572.5469"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="200.5352"
+                  x="103.0308" y="567.6904">BackingOff, Reason=Unauthorized
+            </text>
+        </g>
+        <path d="M20,594.5469 L85.2109,594.5469 L85.2109,602.8984 L75.2109,612.8984 L20,612.8984 L20,594.5469"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="61.375" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="594.5469"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="20.2109" x="35" y="609.042">opt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="235.9897" x="100.2109" y="607.9658">[the probe answers 404 / 503, is unreachable,
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="207.2168" x="100.2109" y="621.8018">or answers 200 without a required field]
+        </text>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,643.9219,87.0308,647.9219,97.0308,651.9219,93.0308,647.9219"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="647.9219"
+                  y2="647.9219"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="197.6279"
+                  x="103.0308" y="643.0654">BackingOff, Reason=AdapterError
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,681.2734,87.0308,685.2734,97.0308,689.2734,93.0308,685.2734"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="91.0308" x2="360.5249" y1="685.2734" y2="685.2734"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="179.2134"
+                  x="103.0308" y="680.417">copy the answer into the status
+            </text>
+        </g>
+        <path d="M20,700.2734 L85.2109,700.2734 L85.2109,708.625 L75.2109,718.625 L20,718.625 L20,700.2734"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="65.0547" style="stroke:#000000;stroke-width:1.5;" width="410.2729" x="20"
+              y="700.2734"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="20.2109" x="35" y="714.7686">opt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="299.5298" x="100.2109" y="713.6924">[another CR reports the same status.physicalDatabaseId]
+        </text>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,753.3281,87.0308,757.3281,97.0308,761.3281,93.0308,757.3281"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="757.3281"
+                  y2="757.3281"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="196.1997"
+                  x="103.0308" y="736.1201">InvalidConfiguration, Stalled=True
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="165.1152"
+                  x="103.0308" y="752.4717">Reason=RegistrationConflict
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="Aggregator">
+            <polygon fill="#181818" points="833.0283,839.7344,843.0283,843.7344,833.0283,847.7344,837.0283,843.7344"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="361.5249" x2="839.0283" y1="843.7344" y2="843.7344"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="43.3481"
+                  x="368.5249" y="789.8232">register
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="452.772"
+                  x="368.5249" y="806.1748">PUT /api/v3/dbaas/{type}/physical_databases/{phydbid}?internalMigration=true
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="340.3423"
+                  x="368.5249" y="822.5264">(spec: adapterAddress, Secret: credentials, probe: the rest,
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="233.0859"
+                  x="368.5249" y="838.8779">fixed: status="running", apiVersion="v2")
+            </text>
+        </g>
+        <path d="M10,858.7344 L70.1709,858.7344 L70.1709,867.0859 L60.1709,877.0859 L10,877.0859 L10,858.7344"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="801.8906" style="stroke:#000000;stroke-width:1.5;" width="1163.6484" x="10"
+              y="858.7344"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="15.1709" x="25" y="873.2295">alt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="345.3237" x="85.1709" y="872.1533">[the address or the identifier conflicts with the stored
+            registration]
+        </text>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Operator">
+            <polygon fill="#181818" points="372.5249,911.7891,362.5249,915.7891,372.5249,919.7891,368.5249,915.7891"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="366.5249" x2="844.0283" y1="915.7891"
+                  y2="915.7891"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="68.6499"
+                  x="378.5249" y="894.5811">409 Conflict
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="369.1797"
+                  x="378.5249" y="910.9326">CORE-DBAAS-4057 (address) / CORE-DBAAS-4011 (identifier)
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,958.4922,87.0308,962.4922,97.0308,966.4922,93.0308,962.4922"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="962.4922"
+                  y2="962.4922"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="196.1997"
+                  x="103.0308" y="941.2842">InvalidConfiguration, Stalled=True
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="168.0288"
+                  x="103.0308" y="957.6357">Reason=AggregatorRejected
+            </text>
+        </g>
+        <line style="stroke:#000000;stroke-width:1;stroke-dasharray:2,2;" x1="10" x2="1173.6484" y1="971.4922"
+              y2="971.4922"/>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="210.2837" x="15" y="982.9111">[the physical database is not registered]
+        </text>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Registry">
+            <polygon fill="#181818"
+                     points="1122.9761,1037.3828,1132.9761,1041.3828,1122.9761,1045.3828,1126.9761,1041.3828"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="845.0283" x2="1128.9761" y1="1041.3828" y2="1041.3828"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="156.8252"
+                  x="852.0283" y="1003.8232">save the physical database
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="229.0488"
+                  x="852.0283" y="1020.1748">(roles lowercased, password encrypted,
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="265.9478"
+                  x="852.0283" y="1036.5264">the first database of the type is flagged global)
+            </text>
+        </g>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Operator">
+            <polygon fill="#181818" points="372.5249,1067.7344,362.5249,1071.7344,372.5249,1075.7344,368.5249,1071.7344"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="366.5249" x2="844.0283" y1="1071.7344"
+                  y2="1071.7344"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="71.5508"
+                  x="378.5249" y="1066.8779">201 Created
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,1114.4375,87.0308,1118.4375,97.0308,1122.4375,93.0308,1118.4375"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="1118.4375"
+                  y2="1118.4375"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="144.1743"
+                  x="103.0308" y="1097.2295">Succeeded, Ready=True
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="219.3242"
+                  x="103.0308" y="1113.5811">Reason=PhysicalDatabaseRegistered
+            </text>
+        </g>
+        <line style="stroke:#000000;stroke-width:1;stroke-dasharray:2,2;" x1="10" x2="1173.6484" y1="1127.4375"
+              y2="1127.4375"/>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="259.7515" x="15" y="1138.8564">[the registration is locked by a running migration]
+        </text>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Operator">
+            <polygon fill="#181818" points="372.5249,1160.625,362.5249,1164.625,372.5249,1168.625,368.5249,1164.625"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="366.5249" x2="844.0283" y1="1164.625"
+                  y2="1164.625"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="79.5044"
+                  x="378.5249" y="1159.7686">202 Accepted
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,1207.3281,87.0308,1211.3281,97.0308,1215.3281,93.0308,1211.3281"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="1211.3281"
+                  y2="1211.3281"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="220.0288"
+                  x="103.0308" y="1190.1201">WaitingForDependency, Ready=False
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="174.5161"
+                  x="103.0308" y="1206.4717">Reason=RoleMigrationStarted
+            </text>
+        </g>
+        <line style="stroke:#000000;stroke-width:1;stroke-dasharray:2,2;" x1="10" x2="1173.6484" y1="1220.3281"
+              y2="1220.3281"/>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="149.1392" x="15" y="1231.7471">[a role migration is required]
+        </text>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Registry">
+            <polygon fill="#181818"
+                     points="1122.9761,1269.8672,1132.9761,1273.8672,1122.9761,1277.8672,1126.9761,1273.8672"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="845.0283" x2="1128.9761" y1="1273.8672" y2="1273.8672"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="171.9771"
+                  x="852.0283" y="1252.6592">create or reuse the instruction
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="184.9834"
+                  x="852.0283" y="1269.0107">(the parked registration request)
+            </text>
+        </g>
+        <path d="M20,1288.8672 L85.2109,1288.8672 L85.2109,1297.2188 L75.2109,1307.2188 L20,1307.2188 L20,1288.8672"
+              fill="#EEEEEE" style="stroke:#000000;stroke-width:1.5;"/>
+        <rect fill="none" height="95.4063" style="stroke:#000000;stroke-width:1.5;" width="900.7866" x="20"
+              y="1288.8672"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacing"
+              textLength="20.2109" x="35" y="1303.3623">opt
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="201.7168" x="100.2109" y="1302.2861">[the instruction carries stored failures]
+        </text>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Operator">
+            <polygon fill="#181818" points="372.5249,1341.9219,362.5249,1345.9219,372.5249,1349.9219,368.5249,1345.9219"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="366.5249" x2="844.0283" y1="1345.9219"
+                  y2="1345.9219"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="155.3652"
+                  x="378.5249" y="1324.7139">500 with the stored failures
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="130.7617"
+                  x="378.5249" y="1341.0654">(the migration restarts)
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,1372.2734,87.0308,1376.2734,97.0308,1380.2734,93.0308,1376.2734"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="1376.2734"
+                  y2="1376.2734"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="216.417"
+                  x="103.0308" y="1371.417">BackingOff, Reason=AggregatorError
+            </text>
+        </g>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Operator">
+            <polygon fill="#181818" points="372.5249,1409.625,362.5249,1413.625,372.5249,1417.625,368.5249,1413.625"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="366.5249" x2="844.0283" y1="1413.625"
+                  y2="1413.625"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="79.5044"
+                  x="378.5249" y="1408.7686">202 Accepted
+            </text>
+        </g>
+        <path d="M850,1426.625 L850,1468.625 L1024,1468.625 L1024,1436.625 L1014,1426.625 L850,1426.625" fill="#FEFFDD"
+              style="stroke:#181818;stroke-width:0.5;"/>
+        <path d="M1014,1426.625 L1014,1436.625 L1024,1436.625 L1014,1426.625" fill="#FEFFDD"
+              style="stroke:#181818;stroke-width:0.5;"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="153.9116"
+              x="856" y="1445.1201">the internal migration runs;
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="150.2998"
+              x="856" y="1461.4717">see Internal role migration
+        </text>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,1509.0313,87.0308,1513.0313,97.0308,1517.0313,93.0308,1513.0313"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="1513.0313"
+                  y2="1513.0313"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="220.0288"
+                  x="103.0308" y="1491.8232">WaitingForDependency, Ready=False
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="174.5161"
+                  x="103.0308" y="1508.1748">Reason=RoleMigrationStarted
+            </text>
+        </g>
+        <line style="stroke:#000000;stroke-width:1;stroke-dasharray:2,2;" x1="10" x2="1173.6484" y1="1522.0313"
+              y2="1522.0313"/>
+        <text fill="#000000" font-family="sans-serif" font-size="11" font-weight="bold" lengthAdjust="spacing"
+              textLength="133.23" x="15" y="1533.4502">[no migration is required]
+        </text>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Registry">
+            <polygon fill="#181818"
+                     points="1122.9761,1571.5703,1132.9761,1575.5703,1122.9761,1579.5703,1126.9761,1575.5703"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;" x1="845.0283" x2="1128.9761" y1="1575.5703" y2="1575.5703"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="225.4624"
+                  x="852.0283" y="1554.3623">update the row when a property differs,
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="95.3862"
+                  x="852.0283" y="1570.7139">reset the caches
+            </text>
+        </g>
+        <g class="message" data-participant-1="Aggregator" data-participant-2="Operator">
+            <polygon fill="#181818" points="372.5249,1601.9219,362.5249,1605.9219,372.5249,1609.9219,368.5249,1605.9219"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="366.5249" x2="844.0283" y1="1605.9219"
+                  y2="1605.9219"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="44.0845"
+                  x="378.5249" y="1601.0654">200 OK
+            </text>
+        </g>
+        <g class="message" data-participant-1="Operator" data-participant-2="K8s">
+            <polygon fill="#181818" points="97.0308,1648.625,87.0308,1652.625,97.0308,1656.625,93.0308,1652.625"
+                     style="stroke:#181818;stroke-width:1;"/>
+            <line style="stroke:#181818;stroke-width:1;stroke-dasharray:2,2;" x1="91.0308" x2="360.5249" y1="1652.625"
+                  y2="1652.625"/>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="144.1743"
+                  x="103.0308" y="1631.417">Succeeded, Ready=True
+            </text>
+            <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="219.3242"
+                  x="103.0308" y="1647.7686">Reason=PhysicalDatabaseRegistered
+            </text>
+        </g>
+        <path d="M188,1672.625 L188,1731.625 L534,1731.625 L534,1682.625 L524,1672.625 L188,1672.625" fill="#FEFFDD"
+              style="stroke:#181818;stroke-width:0.5;"/>
+        <path d="M524,1672.625 L524,1682.625 L534,1682.625 L524,1672.625" fill="#FEFFDD"
+              style="stroke:#181818;stroke-width:0.5;"/>
+        <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="256.5723"
+              x="194" y="1691.1201">On 202 the operator does not read the body.
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="261.5869"
+              x="194" y="1707.4717">It repeats the registration with the poll backoff
+        </text>
+        <text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacing" textLength="325.1904"
+              x="194" y="1723.8232">(5 s doubling to 1 min) until the aggregator answers 200.
+        </text><!--SRC=[lLRRRXit47tNLmpqP06o9Jissgfm2jbEMYDe7SX9-sAWe9RS5MkQt91SkziW_zv3Sc_ohIvwUTjTpWuFpvmpGo-z4dGcCiKiy_9MKBcfdSoO8iuyMpCdo8f2EX-MZHwDtBNK9O9lo8bFbT2PU6kqlvH_2De_78smv6KcIwOzZTzLQs6ryCBHyltvc9YZTr-xxPYp4yOkwQ8KsC3O6DE-F1QuvApq8iKrpu-65GLWTndxrr5thF4gdQkE4UtBQ0I4jFkw0x70-JEZCmcUtZVSd3KvhlHEPWNpWa_9bIAZRCDq4TwioArm6s9Q6n-Pcrvf9zTAwgAFmXRIS9aXVDVLEfkCHgRqCTMUQVR_YTq8Lx9Cq5eeemj7tY2jyHjXgGqQKOUNTW4UPrWGAbKImf3TcSfcOaftLdf1sf03gCgDXEPfopRXwOeW1NdZueyEUoSqB56zv1p9tAFRdUjRfYG_DJgNHPNaCgLBpvGI_FY3hK3NIZ1dzF5geAWGhsJc4vO-RPCLzFA81KHpeRraoj6bm9kFmCDIUYNfYAqTOgR4w5hKuSEDT0wKJmafLoVBKq8EALn32-EFdkI4PH1vSP7dKseGfotUM0kk7m1jTBYWqferJldzcm_qUPknBpDMojdjmQpvF6jjzYlljNJ2y8cMbTzGRitDu6oJKRD71DbBys0-NtIERLLv3cNvkaIvNLMMnaAUAwE4Wm9pYBK2dYaf1ZcvQIJXGglw1-C2RwNyMLY7ihYEtNWe2CJTOOKEv_ilvUoZPZYAiMWDF9BsLCP3cj7H_DKq5ApIG0I3h9K0NkpGXk6eT2UHhu9Q0VjJ9Q48ogLGBwvYG-8JPOn_PQQi8yYqBqaDkqKl9CVSTuiLWU6XNMBStiEY_3-cwJlTecdSmbxfzny_K5BWgnbVC-PcduD2lZoK8LRmZQyb__8TpexspTIFiaZR7li8Q2UqX0LjAtpQI7KnTEeqrNhHjY4VD2X_5tpHy7GyjfNMADDuABxZyUt16CsGgIGObhO89WwlCgP7vItAbOXmKHjDeKmGnjRKeW4lzonqEF-6MZglzEd5witksSboURbxE3_wYdQQhIUGwDRQ_Zxjz3Wc_xIuFRoL-4raFZX6OKX5kpoOoF095DZLL_1x1tpTZJFmp6wVI8D2sj0NI1aeFSENC9AOStV6Si9ajtKPHjkL3h_dqZhVGp1vJ1fK5E3aYXKOQLGeisPgyXpX1_DzEarJyr7MBgii4r0GZxRbzJPHzqVmgkUW8snO-W1EcUmQsDPrQ1n9RXWCnLzhus1-G4kWAP_2-WkJ7jdU6dicIdWHfDKjxBVG_y2zOBhp4IHWkn834zPwG05nszwUgMkwU0HBM54r1vSQQrKMig2uiUZCNjypGqmEAuOYjHrvy2DbpDem8XiVvKogC38G_GnJHqrt7Zgm_RE1qXymD08Gu2OnvyiwTxTnQjv4eVEzl7Im2tGXYuqFoXqsoNJyrEY662ljliMLJGZOk5dThjD_9WXSp_wk6AgI1p54yPixkji83LsXzmAWhudBF4TdXPD1lKWbpp1bOrMVeN1E5-_-PO-6UHMBOMxHlYy6zrSTQnQWjRTQuaQqdQwv1QuDh_SGVHw-bN20U-ZuJeUbKOhM49F9S_opSqGEAQjq2STOtmVFUe8hXvSgpPcUYi6rOo-WZWhw4m00]-->
+    </g>
+</svg>

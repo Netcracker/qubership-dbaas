@@ -1,4 +1,4 @@
-name: Generate Test Report
+name: "[test] Report"
 on:
   workflow_dispatch:
   schedule:

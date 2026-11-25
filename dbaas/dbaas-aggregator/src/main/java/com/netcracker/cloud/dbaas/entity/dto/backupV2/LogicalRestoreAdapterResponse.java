@@ -38,7 +38,7 @@ public class LogicalRestoreAdapterResponse {
     public static class RestoreDatabaseResponse {
         @Schema(description = "Name of the database in the backup")
         private String previousDatabaseName;
-        @Schema(description = "Name of the restored database")
+        @Schema(description = "Name of the restored database. It should differ from previous database name")
         private String databaseName;
         @Schema(description = "Status of the database restore: notStarted, inProgress, completed or failed")
         private String status;

@@ -1,5 +1,5 @@
 ---
-name: Build Helm Charts
+name: "[build] Helm Charts"
 
 # Builds the qubership-dbaas-transfer image that carries the Aggregator and
 # Operator charts (docker-transfer/Dockerfile).

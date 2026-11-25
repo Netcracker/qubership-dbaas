@@ -54,6 +54,8 @@ const (
 	resultServerError        = "server_error"
 	resultNetworkError       = "network_error"
 
+	resultPhysicalDatabaseIDConflict = "physical_database_id_conflict"
+
 	asyncResultFailed     = "failed"
 	asyncResultTerminated = "terminated"
 
@@ -121,6 +123,8 @@ var dbaasAggregatorRequestDurationSeconds = prometheus.NewHistogramVec(
 // operator wiring errors (configuration_error) and platform errors (auth_error,
 // server_error). database_not_found is a normal DatabaseSecretClaim waiting
 // state and should not be routed as an aggregator server failure.
+// physical_database_id_conflict is a PhysicalDatabase waiting for the adapter to
+// report the registered id again.
 var dbaasAggregatorRequestsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "dbaas_aggregator_requests_total",
@@ -201,6 +205,11 @@ func aggregatorResult(err error) string {
 	if errors.As(err, &aggErr) {
 		if aggErr.IsAuthError() {
 			return resultAuthError
+		}
+		// Checked before IsSpecRejection: the conflict is a 409 too, but it ends
+		// without a change to the resource, so it is a wait and not a user error.
+		if aggErr.IsPhysicalDatabaseIDConflict() {
+			return resultPhysicalDatabaseIDConflict
 		}
 		if aggErr.IsSpecRejection() {
 			return resultSpecRejection

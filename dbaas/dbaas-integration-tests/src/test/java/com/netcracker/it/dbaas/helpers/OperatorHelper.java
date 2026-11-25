@@ -57,6 +57,8 @@ public class OperatorHelper {
     public static final String REASON_POLICY_APPLIED = "PolicyApplied";
     public static final String REASON_PROVISIONING_STARTED = "ProvisioningStarted";
     public static final String REASON_BALANCING_RULE_APPLIED = "BalancingRuleApplied";
+    public static final String REASON_NAMESPACE_NOT_IN_COMPOSITE = "NamespaceNotInComposite";
+    public static final String REASON_ACCESS_POLICY_NOT_READY = "AccessPolicyNotReady";
 
     public static String NAMESPACE;
 
@@ -260,21 +262,25 @@ public class OperatorHelper {
                 String.format("Secret must contain key: %s", dataKey)
         );
 
+        JsonNode actual = readJsonEntry(secret, dataKey);
+
+        expectedProperties.forEach((key, value) -> {
+            assertTrue(actual.has(key),
+                    String.format("Secret %s must contain key: %s", dataKey, key));
+            assertEquals(String.valueOf(value), actual.get(key).asText(), dataKey + "." + key);
+        });
+    }
+
+    private static JsonNode readJsonEntry(Secret secret, String dataKey) {
         String decodedJson = new String(
                 Base64.getDecoder().decode(secret.getData().get(dataKey)),
                 StandardCharsets.UTF_8
         );
-
-        expectedProperties.forEach((key, value) -> {
-            assertTrue(
-                    decodedJson.contains(key),
-                    String.format("Secret connectionProperties must contain key: %s", key)
-            );
-            assertTrue(
-                    decodedJson.contains(String.valueOf(value)),
-                    String.format("Secret connectionProperties must contain value %s for key: %s", value, key)
-            );
-        });
+        try {
+            return new ObjectMapper().readTree(decodedJson);
+        } catch (Exception e) {
+            throw new AssertionError(dataKey + " is not valid JSON: " + decodedJson, e);
+        }
     }
 
     /**
@@ -515,12 +521,6 @@ public class OperatorHelper {
 
     public static String extractPasswordFromSecret(Secret secret) {
         assertNotNull(secret, "secret must exist");
-        String decodedJson = new String(
-                Base64.getDecoder().decode(secret.getData().get(CONNECTION_PROPERTIES_KEY)),
-                StandardCharsets.UTF_8
-        );
-        int startIdx = decodedJson.indexOf("\"password\":\"") + 12;
-        int endIdx = decodedJson.indexOf("\"", startIdx);
-        return decodedJson.substring(startIdx, endIdx);
+        return readJsonEntry(secret, CONNECTION_PROPERTIES_KEY).path("password").asText();
     }
 }

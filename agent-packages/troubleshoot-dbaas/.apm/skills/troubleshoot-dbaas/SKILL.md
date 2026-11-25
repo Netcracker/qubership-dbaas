@@ -277,7 +277,8 @@ Titles from `ErrorCodes.java`, for codes without their own section. The HTTP sta
 - `CORE-DBAAS-4008` Balancing rule was not created/updated as there is conflicting rule with same order and database
   type
 - `CORE-DBAAS-4009` Password change operation failed (details in `/meta/response`)
-- `CORE-DBAAS-4011` Invalid physical identifier
+- `CORE-DBAAS-4011` Physical database identifier conflict (`409`; the adapter address is registered with another
+  identifier, or the adapter reports another identifier)
 - `CORE-DBAAS-4012` Backup not found
 - `CORE-DBAAS-4013` Deleting target backup is not allowed
 - `CORE-DBAAS-4014` Failed to delete backup
@@ -319,5 +320,7 @@ Titles from `ErrorCodes.java`, for codes without their own section. The HTTP sta
 - `CORE-DBAAS-4052` Digest mismatch
 - `CORE-DBAAS-4054` Invalid tenantId in classifier
 - `CORE-DBAAS-4056` Adapter request failed (`500`; inspect the adapter response or error for the initiating failure)
+- `CORE-DBAAS-4057` Physical database address conflict (`409`; the identifier is registered with another adapter
+  address, and only a change of the scheme is accepted)
 - `CORE-DBAAS-7002` trackingId not found
 - `CORE-DBAAS-7003` Invalid composite structure request

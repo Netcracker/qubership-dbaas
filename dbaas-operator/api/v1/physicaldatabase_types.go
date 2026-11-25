@@ -112,6 +112,16 @@ type PhysicalDatabaseStatus struct {
 	// +optional
 	PhysicalDatabaseID string `json:"physicalDatabaseId,omitempty"`
 
+	// firstIdConflictAt records the first time dbaas-aggregator answered the
+	// registration with a physical database id conflict (HTTP 409 +
+	// CORE-DBAAS-4011). It is set on the first such answer and cleared on any other
+	// answer from the aggregator. The controller uses it to detect a conflict that
+	// lasts, which needs a change outside the resource, and after a fixed timeout
+	// switches the Ready condition's reason to PhysicalDatabaseIdConflictTimeout,
+	// stops the per-poll Warning events, and polls at the resync interval.
+	// +optional
+	FirstIDConflictAt *metav1.Time `json:"firstIdConflictAt,omitempty"`
+
 	// type is the database engine type, e.g. "postgresql", sent as the {type}
 	// path segment.
 	// +optional

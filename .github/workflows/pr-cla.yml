@@ -1,5 +1,5 @@
 ---
-name: CLA Assistant
+name: "[pr] CLA"
 on:
   issue_comment:
     types: [created]

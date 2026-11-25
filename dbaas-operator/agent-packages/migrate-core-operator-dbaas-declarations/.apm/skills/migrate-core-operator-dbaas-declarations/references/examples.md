@@ -341,3 +341,46 @@ spec:
   versioningConfig:
     approach: new
 ```
+
+## Handoff to the mounted-secret migration
+
+The writer's result lists each generated `InternalDatabase` in `internalDatabases`:
+
+```json
+{
+  "contractVersion": 1,
+  "root": "chart",
+  "rootKind": "helm",
+  "outputFile": "chart/templates/dbaas-operator-resources.yaml",
+  "rootRelativeOutputFile": "templates/dbaas-operator-resources.yaml",
+  "outputSha256": "<sha256 of the output file>",
+  "documentIndex": 1,
+  "name": "orders-db",
+  "metadataNamespace": "{{ .Values.NAMESPACE }}",
+  "operatorNamespace": "{{ include \"coretpl.dbaasNamespace\" $ }}",
+  "capabilityGuard": "dbaas.netcracker.com/v1",
+  "documentGuard": null,
+  "type": "postgresql",
+  "classifier": {"microserviceName": "orders", "scope": "service"},
+  "canonicalIdentity": "{\"microserviceName\":\"orders\",\"scope\":\"service\"}|postgresql",
+  "source": {"path": "chart/templates/dbaas-declaration.yaml", "sha256": "<sha256 after the run>"}
+}
+```
+
+The mounted-secret plan reuses it from the datasource with the same identity:
+
+```json
+{
+  "id": "orders-postgresql-service",
+  "type": "postgresql",
+  "classifier": {"microserviceName": "orders", "scope": "service"},
+  "requestedRoles": [""],
+  "internalDatabase": {
+    "mode": "existing",
+    "path": "templates/dbaas-operator-resources.yaml",
+    "sha256": "<outputSha256>",
+    "name": "orders-db",
+    "documentIndex": 1
+  }
+}
+```

@@ -1,4 +1,4 @@
-name: DBaaS Proxy Build
+name: "[build] DBaaS Proxy"
 
 run-name: >
   Build DBaaS Proxy -

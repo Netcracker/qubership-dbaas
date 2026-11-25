@@ -1,5 +1,5 @@
 ---
-name: Release Helm Charts
+name: "[release] Helm Charts"
 
 # Releases the Helm charts and builds qubership-dbaas-transfer:<version>, the
 # image the internal GitLab release pipeline takes the charts from.
