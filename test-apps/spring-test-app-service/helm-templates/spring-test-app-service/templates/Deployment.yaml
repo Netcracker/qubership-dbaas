@@ -30,9 +30,6 @@ spec:
       securityContext:
         fsGroup: 10001
       volumes:
-        # The DBaaS PostgreSQL client reads connectionProperties.json + metadata.json from
-        # /etc/secrets/dbaas-secrets/<secretName> before any REST call to dbaas-aggregator.
-        # One volume per mounted secret — one secret per (scope x role) quadrant.
         {{- if .Values.MOUNT_SECRETS }}
         {{- range .Values.SECRET_CLAIMS }}
         - name: 'secret-{{ .secretName }}'
@@ -40,9 +37,6 @@ spec:
             secretName: '{{ .secretName }}'
         {{- end }}
         {{- end }}
-        # A Kubernetes projected service-account token scoped to the `dbaas` audience. The client reads
-        # it from /var/run/secrets/tokens/dbaas and sends it as a Bearer straight to the aggregator
-        # (no dbaas-agent).
         {{- if ne .Values.M2M_AUTH_MODE "legacy" }}
         - name: dbaas-m2m-token
           projected:
@@ -72,8 +66,6 @@ spec:
               value: '{{ .Values.API_DBAAS_ADDRESS }}'
             - name: M2M_AUTH_MODE
               value: '{{ .Values.M2M_AUTH_MODE }}'
-            # In the hybrid and k8s modes, switch the dbaas Spring client from the Basic RestTemplate
-            # flavor to the M2M OkHttp client (getDbaasOkHttpClient). This env overrides application.yaml.
             - name: DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH
               value: '{{ eq .Values.M2M_AUTH_MODE "legacy" }}'
             - name: JAVA_TOOL_OPTIONS

@@ -12,18 +12,27 @@ on:
         description: SMTP password used to email the test report.
   workflow_dispatch:
   schedule:
-    - cron: "0 2 * * *"  # Daily at 02:00 UTC
+    - cron: "0 2 * * *"
   pull_request:
     types: [opened, synchronize]
 
 jobs:
   sample-services-integration-tests:
+    if: always()
+    needs: sample-services
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - run: test "$RESULT" = success || test "$RESULT" = skipped
+        env:
+          RESULT: ${{ needs.sample-services.result }}
+
+  sample-services:
     if: |
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'renovate[bot]'
-    # One cluster per M2M_AUTH_MODE the aggregator supports. A legacy cluster refuses a request carrying a
-    # Kubernetes token, so Pass C there asserts that refusal through the light client: the other three classes
-    # resolve their datasource through dbaas.api.address, which Pass C points at that same refusing DBaaS.
+    # A legacy DBaaS refuses Kubernetes tokens, so its Phase C runs only the light-client probe: the other
+    # classes resolve their datasource through dbaas.api.address, which Phase C points at that DBaaS.
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +54,6 @@ jobs:
     env:
       M2M_AUTH_MODE: ${{ matrix.mode }}
       # Both sample images are built in-job and loaded straight into kind (no registry, no
-      # dependency on a separate publish workflow, and the exact PR code is what gets tested).
       GO_SERVICE_NAME: go-test-app-service
       GO_IMAGE_REPOSITORY: go-test-app-service
       GO_IMAGE_TAG: it
@@ -88,8 +96,7 @@ jobs:
           java-version: '26.0.2+101'
           distribution: 'temurin'
           cache: maven
-          # Lets Maven pull the dbaas-client snapshot from GitHub Packages when building the
-          # Spring sample image (read:packages on Netcracker/qubership-core-java-libs).
+          # GitHub Packages refuses anonymous reads, even of public Maven packages.
           server-id: github
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
@@ -187,10 +194,6 @@ jobs:
         run: |
           sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/secret-rbac.yaml | kubectl apply -f -
 
-      # Minimal dbaas-agent stand-in (test-apps/dbaas-agent-stub): injects originService and
-      # authenticates to the aggregator as cluster-dba, so the REST-fallback pass exercises the real
-      # client path without the production agent's tenant-manager / gateway dependencies. Unused in
-      # Pass A (the apps point at a broken URL and resolve from the mount).
       - name: Deploy dbaas-agent stub
         run: |
           sed -e "s/__NAMESPACE__/$TEST_NAMESPACE/g" \
@@ -198,7 +201,6 @@ jobs:
               test-apps/dbaas-agent-stub/deploy.yaml | kubectl apply -f -
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/dbaas-agent --timeout=120s
 
-      # ──────────────── Database proxy fixture (rotation prerequisite) ────────────────
       # DBaaS Proxy + HAProxy from test-apps/database-proxy-test-stack. DBaaS Proxy rewrites the
       # database endpoint in the aggregator's create/get responses to the HAProxy address, so the
       # sample services connect through a proxy whose sessions the rotation test can terminate.
@@ -224,7 +226,6 @@ jobs:
           kubectl -n "$TEST_NAMESPACE" set env deployment/dbaas-operator --list \
             | grep -E 'DBAAS_AGGREGATOR_URL|DBAAS_ROTATION_POLL_INTERVAL'
 
-      # ───────────────────────── Pass A — mount proof ─────────────────────────
       # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED. A working
       # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
       # quadrant tests prove every datasource reads its connection from the mount. Tenant databases are
@@ -266,7 +267,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ───────────────── PostgreSQL rotation — mounted-secret recovery ─────────────────
       # Runs while the mounted-secret deployment from Pass A is still in place, and as its own Maven
       # invocation: it rotates a credential shared with every other class in the namespace, so it
       # must not run beside them. The class is excluded from the other passes for the same reason.
@@ -294,7 +294,6 @@ jobs:
           ROTATION_DBAAS_USERNAME: cluster-dba
           ROTATION_DBAAS_PASSWORD: password
 
-      # ──────────────────────── Pass B — REST fallback ────────────────────────
       # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted. Each
       # client misses the mount and must resolve its database over REST through the agent (its native
       # target), so a working /postgres* round-trip proves the REST fallback path in every library.
@@ -304,9 +303,6 @@ jobs:
 
       - name: "Pass B — wait for sample services"
         run: |
-          # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
-          # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
-          # with a clear cause instead of an opaque deployment rollout timeout downstream.
           kubectl -n "$TEST_NAMESPACE" wait internaldatabase --all \
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
@@ -330,28 +326,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─────────────────────── Phase C — direct M2M REST ───────────────────────
-      # Redeploy all three apps pointing DIRECTLY at the real aggregator, no mounted secrets, and with
-      # the cluster's client M2M auth mode. Each client authenticates its aggregator call with its own
-      # Kubernetes token (no dbaas-agent), so a working /postgres* round-trip proves the direct-M2M path
-      # in every library; in the k8s leg the go and quarkus clients run without a legacy fallback. A
-      # legacy DBaaS turns that token away, so there the spring probe stays hybrid and asserts the
-      # refusal and the fallback to dbaas-agent that follows it.
+      # Spring stays hybrid in every mode: its probe asserts the legacy refusal and the agent fallback after it.
       - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
         run: |
           .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false "$M2M_AUTH_MODE" hybrid
 
       - name: "Phase C — wait for sample services"
         run: |
-          # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
-          # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
-          # with a clear cause instead of an opaque deployment rollout timeout downstream.
           kubectl -n "$TEST_NAMESPACE" wait internaldatabase --all \
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
-          # A legacy DBaaS refuses the only credential these apps have here, so the apps that are not
-          # probed in that mode are not required to come up.
           services=("$GO_SERVICE_NAME" "$SPRING_SERVICE_NAME" "$QUARKUS_SERVICE_NAME")
           if [ "$M2M_AUTH_MODE" = "legacy" ]; then services=("$SPRING_SERVICE_NAME"); fi
           for service in "${services[@]}"; do

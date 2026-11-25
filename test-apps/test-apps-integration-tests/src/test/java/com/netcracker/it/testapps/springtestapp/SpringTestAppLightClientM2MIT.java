@@ -18,14 +18,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-/**
- * dbaas-client-light authorizes its own requests to DBaaS. The sample service builds a client through
- * DbaasClientFactory and reports the address, the credential and the answer it got, and each combination is checked
- * against what it owes: a legacy request routed to dbaas-agent without a Kubernetes identity, a Kubernetes request
- * carrying the token this pod was projected for the {@code dbaas} audience straight to DBaaS, and that request refused
- * when the cluster runs in legacy mode, where DBaaS accepts no Kubernetes token - a refusal the client answers through
- * dbaas-agent rather than by failing.
- */
 class SpringTestAppLightClientM2MIT {
 
     private static final String SAMPLE_SERVICE = "spring-test-app-service";

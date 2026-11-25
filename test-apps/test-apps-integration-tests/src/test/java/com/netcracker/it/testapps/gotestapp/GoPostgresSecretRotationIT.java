@@ -72,7 +72,6 @@ public class GoPostgresSecretRotationIT {
     private static final String MOUNT_PATH =
             "/etc/secrets/dbaas-secrets/" + SECRET_NAME + "/" + CONNECTION_PROPERTIES_KEY;
 
-    /** Port the fixture's HAProxy listens on for PostgreSQL, and the objects it names after it. */
     private static final int TCP_PROXY_PORT = 8801;
     private static final String FRONTEND = "fe_" + TCP_PROXY_PORT;
     private static final String BACKEND = "be_" + TCP_PROXY_PORT;
@@ -244,8 +243,6 @@ public class GoPostgresSecretRotationIT {
                         + rotationTimeout.toMillis() + " ms");
     }
 
-    // ── rotation steps ─────────────────────────────────────────────────────────────────────────
-
     /**
      * Rotates the admin credential through the real DBaaS API. The aggregator adds the namespace
      * from the path to the classifier, so the body carries only the fields that identify the
@@ -281,7 +278,6 @@ public class GoPostgresSecretRotationIT {
         }
     }
 
-    /** Polls the Secret until the operator republishes it with a different password. */
     private static Secret awaitRotatedSecret(String resourceVersionBefore, String passwordHashBefore,
                                              long rotationStartNanos) {
         long deadline = rotationStartNanos + rotationTimeout.toNanos();
@@ -333,8 +329,6 @@ public class GoPostgresSecretRotationIT {
             return response.code();
         }
     }
-
-    // ── proxy control ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Returns true when HAProxy reports a session on the PostgreSQL frontend. Asking the proxy
@@ -393,7 +387,6 @@ public class GoPostgresSecretRotationIT {
         }
     }
 
-    /** Confirms that HAProxy removed the established session before the recovery probe starts. */
     private static void awaitPostgresSessionShutdown() throws IOException {
         long deadline = System.nanoTime() + REQUEST_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -404,8 +397,6 @@ public class GoPostgresSecretRotationIT {
         }
         throw new AssertionError("HAProxy still reports the PostgreSQL session after the shutdown command");
     }
-
-    // ── Kubernetes reads ───────────────────────────────────────────────────────────────────────
 
     private static Secret readSecret() {
         Secret secret = kubernetesClient.secrets().inNamespace(namespace).withName(SECRET_NAME).get();
@@ -421,9 +412,6 @@ public class GoPostgresSecretRotationIT {
         return GSON.fromJson(json, JsonObject.class);
     }
 
-    /**
-     * Hashes the password before comparison so the clear-text value is never printed.
-     */
     private static String passwordHash(Secret secret) {
         JsonObject properties = connectionProperties(secret);
         assertTrue(properties.has("password"), CONNECTION_PROPERTIES_KEY + " must contain a password");
@@ -538,8 +526,6 @@ public class GoPostgresSecretRotationIT {
                 .build();
     }
 
-    // ── port forwarding ────────────────────────────────────────────────────────────────────────
-
     /**
      * Forwards the application pod and DBaaS Proxy separately. The application is addressed by pod
      * rather than by Service so every probe reaches the same pod whose restart count is asserted.
@@ -552,8 +538,6 @@ public class GoPostgresSecretRotationIT {
         ClusterHelper.awaitHealthy(serviceUrl + "/health", SERVICE_NAME);
         ClusterHelper.awaitHealthy(proxyUrl + "/health", "DBaaS Proxy");
     }
-
-    // ── small helpers ──────────────────────────────────────────────────────────────────────────
 
     private static String bodyOf(Response response) throws IOException {
         ResponseBody body = response.body();

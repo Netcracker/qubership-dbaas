@@ -17,9 +17,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Reports the address and the credential a {@link DbaasClientFactory} client put on the wire, for the sample service ITs.
- */
 @RestController
 public class DbaasLightClientController {
 

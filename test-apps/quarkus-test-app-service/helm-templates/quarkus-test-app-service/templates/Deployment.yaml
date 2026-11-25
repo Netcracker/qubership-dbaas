@@ -30,9 +30,6 @@ spec:
       securityContext:
         fsGroup: 10001
       volumes:
-        # The DBaaS PostgreSQL client reads connectionProperties.json + metadata.json from
-        # /etc/secrets/dbaas-secrets/<secretName> before any REST call to dbaas-aggregator.
-        # One volume per mounted secret — one secret per (scope x role) quadrant.
         {{- if .Values.MOUNT_SECRETS }}
         {{- range .Values.SECRET_CLAIMS }}
         - name: 'secret-{{ .secretName }}'
@@ -40,9 +37,6 @@ spec:
             secretName: '{{ .secretName }}'
         {{- end }}
         {{- end }}
-        # A Kubernetes projected service-account token scoped to the `dbaas` audience. The client reads
-        # it from /var/run/secrets/tokens/dbaas and sends it as a Bearer straight to the aggregator
-        # (no dbaas-agent).
         {{- if ne .Values.M2M_AUTH_MODE "legacy" }}
         - name: dbaas-m2m-token
           projected:
