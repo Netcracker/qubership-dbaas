@@ -93,7 +93,7 @@ jobs:
       - name: Set up JDK 26
         uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
         with:
-          java-version: '26.0.2+101'
+          java-version: '27.0.1+100000004'
           distribution: 'temurin'
           cache: maven
           # GitHub Packages refuses anonymous reads, even of public Maven packages.
