@@ -31,8 +31,7 @@ jobs:
     if: |
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'renovate[bot]'
-    # A legacy DBaaS refuses Kubernetes tokens, so its Phase C runs only the light-client probe: the other
-    # classes resolve their datasource through dbaas.api.address, which Phase C points at that DBaaS.
+    # A legacy DBaaS refuses Kubernetes tokens, so its Phase C runs only the light-client probe
     strategy:
       fail-fast: false
       matrix:
@@ -96,7 +95,6 @@ jobs:
           java-version: '27.0.1+100000004'
           distribution: 'temurin'
           cache: maven
-          # GitHub Packages refuses anonymous reads, even of public Maven packages.
           server-id: github
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
@@ -187,9 +185,6 @@ jobs:
           OPERATOR_TAG: ${{ env.DBAAS_OPERATOR_TAG }}
         run: helmfile -e ci -f bootstrap/helmfile/helmfile.yaml.gotmpl sync
 
-      # The operator holds no cluster-wide Secret RBAC, so the namespace gets a
-      # dbaas-operator-secrets Role + RoleBinding bound to the operator ServiceAccount. Without it,
-      # the operator cannot materialize the DatabaseSecretClaim Secrets the sample services mount.
       - name: Apply sample service Secret RBAC
         run: |
           sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/secret-rbac.yaml | kubectl apply -f -
@@ -201,13 +196,6 @@ jobs:
               test-apps/dbaas-agent-stub/deploy.yaml | kubectl apply -f -
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/dbaas-agent --timeout=120s
 
-      # DBaaS Proxy + HAProxy from test-apps/database-proxy-test-stack. DBaaS Proxy rewrites the
-      # database endpoint in the aggregator's create/get responses to the HAProxy address, so the
-      # sample services connect through a proxy whose sessions the rotation test can terminate.
-      #
-      # This has to run BEFORE any sample InternalDatabase or DatabaseSecretClaim exists. The
-      # operator writes the Secret from whatever the aggregator returns, so a claim reconciled ahead
-      # of the proxy would carry a direct-to-Patroni endpoint that never reaches HAProxy.
       - name: Deploy database proxy test stack
         run: |
           chmod +x test-apps/database-proxy-test-stack/deploy.sh
@@ -226,11 +214,7 @@ jobs:
           kubectl -n "$TEST_NAMESPACE" set env deployment/dbaas-operator --list \
             | grep -E 'DBAAS_AGGREGATOR_URL|DBAAS_ROTATION_POLL_INTERVAL'
 
-      # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED. A working
-      # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
-      # quadrant tests prove every datasource reads its connection from the mount. Tenant databases are
-      # materialized by the operator (a pinned-tenant InternalDatabase get-or-creates after apply).
-      # Keep the operator namespace as the second DNS label.
+      # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED.
       - name: "Pass A — deploy sample services (broken aggregator + mounted secrets)"
         run: |
           chmod +x .github/scripts/deploy-sample-services.sh
@@ -294,9 +278,7 @@ jobs:
           ROTATION_DBAAS_USERNAME: cluster-dba
           ROTATION_DBAAS_PASSWORD: password
 
-      # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted. Each
-      # client misses the mount and must resolve its database over REST through the agent (its native
-      # target), so a working /postgres* round-trip proves the REST fallback path in every library.
+      # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted.
       - name: "Pass B — deploy sample services (working agent + no mounted secrets)"
         run: |
           .github/scripts/deploy-sample-services.sh "http://dbaas-agent.$TEST_NAMESPACE:8080" false
@@ -383,10 +365,6 @@ jobs:
 
       - name: Collect K8s diagnostics (kubectl)
         id: collect_diagnostics
-        # always() so this also runs when the deploy/rollout fails (which skips the tests step).
-        # Each section is written to a file (for the downloadable artifact) AND echoed to the job
-        # log with ::group:: folding — one kubectl call per section, so file and console show the
-        # same snapshot. A fully green run writes no files, so no diagnostics artifact is produced.
         if: always()
         run: |
           set +e
@@ -542,7 +520,6 @@ jobs:
       - name: Email test report
         if: always() && steps.build_report.outcome == 'success' && steps.build_report.outputs.status != 'success'
         continue-on-error: true
-        # Pinned to the commit that adds email-action (#782); no release tag includes it yet.
         uses: Netcracker/qubership-workflow-hub/actions/email-action@f4a2c6f57cfdd620676d0dc7321491b33d7c214b
         env:
           EMAIL_SMTP_HOST: ${{ vars.EMAIL_SMTP_HOST }}
@@ -560,8 +537,6 @@ jobs:
           convert-markdown: "true"
 
       - name: Fail job if sample service tests failed
-        # The report is the single gate: it fails on a failed test AND on a pass that produced no
-        # reports at all ("no-tests" when every pass is missing).
         if: always() && steps.build_report.outputs.status != 'success'
         run: |
           echo "::error::Sample service integration tests did not pass (status=${{ steps.build_report.outputs.status }}, failed tests=${{ steps.build_report.outputs.failed_count }})"

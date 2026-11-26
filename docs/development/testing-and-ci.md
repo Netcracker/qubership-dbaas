@@ -63,5 +63,6 @@ integration tests passed. Run 'test-it.yml' workflow when you need to check full
 - `build-dbaas-operator.yml` builds and tests the operator, and checks that generated code and CRDs are up to date.
 - `test-it.yml` deploys the stack to Kind and runs the integration tests. On pull requests it runs only for
   `chore(deps)` titles; start it manually when another change needs it.
+- `test-sample-services.yml` runs the sample service suites once per M2M auth mode on Kind.
 - Releases are manual, through `release-dbaas.yml`.
 - Pull request titles and commits follow Conventional Commits; CI checks both.
