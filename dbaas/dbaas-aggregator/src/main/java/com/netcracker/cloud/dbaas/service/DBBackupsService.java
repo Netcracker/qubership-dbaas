@@ -26,9 +26,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.validation.constraints.NotEmpty;
-import lombok.Data;
-import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -435,19 +432,6 @@ public class DBBackupsService {
             return save;
         }
         return namespaceBackup;
-    }
-
-    @Data
-    @RequiredArgsConstructor
-    class TempDbKey {
-        @NonNull
-        private String adapterId;
-        @NonNull
-        private String name;
-
-        private TempDbKey(Database database) {
-            this(database.getAdapterId(), database.getName());
-        }
     }
 
     public NamespaceRestoration restore(NamespaceBackup backup, UUID restorationId, String targetNamespace)

@@ -11,13 +11,13 @@ import com.netcracker.cloud.dbaas.exceptions.RecordIsCorruptedException;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections4.MapUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.dto.ConnectionDescription.FieldTypeEnum.PASSWORD;
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 
 @Slf4j
 @Data
@@ -189,7 +189,7 @@ public class PasswordEncryption {
                 .forEach(field -> {
                     String parameter = field.getKey();
                     if (cp != null && cp.containsKey(encryptedFieldName(parameter))) {
-                        log.info("Delete encrypted data for database {}", database.getName());
+                        log.info("Delete encrypted data for database {}", getDatabaseName(database));
                         cp.remove(encryptedFieldName(parameter));
                     }
                 });
@@ -200,7 +200,7 @@ public class PasswordEncryption {
         ConnectionDescription connectionDescription = database.getConnectionDescription() == null
                 ? ConnectionDescription.DEFAULT_CONNECTION_DESCRIPTION : database.getConnectionDescription();
         List<Map<String, Object>> connectionProperties = database.getConnectionProperties();
-        deletePasswordFromConnectionProperties(database.getName(), connectionDescription, connectionProperties);
+        deletePasswordFromConnectionProperties(getDatabaseName(database), connectionDescription, connectionProperties);
 
     }
 
@@ -236,7 +236,7 @@ public class PasswordEncryption {
         } catch (NullPointerException | ClassCastException e) {
             log.error("Got incorrect connection properties without valid password field, cannot decrypt password.", e);
             throw new IllegalArgumentException("Connection properties of database"
-                    + database.getName() + " does not have field " + ENCRYPTED_PASSWORD_FIELD);
+                    + getDatabaseName(database) + " does not have field " + ENCRYPTED_PASSWORD_FIELD);
         } catch (Exception e) {
             log.error("An error occurred while getting decrypted password", e);
             throw new DecryptException("Error when decrypting password", e);

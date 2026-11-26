@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 import java.util.Objects;
 
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
+
 @Slf4j
 public class DefaultDbSettingsHandler implements LogicalDbSettingsHandler {
 
@@ -53,12 +55,12 @@ public class DefaultDbSettingsHandler implements LogicalDbSettingsHandler {
         }
 
 
-        String message = dbaasAdapter.updateSettings(databaseRegistry.getName(), currentSettings, newSettings);
+        String message = dbaasAdapter.updateSettings(getDatabaseName(databaseRegistry), currentSettings, newSettings);
         log.debug("Message from adapter: {}", message);
         // update settings in dbaas db
         databaseRegistry.setSettings(newSettings);
         logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().saveInternalDatabase(databaseRegistry);
-        log.info("Successfully updated settings for db {}, from original settings: {} to new settings: {}. Message from adapter: {}", databaseRegistry.getName(), currentSettings, newSettings, message);
+        log.info("Successfully updated settings for db {}, from original settings: {} to new settings: {}. Message from adapter: {}", getDatabaseName(databaseRegistry), currentSettings, newSettings, message);
         return message;
     }
 }

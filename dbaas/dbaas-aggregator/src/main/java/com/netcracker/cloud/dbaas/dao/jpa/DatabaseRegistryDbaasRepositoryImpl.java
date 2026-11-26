@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 
 import static com.netcracker.cloud.dbaas.Constants.*;
 import static com.netcracker.cloud.dbaas.config.ServicesConfig.DBAAS_REPOSITORIES_MUTEX;
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 import static jakarta.transaction.Transactional.TxType.REQUIRES_NEW;
 
 
@@ -86,7 +87,7 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
         if (StringUtils.isNotBlank(namespace)) {
             List<DatabaseRegistry> databaseRegistries = findAnyLogDbRegistryTypeByNamespace(namespace);
             databaseList = databaseRegistries.stream()
-                    .filter(databaseRegistry -> name.equals(databaseRegistry.getName()))
+                    .filter(databaseRegistry -> name.equals(getDatabaseName(databaseRegistry)))
                     .toList();
         } else {
             databaseList = doGet(() -> databasesRepository.findAnyLogDbTypeByName(name), ex -> {
@@ -121,14 +122,15 @@ public class DatabaseRegistryDbaasRepositoryImpl implements DatabaseRegistryDbaa
 
     @Override
     public DatabaseRegistry saveInternalDatabase(DatabaseRegistry databaseRegistry) {
+        String dbName = getDatabaseName(databaseRegistry);
         if (databaseRegistry.isExternallyManageable()) {
-            throw new RuntimeException(String.format("Unable to save database %s, because flag external manageable should be false", databaseRegistry.getName()));
+            throw new RuntimeException(String.format("Unable to save database %s, because flag external manageable should be false", dbName));
         }
         if (StringUtils.isBlank(databaseRegistry.getAdapterId())) {
-            throw new RuntimeException(String.format("Unable to save database %s, because adapterId=%s is null or empty", databaseRegistry.getName(), databaseRegistry.getAdapterId()));
+            throw new RuntimeException(String.format("Unable to save database %s, because adapterId=%s is null or empty", dbName, databaseRegistry.getAdapterId()));
         }
         if (StringUtils.isBlank(databaseRegistry.getPhysicalDatabaseId())) {
-            throw new RuntimeException(String.format("Unable to save database %s, because physicalDbId=%s is null or empty", databaseRegistry.getName(), databaseRegistry.getPhysicalDatabaseId()));
+            throw new RuntimeException(String.format("Unable to save database %s, because physicalDbId=%s is null or empty", dbName, databaseRegistry.getPhysicalDatabaseId()));
         }
         log.debug("Save internal logical database with classifier {} and type {}", databaseRegistry.getClassifier(), databaseRegistry.getType());
         return save(databaseRegistry);

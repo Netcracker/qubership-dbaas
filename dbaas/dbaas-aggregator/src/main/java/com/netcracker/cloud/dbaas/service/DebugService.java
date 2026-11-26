@@ -34,6 +34,8 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
+
 @Slf4j
 @ApplicationScoped
 public class DebugService {
@@ -222,7 +224,7 @@ public class DebugService {
                 List<DatabaseRegistry> lost = Optional.ofNullable(registeredDatabasesByPhisicalId.get(physicalDatabaseId))
                         .orElse(Collections.emptyList())
                         .stream()
-                        .filter(entry -> !adapterRealDatabases.contains(entry.getName()))
+                        .filter(entry -> !adapterRealDatabases.contains(getDatabaseName(entry)))
                         .toList();
 
                 lostDatabases.setDatabases(responseHelper.toDatabaseResponse(lost, false));
@@ -244,7 +246,7 @@ public class DebugService {
     public List<GhostDatabasesResponse> findGhostDatabases() {
         List<DatabaseRegistry> registered = logicalDbDbaasRepository.getDatabaseRegistryDbaasRepository().findAllInternalDatabases();
         List<String> registeredDatabaseNames = registered.stream()
-                .map(DatabaseRegistry::getName)
+                .map(DBaaService::getDatabaseName)
                 .toList();
         List<GhostDatabasesResponse> ghost = new ArrayList<>();
         for (DbaasAdapter adapter : physicalDatabasesService.getAllAdapters()) {

@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.netcracker.cloud.dbaas.Constants.ROLE;
+import static com.netcracker.cloud.dbaas.service.DBaaService.getDatabaseName;
 
 /**
  * Rotation is intentionally not wrapped in a single outer transaction. Each adapter call
@@ -122,7 +123,7 @@ public class PasswordRotationService {
             }
             for (Map<String, Object> cp : connectionProperties) {
                 try {
-                    String dbName = database.getName();
+                    String dbName = getDatabaseName(database);
                     String password = null;
                     EnsuredUser ensuredUser;
                     ensuredUser = dBaaService.recreateUsers(adapter, (String) cp.get("username"), dbName, password, (String) cp.get(ROLE));
