@@ -1,0 +1,18 @@
+{
+  "registry": "ghcr.io",
+  "defaults": {
+    "platforms": "linux/amd64,linux/arm64"
+  },
+  "components": [
+    {
+      "name": "qubership-dbaas-transfer",
+      "dockerfile": "docker-transfer/Dockerfile",
+      "build_context": ".",
+      "changeset": [
+        "helm-templates",
+        "dbaas-operator/helm-templates",
+        "docker-transfer"
+      ]
+    }
+  ]
+}

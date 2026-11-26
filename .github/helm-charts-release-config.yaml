@@ -1,0 +1,16 @@
+---
+# Charts packaged and published by release-helm-charts.yml.
+#
+# The service images are not listed here on purpose: they are built by
+# release-dbaas.yml, not by the release transfer flow. The `image` list stays
+# empty because the charts reference their images through separate
+# IMAGE_REPOSITORY/TAG values, not combined repo:tag strings.
+charts:
+  - name: qubership-dbaas
+    chart_file: helm-templates/dbaas-aggregator/Chart.yaml
+    values_file: helm-templates/dbaas-aggregator/values.yaml
+    image: []
+  - name: qubership-dbaas-operator
+    chart_file: dbaas-operator/helm-templates/dbaas-operator/Chart.yaml
+    values_file: dbaas-operator/helm-templates/dbaas-operator/values.yaml
+    image: []

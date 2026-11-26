@@ -1,21 +1,60 @@
 ---
 name: "[build] Helm Charts"
 
-run-name: Build Helm Charts (placeholder)
+# Builds the qubership-dbaas-transfer image that carries the Aggregator and
+# Operator charts (docker-transfer/Dockerfile).
+# A push to main publishes the image. Pull requests that change a chart or the
+# image build build it without pushing. A manual run publishes the selected ref.
+# Release images are built by release-helm-charts.yml.
 
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "helm-templates/**"
+      - "dbaas-operator/helm-templates/**"
+      - "docker-transfer/**"
+      - ".github/docker-build-config.json"
+      - ".github/workflows/build-helm-charts.yml"
   workflow_dispatch:
 
-permissions: {}
-
 jobs:
-  placeholder:
-    name: Placeholder
-    if: ${{ false }}
+  build-transfer:
+    name: Build qubership-dbaas-transfer
+    # Keep publishes sequential, and never cancel an active image push.
+    concurrency:
+      group: build-transfer-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 45
     permissions:
       contents: read
+      packages: write
     steps:
-      - name: Report placeholder
-        run: echo "Helm chart build workflow implementation is pending."
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve image configuration
+        id: config
+        uses: netcracker/qubership-workflow-hub/actions/config-resolver@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+        with:
+          file-path: .github/docker-build-config.json
+
+      - name: Prepare image tag
+        id: metadata
+        uses: netcracker/qubership-workflow-hub/actions/metadata-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+
+      - name: Build and push
+        uses: netcracker/qubership-workflow-hub/actions/docker-action@cf536587a99a23b3614aa4db4bdbf13cf36059b6 # v2.8.3
+        with:
+          checkout: false
+          component: ${{ steps.config.outputs.config }}
+          platforms: ${{ fromJson(steps.config.outputs.config)[0].platforms }}
+          tags: ${{ steps.metadata.outputs.result }}
+          dry-run: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
