@@ -24,6 +24,9 @@ black-box Kubernetes consumer used to prove the end-to-end flow:
 - `DELETE /postgres/items`
 - `POST /postgres/items` — body `{"name": "<string>"}`
 - `GET /postgres/items` — `{"items": [{"id", "name", "createdAt"}]}`
+- `POST`, `GET`, `DELETE /postgres-admin/items`
+- `POST`, `GET`, `DELETE /postgres-tenant/items`
+- `POST`, `GET`, `DELETE /postgres-tenant-admin/items`
 
 ## How it resolves the database
 
@@ -35,17 +38,19 @@ insert/list proves the connection came from the mounted secret, not REST.
 
 ## Integration test phases
 
-The `Sample Services Integration Tests` workflow deploys this service three times against the same
-black-box contract, toggling how the DBaaS connection is resolved:
+The `[test] Sample Services` workflow runs this service through three passes on each of its
+M2M-mode clusters, toggling how the DBaaS connection is resolved:
 
 - **Pass A — mounted secret**: secrets mounted, `API_DBAAS_ADDRESS` unreachable → a working round-trip
   can only come from the mount.
 - **Pass B — REST fallback**: no mount, `API_DBAAS_ADDRESS` at the `dbaas-agent` stub → the client
   resolves each database over REST through the agent (Basic auth).
-- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_ENABLED=true`.
-  A `dbaas`-audience projected token is mounted at `/var/run/secrets/tokens/dbaas/token`; clearing the
-  aggregator basic-auth creds makes `DbaasClientProducer` select the M2M client, which calls the
-  aggregator directly with that token as a Bearer — no dbaas-agent.
+- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_AUTH_MODE` set
+  to the cluster's mode. Outside `legacy` a `dbaas`-audience projected token is mounted at
+  `/var/run/secrets/tokens/dbaas/token` and the aggregator basic-auth creds are cleared, so
+  `DbaasClientProducer` selects the M2M client, which calls the aggregator directly with that token as
+  a Bearer — no dbaas-agent. `k8s` has no legacy fallback. In `legacy` the client stays on the Basic
+  flavor.
 
 The `quarkus_test_app_items` table is created by the dbaas Flyway integration
 (`MigrationService.migrate`) from `classpath:db/migration`, run lazily on the first request.
@@ -58,17 +63,16 @@ mvn -B package          # produces target/quarkus-app/quarkus-run.jar (fast-jar)
 java -jar target/quarkus-app/quarkus-run.jar
 ```
 
-The build depends on the dbaas Quarkus extension snapshot that carries the mounted-secret feature
-(`com.netcracker.cloud.quarkus:dbaas-datasource-postgresql:10.1.3-mounted-secret-SNAPSHOT`), published
-to GitHub Packages.
+The build depends on the dbaas Quarkus datasource extension (`dbaas-quarkus.version` in `pom.xml`),
+published to GitHub Packages.
 
 | Env var | Purpose | Default |
 |---|---|---|
 | `MICROSERVICE_NAME` | dbaas classifier `microserviceName` | `quarkus-test-app-service` |
 | `MICROSERVICE_NAMESPACE` | dbaas classifier `namespace` | `default` |
 | `API_DBAAS_ADDRESS` | REST target: dbaas-agent (Pass B) or the aggregator directly (Pass C) | `http://dbaas-aggregator:8080` |
-| `M2M_AUTH_MODE` | Pass C (`hybrid`): call the aggregator directly with a `dbaas`-audience projected token | `legacy` |
-| `QUARKUS_DBAAS_API_AGGREGATOR_USERNAME` / `_PASSWORD` | cleared in Pass C so the M2M client is selected | `dbaas` / `dbaas` |
+| `M2M_AUTH_MODE` | client mode: `legacy` goes through dbaas-agent; `hybrid` and `k8s` call the aggregator directly with a projected `dbaas` token, and `k8s` has no fallback | `legacy` |
+| `QUARKUS_DBAAS_API_AGGREGATOR_USERNAME` / `_PASSWORD` | cleared outside `legacy` so the M2M client is selected | `dbaas` / `dbaas` |
 | `LOG_LEVEL` | log level | `INFO` |
 
 The `http://dbaas-aggregator:8080` default above is the standalone binary's fallback. The Helm chart

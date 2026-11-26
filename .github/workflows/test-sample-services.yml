@@ -11,22 +11,38 @@ on:
         # Without it the password arrives empty and the report email step fails (non-fatally).
         description: SMTP password used to email the test report.
   workflow_dispatch:
-    inputs:
-      m2m-auth-mode:
-        description: M2M_AUTH_MODE value
-        type: choice
-        options: [hybrid, legacy, k8s]
-        default: hybrid
   schedule:
-    - cron: "0 2 * * *"  # Daily at 02:00 UTC
+    - cron: "0 2 * * *"
   pull_request:
     types: [opened, synchronize]
 
 jobs:
   sample-services-integration-tests:
+    if: always()
+    needs: sample-services
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - run: test "$RESULT" = success || test "$RESULT" = skipped
+        env:
+          RESULT: ${{ needs.sample-services.result }}
+
+  sample-services:
     if: |
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'renovate[bot]'
+    # A legacy DBaaS refuses Kubernetes tokens, so its Phase C runs only the light-client probe
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: legacy
+            phase-c-tests: SpringTestAppLightClientM2MIT
+          - mode: hybrid
+            phase-c-tests: '!GoPostgresSecretRotationIT'
+          - mode: k8s
+            phase-c-tests: '!GoPostgresSecretRotationIT'
+    name: sample services (M2M ${{ matrix.mode }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,8 +51,8 @@ jobs:
       pull-requests: read
 
     env:
+      M2M_AUTH_MODE: ${{ matrix.mode }}
       # Both sample images are built in-job and loaded straight into kind (no registry, no
-      # dependency on a separate publish workflow, and the exact PR code is what gets tested).
       GO_SERVICE_NAME: go-test-app-service
       GO_IMAGE_REPOSITORY: go-test-app-service
       GO_IMAGE_TAG: it
@@ -79,8 +95,6 @@ jobs:
           java-version: '27.0.1+100000004'
           distribution: 'temurin'
           cache: maven
-          # Lets Maven pull the dbaas-client snapshot from GitHub Packages when building the
-          # Spring sample image (read:packages on Netcracker/qubership-core-java-libs).
           server-id: github
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
@@ -106,7 +120,6 @@ jobs:
 
       - name: Resolve aggregator image
         id: aggregator_image
-        if: github.event_name == 'pull_request'
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas
@@ -117,7 +130,6 @@ jobs:
 
       - name: Resolve operator image
         id: operator_image
-        if: github.event_name == 'pull_request'
         uses: ./.github/actions/wait-for-image-tag
         with:
           package: qubership-dbaas-operator
@@ -126,8 +138,7 @@ jobs:
           timeout-seconds: "0"
           fallback-tag: latest
 
-      - name: Set PR image tags
-        if: github.event_name == 'pull_request'
+      - name: Set resolved DBaaS image tags
         env:
           AGGREGATOR_TAG: ${{ steps.aggregator_image.outputs['resolved-tag'] }}
           OPERATOR_TAG: ${{ steps.operator_image.outputs['resolved-tag'] }}
@@ -172,20 +183,12 @@ jobs:
         env:
           AGGREGATOR_TAG: ${{ env.TAG }}
           OPERATOR_TAG: ${{ env.DBAAS_OPERATOR_TAG }}
-          M2M_AUTH_MODE: ${{ inputs.m2m-auth-mode }}
         run: helmfile -e ci -f bootstrap/helmfile/helmfile.yaml.gotmpl sync
 
-      # The operator holds no cluster-wide Secret RBAC, so the namespace gets a
-      # dbaas-operator-secrets Role + RoleBinding bound to the operator ServiceAccount. Without it,
-      # the operator cannot materialize the DatabaseSecretClaim Secrets the sample services mount.
       - name: Apply sample service Secret RBAC
         run: |
           sed "s/__TEST_NAMESPACE__/$TEST_NAMESPACE/g" test-apps/dev/secret-rbac.yaml | kubectl apply -f -
 
-      # Minimal dbaas-agent stand-in (test-apps/dbaas-agent-stub): injects originService and
-      # authenticates to the aggregator as cluster-dba, so the REST-fallback pass exercises the real
-      # client path without the production agent's tenant-manager / gateway dependencies. Unused in
-      # Pass A (the apps point at a broken URL and resolve from the mount).
       - name: Deploy dbaas-agent stub
         run: |
           sed -e "s/__NAMESPACE__/$TEST_NAMESPACE/g" \
@@ -193,14 +196,6 @@ jobs:
               test-apps/dbaas-agent-stub/deploy.yaml | kubectl apply -f -
           kubectl -n "$TEST_NAMESPACE" rollout status deployment/dbaas-agent --timeout=120s
 
-      # ──────────────── Database proxy fixture (rotation prerequisite) ────────────────
-      # DBaaS Proxy + HAProxy from test-apps/database-proxy-test-stack. DBaaS Proxy rewrites the
-      # database endpoint in the aggregator's create/get responses to the HAProxy address, so the
-      # sample services connect through a proxy whose sessions the rotation test can terminate.
-      #
-      # This has to run BEFORE any sample InternalDatabase or DatabaseSecretClaim exists. The
-      # operator writes the Secret from whatever the aggregator returns, so a claim reconciled ahead
-      # of the proxy would carry a direct-to-Patroni endpoint that never reaches HAProxy.
       - name: Deploy database proxy test stack
         run: |
           chmod +x test-apps/database-proxy-test-stack/deploy.sh
@@ -219,12 +214,7 @@ jobs:
           kubectl -n "$TEST_NAMESPACE" set env deployment/dbaas-operator --list \
             | grep -E 'DBAAS_AGGREGATOR_URL|DBAAS_ROTATION_POLL_INTERVAL'
 
-      # ───────────────────────── Pass A — mount proof ─────────────────────────
-      # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED. A working
-      # /postgres* round-trip can then only come from the mounted secret (REST is unreachable), so the
-      # quadrant tests prove every datasource reads its connection from the mount. Tenant databases are
-      # materialized by the operator (a pinned-tenant InternalDatabase get-or-creates after apply).
-      # Keep the operator namespace as the second DNS label.
+      # Deploy all three apps against a BROKEN aggregator URL with the secrets MOUNTED.
       - name: "Pass A — deploy sample services (broken aggregator + mounted secrets)"
         run: |
           chmod +x .github/scripts/deploy-sample-services.sh
@@ -255,12 +245,12 @@ jobs:
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
           -Dtest='!GoPostgresSecretRotationIT'
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/pass-a
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ───────────────── PostgreSQL rotation — mounted-secret recovery ─────────────────
       # Runs while the mounted-secret deployment from Pass A is still in place, and as its own Maven
       # invocation: it rotates a credential shared with every other class in the namespace, so it
       # must not run beside them. The class is excluded from the other passes for the same reason.
@@ -278,6 +268,7 @@ jobs:
           -Drotation.cluster.dba.password="$ROTATION_DBAAS_PASSWORD"
           -Drotation.timeout.seconds=120
           -Dtest=GoPostgresSecretRotationIT
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/postgres-rotation
           test
         env:
@@ -287,19 +278,13 @@ jobs:
           ROTATION_DBAAS_USERNAME: cluster-dba
           ROTATION_DBAAS_PASSWORD: password
 
-      # ──────────────────────── Pass B — REST fallback ────────────────────────
-      # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted. Each
-      # client misses the mount and must resolve its database over REST through the agent (its native
-      # target), so a working /postgres* round-trip proves the REST fallback path in every library.
+      # Redeploy all three apps against the WORKING dbaas-agent with the secrets NOT mounted.
       - name: "Pass B — deploy sample services (working agent + no mounted secrets)"
         run: |
           .github/scripts/deploy-sample-services.sh "http://dbaas-agent.$TEST_NAMESPACE:8080" false
 
       - name: "Pass B — wait for sample services"
         run: |
-          # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
-          # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
-          # with a clear cause instead of an opaque deployment rollout timeout downstream.
           kubectl -n "$TEST_NAMESPACE" wait internaldatabase --all \
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
@@ -317,32 +302,27 @@ jobs:
           -Dclouds.cloud.name=kind
           -Dtest='!GoPostgresSecretRotationIT'
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/pass-b
           test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─────────────────────── Phase C — direct M2M REST ───────────────────────
-      # Redeploy all three apps pointing DIRECTLY at the real aggregator, no mounted secrets, with a
-      # `dbaas`-audience projected token (M2M_ENABLED=true). Each client authenticates its aggregator
-      # call with its own Kubernetes token (no dbaas-agent), so a working /postgres* round-trip
-      # proves the direct-M2M path in every library.
       - name: "Phase C — deploy sample services (direct M2M + real aggregator)"
         run: |
-          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false true
+          .github/scripts/deploy-sample-services.sh "http://dbaas-aggregator.$TEST_NAMESPACE:8080" false "$M2M_AUTH_MODE"
 
       - name: "Phase C — wait for sample services"
         run: |
-          # Barrier: the sample pods mount Secrets the operator materializes from these CRs. Wait for
-          # the operator to reconcile them to Succeeded first, so a first-reconcile stall fails here
-          # with a clear cause instead of an opaque deployment rollout timeout downstream.
           kubectl -n "$TEST_NAMESPACE" wait internaldatabase --all \
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
           kubectl -n "$TEST_NAMESPACE" wait databasesecretclaim --all \
             --for=jsonpath='{.status.phase}'=Succeeded --timeout=180s
-          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$GO_SERVICE_NAME" --timeout=300s
-          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$SPRING_SERVICE_NAME" --timeout=300s
-          kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$QUARKUS_SERVICE_NAME" --timeout=300s
+          services=("$GO_SERVICE_NAME" "$SPRING_SERVICE_NAME" "$QUARKUS_SERVICE_NAME")
+          if [ "$M2M_AUTH_MODE" = "legacy" ]; then services=("$SPRING_SERVICE_NAME"); fi
+          for service in "${services[@]}"; do
+            kubectl -n "$TEST_NAMESPACE" rollout status deployment/"$service" --timeout=300s
+          done
 
       - name: "Phase C — run integration tests (direct M2M)"
         id: tests_c
@@ -350,9 +330,10 @@ jobs:
         run: >
           mvn --batch-mode
           -DskipIT=false
-          -Dtest='!GoPostgresSecretRotationIT'
+          -Dtest='${{ matrix.phase-c-tests }}'
           -Dclouds.cloud.name=kind
           -Dclouds.cloud.namespaces.namespace=$TEST_NAMESPACE
+          -Ddbaas.server.m2m.auth.mode=$M2M_AUTH_MODE
           -Dsurefire.reportsDirectory=target/surefire-reports/phase-c
           test
         env:
@@ -363,7 +344,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: sample-services-surefire-reports
+          name: sample-services-surefire-reports-${{ matrix.mode }}
           path: test-apps/test-apps-integration-tests/target/surefire-reports/**
           if-no-files-found: warn
 
@@ -378,16 +359,12 @@ jobs:
         if: always() && steps.collect_fluentbit_logs.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: sample-services-pod-stdout
+          name: sample-services-pod-stdout-${{ matrix.mode }}
           path: fluentbit-logs/**
           if-no-files-found: warn
 
       - name: Collect K8s diagnostics (kubectl)
         id: collect_diagnostics
-        # always() so this also runs when the deploy/rollout fails (which skips the tests step).
-        # Each section is written to a file (for the downloadable artifact) AND echoed to the job
-        # log with ::group:: folding — one kubectl call per section, so file and console show the
-        # same snapshot. A fully green run writes no files, so no diagnostics artifact is produced.
         if: always()
         run: |
           set +e
@@ -494,7 +471,7 @@ jobs:
         if: always() && steps.collect_diagnostics.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: sample-services-k8s-diagnostics
+          name: sample-services-k8s-diagnostics-${{ matrix.mode }}
           path: diagnostics/**
           if-no-files-found: ignore
 
@@ -528,7 +505,7 @@ jobs:
         env:
           ARTIFACTS_DIR: artifacts
           OUTPUT_FILE: report.md
-          REPORT_LABEL: Sample services integration tests
+          REPORT_LABEL: Sample services integration tests (M2M ${{ matrix.mode }})
           GROUP_LABEL: Pass
           # A pass with no reports never ran — it must show up in the report and fail the job,
           # otherwise a pass that died during deploy would leave the run looking green.
@@ -543,7 +520,6 @@ jobs:
       - name: Email test report
         if: always() && steps.build_report.outcome == 'success' && steps.build_report.outputs.status != 'success'
         continue-on-error: true
-        # Pinned to the commit that adds email-action (#782); no release tag includes it yet.
         uses: Netcracker/qubership-workflow-hub/actions/email-action@f4a2c6f57cfdd620676d0dc7321491b33d7c214b
         env:
           EMAIL_SMTP_HOST: ${{ vars.EMAIL_SMTP_HOST }}
@@ -561,8 +537,6 @@ jobs:
           convert-markdown: "true"
 
       - name: Fail job if sample service tests failed
-        # The report is the single gate: it fails on a failed test AND on a pass that produced no
-        # reports at all ("no-tests" when every pass is missing).
         if: always() && steps.build_report.outputs.status != 'success'
         run: |
           echo "::error::Sample service integration tests did not pass (status=${{ steps.build_report.outputs.status }}, failed tests=${{ steps.build_report.outputs.failed_count }})"

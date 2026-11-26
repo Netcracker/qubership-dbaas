@@ -21,6 +21,10 @@ service is only the black-box Kubernetes consumer used to prove the end-to-end f
 - `DELETE /postgres/items`
 - `POST /postgres/items`  — body `{"name": "<string>"}`
 - `GET /postgres/items`   — `{"items": [{"id", "name", "createdAt"}]}`
+- `POST`, `GET`, `DELETE /postgres-admin/items`
+- `POST`, `GET`, `DELETE /postgres-tenant/items`
+- `POST`, `GET`, `DELETE /postgres-tenant-admin/items`
+- `GET /dbaas-m2m/light-client` — address and credential the light DBaaS client put on the wire
 
 ## How it resolves the database
 
@@ -37,17 +41,19 @@ from REST (a REST call to a dead host cannot return one).
 
 ## Integration test phases
 
-The `Sample Services Integration Tests` workflow deploys this service three times against the same
-black-box contract, toggling only how the DBaaS connection is resolved:
+The `[test] Sample Services` workflow runs this service through three passes on each of its
+M2M-mode clusters, toggling only how the DBaaS connection is resolved:
 
 - **Pass A — mounted secret**: secrets mounted, `API_DBAAS_ADDRESS` at an unreachable host. A working
   round-trip proves the connection came from the mount, not REST.
 - **Pass B — REST fallback**: no mount, `API_DBAAS_ADDRESS` at the `dbaas-agent` stub. The client
   misses the mount and resolves each database over REST through the agent (Basic auth).
-- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_ENABLED=true`.
-  A `dbaas`-audience projected token is mounted at `/var/run/secrets/tokens/dbaas/token`; the client
-  switches to the M2M OkHttp flavor (`getDbaasOkHttpClient`, `basic-auth` off) and calls the
-  aggregator directly with that token as a Bearer — no dbaas-agent.
+- **Pass C — direct M2M**: no mount, `API_DBAAS_ADDRESS` at the real aggregator, `M2M_AUTH_MODE` set
+  to the cluster's mode. Outside `legacy` a `dbaas`-audience projected token is mounted at
+  `/var/run/secrets/tokens/dbaas/token`; the client switches to the M2M OkHttp flavor
+  (`basic-auth` off) and calls the aggregator directly with that token as a Bearer — no dbaas-agent.
+  `hybrid` falls back to the agent on 401; `k8s` does not. In `legacy` no token is mounted and the
+  client stays on the Basic flavor.
 
 ## Build & run
 
@@ -56,16 +62,16 @@ mvn -B package                       # produces target/spring-test-app-service.j
 java -jar target/spring-test-app-service.jar
 ```
 
-The jar depends on the dbaas client snapshot that carries the mounted-secret feature
-(`9.1.5-mounted-secret-SNAPSHOT`, pinned in `pom.xml`), published to GitHub Packages.
+The jar depends on the dbaas client (`dbaas-client.version` in `pom.xml`), published to GitHub
+Packages.
 
 | Env var | Purpose | Default |
 |---|---|---|
 | `MICROSERVICE_NAME` | dbaas classifier `microserviceName` | `spring-test-app-service` |
 | `MICROSERVICE_NAMESPACE` | dbaas classifier `namespace` | `default` |
 | `API_DBAAS_ADDRESS` | REST target: dbaas-agent (Pass B) or the aggregator directly (Pass C) | `http://dbaas-aggregator:8080` |
-| `M2M_AUTH_MODE` | Pass C (`hybrid`): call the aggregator directly with a `dbaas`-audience projected token | `legacy` |
-| `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH` | `false` in Pass C to select the M2M OkHttp client | `true` |
+| `M2M_AUTH_MODE` | client mode: `legacy` goes through dbaas-agent; `hybrid` and `k8s` call the aggregator directly with a projected `dbaas` token, and `k8s` has no fallback | `legacy` |
+| `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH` | `false` outside `legacy` to select the M2M OkHttp client | `true` |
 | `LOG_LEVEL` | root + dbaas log level | `INFO` |
 | `JAVA_TOOL_OPTIONS` | JVM options (heap sizing) | — |
 
@@ -77,18 +83,20 @@ host without a namespace label fails chart rendering.
 
 ## Notes
 
-- Pins **Spring Boot 4.0** to match the Spring line the dbaas client (`microservice-restclient 7.x`)
-  is built against; a 3.x parent causes a `RestClientAutoConfiguration` bean clash.
+- Pins the Spring Boot parent to the line the dbaas client is built against; a parent from a
+  different major line causes a `RestClientAutoConfiguration` bean clash.
 - Excludes the JPA/Hibernate the starter declares at compile scope (this service uses only
   `JdbcTemplate`); leaving them on the classpath would let Spring Boot auto-configure JPA and
   eagerly touch the datasource at startup, breaking boot-without-aggregator.
 - Defaults to the basic-auth RestTemplate flavor (`dbaas.restclient.resttemplate.basic-auth=true`) —
   a plain `RestTemplate` with no platform gateway/M2M dependency — so the service boots standalone.
-  Pass C flips it to `false` (via `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH`) so the client uses the
-  M2M OkHttp flavor and authenticates the aggregator with a projected `dbaas`-audience token.
+  Outside `legacy` the chart flips it to `false` (via `DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH`) so
+  the client uses the M2M OkHttp flavor and authenticates the aggregator with a projected
+  `dbaas`-audience token.
 - Runs on the same digest-pinned Java base image as dbaas-aggregator (`dbaas/Dockerfile` →
-  `ghcr.io/netcracker/qubership-java-base-prof:25-alpine-2.3.3`); the static-binary
+  `ghcr.io/netcracker/qubership-java-base-prof`); the static-binary
   `qubership-core-base` ships no JRE.
 
-The integration test lives in
-[`test-apps/test-apps-integration-tests`](../test-apps-integration-tests) as `SpringTestAppServiceIT`.
+The integration tests live in
+[`test-apps/test-apps-integration-tests`](../test-apps-integration-tests): `SpringTestAppServiceIT` for
+the four CRUD quadrants and `SpringTestAppLightClientM2MIT` for the probe.

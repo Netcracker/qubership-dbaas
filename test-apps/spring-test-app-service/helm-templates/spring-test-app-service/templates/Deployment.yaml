@@ -30,9 +30,6 @@ spec:
       securityContext:
         fsGroup: 10001
       volumes:
-        # The DBaaS PostgreSQL client reads connectionProperties.json + metadata.json from
-        # /etc/secrets/dbaas-secrets/<secretName> before any REST call to dbaas-aggregator.
-        # One volume per mounted secret — one secret per (scope x role) quadrant.
         {{- if .Values.MOUNT_SECRETS }}
         {{- range .Values.SECRET_CLAIMS }}
         - name: 'secret-{{ .secretName }}'
@@ -40,10 +37,7 @@ spec:
             secretName: '{{ .secretName }}'
         {{- end }}
         {{- end }}
-        # Direct-M2M phase: a Kubernetes projected service-account token scoped to the `dbaas`
-        # audience. M2MClientFactory.getDbaasOkHttpClient reads it from /var/run/secrets/tokens/dbaas
-        # and sends it as a Bearer straight to the aggregator (no dbaas-agent).
-        {{- if .Values.M2M_ENABLED }}
+        {{- if ne .Values.M2M_AUTH_MODE "legacy" }}
         - name: dbaas-m2m-token
           projected:
             sources:
@@ -71,11 +65,9 @@ spec:
             - name: API_DBAAS_ADDRESS
               value: '{{ .Values.API_DBAAS_ADDRESS }}'
             - name: M2M_AUTH_MODE
-              value: '{{ if .Values.M2M_ENABLED }}hybrid{{ else }}legacy{{ end }}'
-            # In the M2M phase, switch the dbaas Spring client from the Basic RestTemplate flavor to
-            # the M2M OkHttp client (getDbaasOkHttpClient). This env overrides application.yaml.
+              value: '{{ .Values.M2M_AUTH_MODE }}'
             - name: DBAAS_RESTCLIENT_RESTTEMPLATE_BASIC_AUTH
-              value: '{{ not .Values.M2M_ENABLED }}'
+              value: '{{ eq .Values.M2M_AUTH_MODE "legacy" }}'
             - name: JAVA_TOOL_OPTIONS
               value: '{{ .Values.JAVA_TOOL_OPTIONS }}'
           ports:
@@ -90,7 +82,7 @@ spec:
               readOnly: true
             {{- end }}
             {{- end }}
-            {{- if .Values.M2M_ENABLED }}
+            {{- if ne .Values.M2M_AUTH_MODE "legacy" }}
             - name: dbaas-m2m-token
               mountPath: /var/run/secrets/tokens/dbaas
               readOnly: true

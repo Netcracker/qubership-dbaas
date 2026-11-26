@@ -5,8 +5,9 @@ import com.google.gson.JsonObject;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
+import com.netcracker.it.testapps.helpers.ClusterHelper;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import io.fabric8.kubernetes.client.LocalPortForward;
 import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import okhttp3.Credentials;
 import okhttp3.MediaType;
@@ -21,7 +22,6 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import static com.netcracker.it.testapps.helpers.ClusterHelper.sleep;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -71,7 +72,6 @@ public class GoPostgresSecretRotationIT {
     private static final String MOUNT_PATH =
             "/etc/secrets/dbaas-secrets/" + SECRET_NAME + "/" + CONNECTION_PROPERTIES_KEY;
 
-    /** Port the fixture's HAProxy listens on for PostgreSQL, and the objects it names after it. */
     private static final int TCP_PROXY_PORT = 8801;
     private static final String FRONTEND = "fe_" + TCP_PROXY_PORT;
     private static final String BACKEND = "be_" + TCP_PROXY_PORT;
@@ -96,39 +96,36 @@ public class GoPostgresSecretRotationIT {
             .writeTimeout(REQUEST_TIMEOUT)
             .build();
 
-    private static KubernetesClient kubernetesClient;
+    private static final KubernetesClient kubernetesClient = ClusterHelper.cluster();
     private static String namespace;
     private static String proxyServiceName;
     private static String dbaCredentials;
     private static Duration rotationTimeout;
 
-    private static Process serviceForward;
-    private static Process proxyForward;
+    private static LocalPortForward serviceForward;
+    private static LocalPortForward proxyForward;
     private static String serviceUrl;
     private static String proxyUrl;
 
     @BeforeAll
     static void setUp() {
-        namespace = requiredConfig("clouds.cloud.namespaces.namespace");
-        proxyServiceName = optionalConfig("rotation.dbaas.proxy.service", "dbaas-proxy");
-        rotationTimeout = Duration.ofSeconds(Long.parseLong(optionalConfig("rotation.timeout.seconds", "120")));
+        namespace = ClusterHelper.namespace();
+        proxyServiceName = ClusterHelper.config("rotation.dbaas.proxy.service", "dbaas-proxy");
+        rotationTimeout = Duration.ofSeconds(Long.parseLong(ClusterHelper.config("rotation.timeout.seconds", "120")));
         // Required rather than defaulted: a credential baked into a test class outlives the
         // environment it was meant for.
         dbaCredentials = Credentials.basic(
-                requiredConfig("rotation.cluster.dba.username"),
-                requiredConfig("rotation.cluster.dba.password"));
-
-        kubernetesClient = new KubernetesClientBuilder().build();
+                ClusterHelper.config("rotation.cluster.dba.username"),
+                ClusterHelper.config("rotation.cluster.dba.password"));
     }
 
     @AfterAll
-    static void tearDown() {
-        stopForward(serviceForward);
-        stopForward(proxyForward);
-        serviceForward = null;
-        proxyForward = null;
-        if (kubernetesClient != null) {
-            kubernetesClient.close();
+    static void tearDown() throws IOException {
+        if (serviceForward != null) {
+            serviceForward.close();
+        }
+        if (proxyForward != null) {
+            proxyForward.close();
         }
     }
 
@@ -246,8 +243,6 @@ public class GoPostgresSecretRotationIT {
                         + rotationTimeout.toMillis() + " ms");
     }
 
-    // ── rotation steps ─────────────────────────────────────────────────────────────────────────
-
     /**
      * Rotates the admin credential through the real DBaaS API. The aggregator adds the namespace
      * from the path to the classifier, so the body carries only the fields that identify the
@@ -283,7 +278,6 @@ public class GoPostgresSecretRotationIT {
         }
     }
 
-    /** Polls the Secret until the operator republishes it with a different password. */
     private static Secret awaitRotatedSecret(String resourceVersionBefore, String passwordHashBefore,
                                              long rotationStartNanos) {
         long deadline = rotationStartNanos + rotationTimeout.toNanos();
@@ -335,8 +329,6 @@ public class GoPostgresSecretRotationIT {
             return response.code();
         }
     }
-
-    // ── proxy control ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Returns true when HAProxy reports a session on the PostgreSQL frontend. Asking the proxy
@@ -395,7 +387,6 @@ public class GoPostgresSecretRotationIT {
         }
     }
 
-    /** Confirms that HAProxy removed the established session before the recovery probe starts. */
     private static void awaitPostgresSessionShutdown() throws IOException {
         long deadline = System.nanoTime() + REQUEST_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -406,8 +397,6 @@ public class GoPostgresSecretRotationIT {
         }
         throw new AssertionError("HAProxy still reports the PostgreSQL session after the shutdown command");
     }
-
-    // ── Kubernetes reads ───────────────────────────────────────────────────────────────────────
 
     private static Secret readSecret() {
         Secret secret = kubernetesClient.secrets().inNamespace(namespace).withName(SECRET_NAME).get();
@@ -423,9 +412,6 @@ public class GoPostgresSecretRotationIT {
         return GSON.fromJson(json, JsonObject.class);
     }
 
-    /**
-     * Hashes the password before comparison so the clear-text value is never printed.
-     */
     private static String passwordHash(Secret secret) {
         JsonObject properties = connectionProperties(secret);
         assertTrue(properties.has("password"), CONNECTION_PROPERTIES_KEY + " must contain a password");
@@ -540,76 +526,18 @@ public class GoPostgresSecretRotationIT {
                 .build();
     }
 
-    // ── port forwarding ────────────────────────────────────────────────────────────────────────
-
     /**
      * Forwards the application pod and DBaaS Proxy separately. The application is addressed by pod
      * rather than by Service so every probe reaches the same pod whose restart count is asserted.
      */
-    private static void startPortForwards(String podName) throws IOException {
-        int servicePort = findFreePort();
-        serviceForward = portForward("pod/" + podName, servicePort, SERVICE_HTTP_PORT);
-        serviceUrl = "http://127.0.0.1:" + servicePort;
-
-        int proxyPort = findFreePort();
-        proxyForward = portForward("service/" + proxyServiceName, proxyPort, PROXY_HTTP_PORT);
-        proxyUrl = "http://127.0.0.1:" + proxyPort;
-
-        awaitReachable(serviceUrl + "/health", "application", serviceForward);
-        awaitReachable(proxyUrl + "/health", "DBaaS Proxy", proxyForward);
+    private static void startPortForwards(String podName) {
+        serviceForward = ClusterHelper.toPod(podName, SERVICE_HTTP_PORT);
+        serviceUrl = ClusterHelper.url(serviceForward, "");
+        proxyForward = ClusterHelper.toService(proxyServiceName, PROXY_HTTP_PORT);
+        proxyUrl = ClusterHelper.url(proxyForward, "");
+        ClusterHelper.awaitHealthy(serviceUrl + "/health", SERVICE_NAME);
+        ClusterHelper.awaitHealthy(proxyUrl + "/health", "DBaaS Proxy");
     }
-
-    private static Process portForward(String target, int localPort, int remotePort) throws IOException {
-        return new ProcessBuilder("kubectl", "-n", namespace, "port-forward", target, localPort + ":" + remotePort)
-                .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-                .redirectError(ProcessBuilder.Redirect.INHERIT)
-                .start();
-    }
-
-    private static void awaitReachable(String url, String what, Process process) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
-        IOException lastError = null;
-        while (System.nanoTime() < deadline) {
-            if (!process.isAlive()) {
-                throw new AssertionError("kubectl port-forward to " + what + " exited with code "
-                        + process.exitValue() + " before " + url + " became reachable", lastError);
-            }
-            Request request = new Request.Builder().url(url).get().build();
-            try (Response response = HTTP.newCall(request).execute()) {
-                if (response.isSuccessful()) {
-                    return;
-                }
-                lastError = new IOException("health endpoint returned HTTP " + response.code());
-            } catch (IOException e) {
-                lastError = e;
-            }
-            sleep(Duration.ofSeconds(1));
-        }
-        throw new AssertionError("Port-forward to " + what + " never became reachable at " + url, lastError);
-    }
-
-    private static void stopForward(Process process) {
-        if (process == null) {
-            return;
-        }
-        process.destroy();
-        try {
-            if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
-        }
-    }
-
-    private static int findFreePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        }
-    }
-
-    // ── small helpers ──────────────────────────────────────────────────────────────────────────
 
     private static String bodyOf(Response response) throws IOException {
         ResponseBody body = response.body();
@@ -629,33 +557,4 @@ public class GoPostgresSecretRotationIT {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
     }
 
-    private static void sleep(Duration duration) {
-        try {
-            Thread.sleep(duration.toMillis());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("Credential-rotation wait was interrupted", e);
-        }
-    }
-
-    private static String requiredConfig(String name) {
-        String value = optionalConfig(name, null);
-        if (value == null) {
-            throw new IllegalStateException("Missing required property or environment variable: " + name);
-        }
-        return value;
-    }
-
-    private static String optionalConfig(String name, String fallback) {
-        for (String candidate : List.of(name, name.replace('.', '_').toUpperCase(), "ENV_" + name)) {
-            String value = System.getProperty(candidate);
-            if (value == null || value.isBlank()) {
-                value = System.getenv(candidate);
-            }
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return fallback;
-    }
 }
